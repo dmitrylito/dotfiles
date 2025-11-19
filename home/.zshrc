@@ -70,7 +70,7 @@ ENABLE_CORRECTION="true"
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(zsh-interactive-cd zsh-autosuggestions)
+plugins=(git zsh-interactive-cd zsh-autosuggestions)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -82,12 +82,12 @@ setopt PROMPT_SUBST
 
 ## Git info with sane signals
 #autoload -Uz vcs_info
-#zstyle ':vcs_info:*' enable git
-#zstyle ':vcs_info:git:*' check-for-changes true
-#zstyle ':vcs_info:git:*' stagedstr '+'
-#zstyle ':vcs_info:git:*' unstagedstr '*'
-#zstyle ':vcs_info:git:*' formats '%F{yellow}[%b%u]%f'        # on a bran$
-#zstyle ':vcs_info:git:*' actionformats ' %F{yellow}[%b|%a%u]%f' # during $
+zstyle ':vcs_info:*' enable git
+zstyle ':vcs_info:git:*' check-for-changes true
+zstyle ':vcs_info:git:*' stagedstr '+'
+zstyle ':vcs_info:git:*' unstagedstr '*'
+zstyle ':vcs_info:git:*' formats '%F{yellow}[%b%u]%f'        # on a bran$
+zstyle ':vcs_info:git:*' actionformats '%F{yellow}[%b|%a%u]%f' # during $
 
 precmd() { vcs_info }  # refresh git info each prompt
 
