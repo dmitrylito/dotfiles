@@ -7,6 +7,8 @@
 # Path to your Oh My Zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
 
+export ZSH_CUSTOM="$HOME/.oh-my-zsh-custom/custom/"
+
 # Set name of the theme to load --- if set to "random", it will
 # load a random theme each time Oh My Zsh is loaded, in which case,
 # to know which specific one was loaded, run: echo $RANDOM_THEME
@@ -77,6 +79,8 @@ plugins=(git zsh-interactive-cd zsh-autosuggestions zsh-autocomplete)
 
 source $ZSH/oh-my-zsh.sh
 
+source $ZSH_CUSTOM
+
 # User configuration
 
 # Always have colors in prompts
@@ -131,4 +135,4 @@ precmd() { vcs_info }  # refresh git info each prompt
 
 alias n="nvim"
 alias gacp="git add -A && git commit -m 'Dot files updated' && git push origin main"
-
+alias ls="ls -a --color=always"
