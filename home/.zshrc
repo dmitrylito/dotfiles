@@ -25,7 +25,7 @@ ZSH_THEME="spaceship"
 
 # Uncomment one of the following lines to change the auto-update behavior
 # zstyle ':omz:update' mode disabled  # disable automatic updates
-# zstyle ':omz:update' mode auto      # update automatically without asking
+zstyle ':omz:update' mode auto      # update automatically without asking
 # zstyle ':omz:update' mode reminder  # just remind me to update when it's time
 
 # Uncomment the following line to change how often to auto-update (in days).
@@ -70,7 +70,7 @@ ENABLE_CORRECTION="true"
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git zsh-interactive-cd zsh-autosuggestions)
+plugins=(zsh-interactive-cd zsh-autosuggestions)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -80,14 +80,14 @@ source $ZSH/oh-my-zsh.sh
 autoload -Uz colors && colors
 setopt PROMPT_SUBST
 
-# Git info with sane signals
-autoload -Uz vcs_info
-zstyle ':vcs_info:*' enable git
-zstyle ':vcs_info:git:*' check-for-changes true
-zstyle ':vcs_info:git:*' stagedstr '+'
-zstyle ':vcs_info:git:*' unstagedstr '*'
-zstyle ':vcs_info:git:*' formats ' %F{yellow}[%b%u]%f'        # on a bran$
-zstyle ':vcs_info:git:*' actionformats ' %F{yellow}[%b|%a%u]%f' # during $
+## Git info with sane signals
+#autoload -Uz vcs_info
+#zstyle ':vcs_info:*' enable git
+#zstyle ':vcs_info:git:*' check-for-changes true
+#zstyle ':vcs_info:git:*' stagedstr '+'
+#zstyle ':vcs_info:git:*' unstagedstr '*'
+#zstyle ':vcs_info:git:*' formats '%F{yellow}[%b%u]%f'        # on a bran$
+#zstyle ':vcs_info:git:*' actionformats ' %F{yellow}[%b|%a%u]%f' # during $
 
 precmd() { vcs_info }  # refresh git info each prompt
 
