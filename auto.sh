@@ -33,28 +33,3 @@ done
 
 # Reload zsh config for current shell (optional, only matters if script is sourced)
 source "$HOME"/.zshrc
-
-#Remove Spaceship Files
-if {
-  rm -rf "$STOW_DIR"/ohmyzsh/.config/.oh-my-zsh-custom/custom/themes/spaceship-prompt &&
-  rm -rf "$STOW_DIR"/ohmyzsh/.config/.oh-my-zsh-custom/custom/themes/spaceship.zsh-theme: then
-  echo "Spaceship files removed"
-else
-  echo "Failed spaceship file removal" >&2
-  exit 1
-fi
-
-# Spaceship prompt
-if git clone https://github.com/spaceship-prompt/spaceship-prompt.git \
-  "$ZSH_CUSTOM/themes/spaceship-prompt" --depth=1; then
-  echo "Cloned spaceship-prompt repo"
-else
-  echo "Failed to clone spaceship-prompt repo" >&2
-  exit 1
-fi
-
-ln -s "$ZSH_CUSTOM/themes/spaceship-prompt/spaceship.zsh-theme" \
-  "$ZSH_CUSTOM/themes/spaceship.zsh-theme"
-
-# Reload again after installing theme (optional)
-source "$HOME"/.zshrc
