@@ -1,6 +1,9 @@
 return {
-  "LazyVim/LazyVim",
-  opts = {
-    colorscheme = "habamax",
-  },
+	{ "tahayvr/matteblack.nvim", lazy = false, priority = 1000 },
+	{
+		"LazyVim/LazyVim",
+		opts = {
+			colorscheme = "matteblack",
+		},
+	},
 }
