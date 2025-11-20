@@ -141,7 +141,7 @@ fi
 
 if [[ "$(hostname -s)" == "Dmitrys-MacBook-Pro" ]]; then
   eval "$(_FC_CLI_COMPLETE=zsh_source fc-cli)"
-   The next line updates PATH for the Google Cloud SDK.
+   #The next line updates PATH for the Google Cloud SDK.
   if [ -f '/Users/dmitrylitoshik/Documnets/Fleet Chaser /GCloud/google-cloud-sdk/path.zsh.inc' ]; then 
     . '/Users/dmitrylitoshik/Documnets/Fleet Chaser /GCloud/google-cloud-sdk/path.zsh.inc';
   fi
