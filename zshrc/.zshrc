@@ -134,5 +134,5 @@ precmd() { vcs_info }  # refresh git info each prompt
 #eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 
 alias n="nvim"
-alias gacp="git add -A && git commit -m 'Dot files updated' && git push origin main"
+alias gacp="git add . && git commit -m 'Dot files updated' && git push origin main"
 alias ls="ls -a --color=always"
