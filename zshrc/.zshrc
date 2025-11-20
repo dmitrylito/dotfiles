@@ -131,7 +131,9 @@ precmd() { vcs_info }  # refresh git info each prompt
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
-#eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+if [ -f /home/linuxbrew/.linuxbrew/bin/brew ]; then
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+fi
 
 alias n="nvim"
 alias gacp="git add . && git commit -m 'Dot files updated' && git push origin main"
