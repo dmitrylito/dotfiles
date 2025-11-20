@@ -139,6 +139,20 @@ if [ -f /home/linuxbrew/.linuxbrew/bin/brew ]; then
   eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
 
+if [[ "$(hostname -s)" == "Dmitrys-MacBook-Pro" ]]; then
+  #eval "$(_FC_CLI_COMPLETE=zsh_source fc-cli)"
+  # The next line updates PATH for the Google Cloud SDK.
+  #if [ -f '/Users/dmitrylitoshik/Documnets/Fleet Chaser /GCloud/google-cloud-sdk/path.zsh.inc' ]; then 
+  #  . '/Users/dmitrylitoshik/Documnets/Fleet Chaser /GCloud/google-cloud-sdk/path.zsh.inc';
+  #fi
+  ## The next line enables shell command completion for gcloud.
+  #if [ -f '/Users/dmitrylitoshik/Documnets/Fleet Chaser /GCloud/google-cloud-sdk/completion.zsh.inc' ]; then
+  #  . '/Users/dmitrylitoshik/Documnets/Fleet Chaser /GCloud/google-cloud-sdk/completion.zsh.inc';
+  #fi
+  
+  test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
+fi
+
 alias n="nvim"
 alias gacp="git add . && git commit -m 'Dot files updated' && git push origin main"
 alias ls="ls -a --color=always"

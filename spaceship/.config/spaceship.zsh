@@ -31,7 +31,7 @@ SPACESHIP_PROMPT_ORDER=(
   docker         # Docker section
   docker_compose # Docker section
   aws            # Amazon Web Services section
-  gcloud         # Google Cloud Platform section
+  # gcloud         # Google Cloud Platform section
   azure          # Azure section
   venv           # virtualenv section
   conda          # conda virtualenv section
@@ -59,6 +59,10 @@ SPACESHIP_PROMPT_ORDER=(
   sudo           # Sudo indicator
   char
 )
+
+SPACESHIP_USER_SHOW=always
+SPACESHIP_HOST_SHOW=always
+
 SPACESHIP_PROMPT_ADD_NEWLINE=true
 
 SPACESHIP_PROMPT_DEFAULT_SUFFIX=""
@@ -67,6 +71,7 @@ SPACESHIP_USER_SUFFIX=""
 SPACESHIP_USER_COLOR=yellow
 
 SPACESHIP_HOST_PREFIX="%{%F{red}%}@"
+SPACESHIP_HOST_COLOR=green
 
 SPACESHIP_DIR_PREFIX=" "
 
