@@ -1,13 +1,22 @@
 return {
-	"ibhagwan/fzf-lua",
-	-- optional for icon support
-	dependencies = { "nvim-tree/nvim-web-devicons" },
-	-- or if using mini.icons/mini.nvim
-	-- dependencies = { "nvim-mini/mini.icons" },
-	opts = {
-		files = {
-			hidden = true,
-			follow = true,
-		},
-	},
+  "ibhagwan/fzf-lua",
+  opts = {
+    fzf_opts = {
+      ["--layout"] = "default",
+    },
+    winopts = {
+      width = 0.95,
+      height = 0.95,
+
+      preview = {
+        layout = "horizontal",
+        wrap = "wrap",
+        horizontal = "right:50%",
+      },
+    },
+    files = {
+      hidden = true,
+      follow = true,
+    },
+  },
 }
