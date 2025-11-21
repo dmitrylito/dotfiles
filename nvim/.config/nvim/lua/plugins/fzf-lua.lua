@@ -7,7 +7,7 @@ return {
   opts = {
     files = {
       hidden = true,
-      follow = true,
+      follow = false,
     },
   },
 }
