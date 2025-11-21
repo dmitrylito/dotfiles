@@ -156,3 +156,7 @@ fi
 alias n="nvim"
 alias gacp="git add . && git commit -m 'Dot files updated' && git push origin main"
 alias ls="ls -a --color=always"
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion

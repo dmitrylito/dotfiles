@@ -1,32 +1,31 @@
 return {
-	{
-		"folke/noice.nvim",
-		event = "VeryLazy",
-		lsp = {
-			-- override markdown rendering so that **cmp** and other pnugins use **Treesitter**
-			override = {
-				["vim.lsp.util.convert_input_to_markdown_lines"] = true,
-				["vim.lsp.util.stylize_markdown"] = true,
-				["cmp.entry.get_documentation"] = true, -- requires hrsh7th/nvim-cmp
-			},
-		},
-		opts = {
-			views = {
-				cmdline_popup = {
-					position = {
-						row = 43,
-						col = "50%",
-					},
-					size = {
-						width = 60,
-						height = "auto",
-					},
-				},
-			},
-			dependencies = {
-				"MunifTanjim/nui.nvim",
-				"rcarriga/nvim-notify",
-			},
-		},
-	},
+  "folke/noice.nvim",
+  opts = {
+    views = {
+      cmdline_popup = {
+        position = {
+          row = "75%",
+          col = "50%",
+        },
+        size = {
+          width = 60,
+          height = "auto",
+        },
+        border = {
+          style = "rounded",
+          padding = { 0, 3 },
+        },
+        win_options = {
+          winhighlight = { Normal = "NormalFloat", FloatBorder = "NoiceCmdlinePopupBorder" },
+        },
+      },
+    },
+  },
+  config = function(_, opts)
+    require("noice").setup(opts)
+
+    -- fix the background
+    vim.api.nvim_set_hl(0, "NoiceCmdlinePopup", { link = "NormalFloat" })
+    vim.api.nvim_set_hl(0, "NoiceCmdlinePopupBorder", { link = "FloatBorder" })
+  end,
 }
