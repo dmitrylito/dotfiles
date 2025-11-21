@@ -16,7 +16,6 @@ cd "$HOME"/ || {
   exit 1
 }
 
-
 # Remove old zsh config
 rm -rf "$HOME"/.zshrc && echo "removed zsh files"
 
@@ -73,14 +72,23 @@ if [ -L "$THEME_LINK" ]; then
     echo "Symlink already correct: $THEME_LINK -> $current_target"
   else
     echo "Symlink $THEME_LINK points to $current_target, replacing with $THEME_TARGET"
-    rm "$THEME_LINK" || { echo "Failed to remove existing symlink $THEME_LINK" >&2; exit 1; }
-    ln -s "$THEME_TARGET" "$THEME_LINK" || { echo "Failed to create symlink $THEME_LINK" >&2; exit 1; }
+    rm "$THEME_LINK" || {
+      echo "Failed to remove existing symlink $THEME_LINK" >&2
+      exit 1
+    }
+    ln -s "$THEME_TARGET" "$THEME_LINK" || {
+      echo "Failed to create symlink $THEME_LINK" >&2
+      exit 1
+    }
   fi
 elif [ -e "$THEME_LINK" ]; then
   echo "$THEME_LINK exists and is not a symlink, refusing to overwrite blindly" >&2
   exit 1
 else
-  ln -s "$THEME_TARGET" "$THEME_LINK" || { echo "Failed to create symlink $THEME_LINK" >&2; exit 1; }
+  ln -s "$THEME_TARGET" "$THEME_LINK" || {
+    echo "Failed to create symlink $THEME_LINK" >&2
+    exit 1
+  }
   echo "Created spaceship.zsh-theme symlink: $THEME_LINK -> $THEME_TARGET"
 fi
 
