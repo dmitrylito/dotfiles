@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 STOW_DIR="$HOME/dotfiles"
 cd "$STOW_DIR" || {
