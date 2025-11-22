@@ -79,7 +79,7 @@ ZSH_CUSTOM="$HOME/.oh-my-zsh-custom/custom/"
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git github zsh-autosuggestions zsh-autosuggestions zsh-navigation-tools) 
+plugins=(git github zsh-autosuggestions zsh-autocomplete zsh-navigation-tools) 
 
 source $ZSH/oh-my-zsh.sh
 
