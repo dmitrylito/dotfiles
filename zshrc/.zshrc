@@ -161,6 +161,7 @@ fi
 
 alias n="nvim"
 alias gacp="git add . && git commit -m 'Dot files updated' && git push origin main"
+alias py="pythhon3"
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
