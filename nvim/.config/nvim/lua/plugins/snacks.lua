@@ -2,6 +2,9 @@ return {
 	{
 		"folke/snacks.nvim",
 		opts = {
+			dashboard = {
+				show_recent_files = true,
+			},
 			explorer = {},
 
 			picker = {
