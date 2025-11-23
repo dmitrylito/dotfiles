@@ -39,6 +39,11 @@ return {
         explorer = {
           hidden = true,
           follow = true,
+          layout = {
+            layout = {
+              width = 0.2,
+            },
+          },
         },
       },
     },
