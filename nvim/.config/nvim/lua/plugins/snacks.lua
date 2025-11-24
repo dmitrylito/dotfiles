@@ -40,6 +40,7 @@ return {
           hidden = true,
           follow = true,
           layout = {
+            auto_hide = { "input" },
             layout = {
               width = 0.2,
             },
