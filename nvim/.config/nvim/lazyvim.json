@@ -33,7 +33,11 @@
     "lazyvim.plugins.extras.util.gitui",
     "lazyvim.plugins.extras.util.mini-hipatterns",
     "lazyvim.plugins.extras.util.octo",
+<<<<<<< HEAD
     "lazyvim.plugins.extras.util.project"
+=======
+    "lazyvim.plugins.extras.vscode"
+>>>>>>> 4cf4bda (Dot files updated)
   ],
   "news": {
     "NEWS.md": "11866"
