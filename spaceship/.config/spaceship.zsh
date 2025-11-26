@@ -32,34 +32,35 @@ SPACESHIP_PROMPT_ORDER=(
   docker_compose # Docker section
   aws            # Amazon Web Services section
   # gcloud         # Google Cloud Platform section
-  azure          # Azure section
-  venv           # virtualenv section
-  conda          # conda virtualenv section
-  uv             # uv section
-  dotnet         # .NET section
-  ocaml          # OCaml section
-  vlang          # V section
-  zig            # Zig section
-  purescript     # PureScript section
-  erlang         # Erlang section
-  gleam          # Gleam section
-  kubectl        # Kubectl context section
-  ansible        # Ansible section
-  terraform      # Terraform workspace section
-  pulumi         # Pulumi stack section
-  ibmcloud       # IBM Cloud section
-  nix_shell      # Nix shell
-  gnu_screen     # GNU Screen section
+  azure      # Azure section
+  venv       # virtualenv section
+  conda      # conda virtualenv section
+  uv         # uv section
+  dotnet     # .NET section
+  ocaml      # OCaml section
+  vlang      # V section
+  zig        # Zig section
+  purescript # PureScript section
+  erlang     # Erlang section
+  gleam      # Gleam section
+  kubectl    # Kubectl context section
+  ansible    # Ansible section
+  terraform  # Terraform workspace section
+  pulumi     # Pulumi stack section
+  ibmcloud   # IBM Cloud section
+  nix_shell  # Nix shell
+  gnu_screen # GNU Screen section
   #exec_time      # Execution time
   #async          # Async jobs indicator
   #line_sep       # Line break
-  battery        # Battery level and status
-  jobs           # Background jobs indicator
-  exit_code      # Exit code section
-  sudo           # Sudo indicator
+  battery   # Battery level and status
+  jobs      # Background jobs indicator
+  exit_code # Exit code section
+  sudo      # Sudo indicator
   char
 )
 
+###########     Main      #########################
 SPACESHIP_USER_SHOW=always
 SPACESHIP_HOST_SHOW=always
 
@@ -75,6 +76,7 @@ SPACESHIP_HOST_COLOR=green
 
 SPACESHIP_DIR_PREFIX=" "
 
+############     Git      #######################
 SPACESHIP_GIT_SYMBOL=""
 SPACESHIP_GIT_BRANCH_COLOR=magenta
 
@@ -92,6 +94,10 @@ SPACESHIP_GIT_STATUS_SUFFIX="]"
 
 SPACESHIP_GIT_SUFFIX=""
 
+#############   Docker    ########################
+SPACESHIP_DOCKER_PREFIX="|"
+
+##########    Main Prpompt Close   ###############
 SPACESHIP_CHAR_PREFIX=" "
 SPACESHIP_CHAR_SYMBOL=""
 SPACESHIP_CHAR_SUFFIX=" "
