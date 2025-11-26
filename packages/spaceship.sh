@@ -1,8 +1,16 @@
 #!/bin/bash
 set -e
 
+REAL_HOME=""
+if [ -n "${SUDO_USER}" ]; then
+  REAL_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
+else
+  REAL_HOME="${HOME}"
+fi
+
+
 # Make sure ZSH_CUSTOM is set consistently
-ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh-custom/custom}"
+ZSH_CUSTOM="${ZSH_CUSTOM:-${REAL_HOME}/.oh-my-zsh-custom/custom}"
 THEME_LINK="$ZSH_CUSTOM/themes/spaceship.zsh-theme"
 THEME_TARGET="$ZSH_CUSTOM/themes/spaceship-prompt/spaceship.zsh-theme"
 
