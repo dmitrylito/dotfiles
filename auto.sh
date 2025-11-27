@@ -41,33 +41,27 @@ fi
 
 # N num of arguments which contain the name of those packages that we want to install:
 packages=()
-prev_package=false
 while [[ $# -gt 0 ]]; do
-  key="$1"
-  case $key in
+  case "$1" in
   -p | --package)
-    shift
     install_packages=true
-    prev_package=true
-    ;;
-  -h | --help)
-    prev_package=false
     shift
-    help
+    while [[ $# -gt 0 && ! "$1" =~ ^- ]]; do
+      packages+=("$1")
+      shift
+    done
     ;;
   -d | --dotfiles)
-    prev_package=false
     install_dotfiles=true
     shift
     ;;
+  -h | --help)
+    help
+    ;;
   *)
-    if [[ $prev_package == true ]]; then
-      packages+=("$1")
-    else
-      echo "Error: Invalid argument $1."
-      exit 1
-    fi
-    shift
+    echo "Unknown option: $1"
+    help
+    exit 1
     ;;
   esac
 done
