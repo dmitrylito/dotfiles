@@ -1,9 +1,9 @@
 #!/bin/bash
 set -xe
 
-# sh ./fonts.sh
+export DEBIAN_FRONTEND=noninteractive
 
-NVIM_VERSION=v0.10.0
+# sh ./fonts.sh
 
 SUDO_CMD=""
 if command -v sudo &> /dev/null; then
@@ -36,7 +36,7 @@ if ! command -v lazygit &>/dev/null; then
     echo "Installing lazygit..."
     TEMP_DIR_LAZYGIT=$(mktemp -d)
     
-    LAZYGIT_VERSION=$(curl -s "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" | grep -Po '"tag_name": "v\K[^"]*')
+    LAZYGIT_VERSION=$(curl -s "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" | grep '"tag_name":' | cut -d '"' -f 4 | sed 's/v//')
     curl -Lo "${TEMP_DIR_LAZYGIT}/lazygit.tar.gz" "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LAZYGIT_VERSION}_Linux_x86_64.tar.gz"
     tar -C "${TEMP_DIR_LAZYGIT}" -xf "${TEMP_DIR_LAZYGIT}/lazygit.tar.gz" lazygit
     $SUDO_CMD install "${TEMP_DIR_LAZYGIT}/lazygit" /usr/local/bin
@@ -47,21 +47,37 @@ fi
 
 
 # Install Neovim
+echo "Checking for latest Neovim version..."
+LATEST_RELEASE_INFO=$(curl -s "https://api.github.com/repos/neovim/neovim/releases/latest")
+LATEST_NVIM_VERSION=$(echo "$LATEST_RELEASE_INFO" | grep '"tag_name":' | cut -d '"' -f 4)
+
+if [ -z "$LATEST_NVIM_VERSION" ]; then
+    echo "Could not determine latest Neovim version."
+    exit 1
+fi
+
+echo "Latest Neovim version is $LATEST_NVIM_VERSION"
+
 NEOVIM_INSTALLED_VERSION=""
 if command -v nvim &>/dev/null; then
     NEOVIM_INSTALLED_VERSION=$(nvim --version | head -n 1 | sed 's/NVIM //')
 fi
 
-if [[ "$NEOVIM_INSTALLED_VERSION" == "$NVIM_VERSION" ]]; then
-    echo "Neovim ${NVIM_VERSION} is already installed."
+if [[ "$NEOVIM_INSTALLED_VERSION" == "$LATEST_NVIM_VERSION" ]]; then
+    echo "Neovim ${LATEST_NVIM_VERSION} is already installed."
 else
     if [ -n "$NEOVIM_INSTALLED_VERSION" ]; then
-        echo "Found Neovim ${NEOVIM_INSTALLED_VERSION}, upgrading to ${NVIM_VERSION}."
+        echo "Found Neovim ${NEOVIM_INSTALLED_VERSION}, upgrading to ${LATEST_NVIM_VERSION}."
     else
-        echo "Installing Neovim ${NVIM_VERSION}..."
+        echo "Installing Neovim ${LATEST_NVIM_VERSION}..."
     fi
 
-    DOWNLOAD_URL="https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux64.tar.gz"
+    DOWNLOAD_URL=$(echo "$LATEST_RELEASE_INFO" | grep "browser_download_url.*nvim-linux64.tar.gz" | cut -d '"' -f 4)
+
+    if [ -z "$DOWNLOAD_URL" ]; then
+        echo "Could not find download URL for latest Neovim."
+        exit 1
+    fi
     
     TEMP_DIR_NVIM=$(mktemp -d)
     
@@ -73,5 +89,5 @@ else
     
     rm -rf "${TEMP_DIR_NVIM}"
     
-    echo "Neovim ${NVIM_VERSION} installed successfully."
+    echo "Neovim ${LATEST_NVIM_VERSION} installed successfully."
 fi
