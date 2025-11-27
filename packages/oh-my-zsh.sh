@@ -1,11 +1,16 @@
 #!/bin/bash
 set -e
 
+SUDO_CMD=""
+if command -v sudo &> /dev/null; then
+    SUDO_CMD="sudo"
+fi
+
 REAL_HOME=""
 EXEC_USER_CMD=""
 if [ -n "${SUDO_USER}" ]; then
   REAL_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
-  EXEC_USER_CMD="sudo -u ${SUDO_USER}"
+  EXEC_USER_CMD="$SUDO_CMD -u ${SUDO_USER}"
 else
   REAL_HOME="${HOME}"
 fi
