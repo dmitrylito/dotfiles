@@ -10,6 +10,7 @@ node = "26"
 "npm:@xai-official/grok" = "latest"
 opencode = "latest"
 pi = "latest"
+python = ["3.12", "3.14"]
 
 [settings]
 minimum_release_age_excludes = ["claude"]
