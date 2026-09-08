@@ -1,0 +1,49 @@
+#!/bin/sh
+# Install the herdr plugins that this profile's keybindings depend on.
+#
+# Usage: not run by hand. chezmoi runs it during `apply` whenever this script's
+#        rendered content changes (see the hash below).
+#
+# herdr keeps plugin registration in ~/.config/herdr/plugins.json, a per-machine
+# file holding the resolved git commit and absolute checkout paths under
+# ~/.config/herdr/plugins/. That file is deliberately NOT chezmoi-managed, so
+# tracking config.toml alone is not enough: a fresh box gets the plugin_action
+# keybindings with no plugin behind them and those keys silently do nothing.
+#
+# drovr needs `node >= 23` and `fzf` on PATH at *runtime*, not at install time —
+# install still succeeds without them, the picker just fails to open. The herdr
+# server freezes its env, so node must be on the PATH the server was started
+# with (systemd user PATH here, which carries the mise shims).
+#
+# run_onchange keys on this script's own rendered content, so editing the
+# PLUGINS list below is enough to make the next apply re-run it.
+set -eu
+
+HERDR="{{ .chezmoi.homeDir }}/.local/bin/herdr"
+
+if [ ! -x "$HERDR" ]; then
+	echo "ensure-herdr-plugins: no herdr at $HERDR, nothing to do"
+	exit 0
+fi
+
+installed="$("$HERDR" plugin list 2>/dev/null || true)"
+
+# "<owner/repo[/subdir]> <plugin id>", one per line
+while read -r source id; do
+	[ -n "${source:-}" ] || continue
+	if printf '%s\n' "$installed" | grep -q "^- $id "; then
+		echo "ensure-herdr-plugins: $id already installed"
+		continue
+	fi
+	echo "ensure-herdr-plugins: installing $id from $source"
+	# A failed install must not abort the whole apply.
+	"$HERDR" plugin install "$source" --yes ||
+		echo "ensure-herdr-plugins: WARNING install of $id failed"
+done <<'PLUGINS'
+AVGVSTVS96/herdr-drovr drovr
+PLUGINS
+
+for tool in node fzf; do
+	command -v "$tool" >/dev/null 2>&1 ||
+		echo "ensure-herdr-plugins: WARNING $tool not on PATH, drovr's picker will not open"
+done
