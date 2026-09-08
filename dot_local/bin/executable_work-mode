@@ -1,15 +1,16 @@
 #!/bin/bash
 #
-# work-mode — open the "work" apps and place newly opened Dialpad predictably.
+# work-mode — open the "work" apps and place newly opened windows predictably.
 #
 #   ws 1 : work browser (chromium, "Work" profile)
-#   ws 2 : Dialpad | FC Gmail over FC Chat
-#   ws 3 : Linear | FC Tasks
+#   ws 2 : Dialpad | FC Gmail
+#   ws 3 : FC Chat | FC Tasks over Linear
 #   scratchpad : Spotify
 #
 # Idempotent when every app is open. Missing apps are opened on their assigned
-# workspace. If Dialpad was missing, only that newly opened window is promoted
-# to the layout root so the workspace returns to its intended column structure.
+# workspace. If Dialpad or FC Chat was missing, only that newly opened window is
+# promoted to its workspace's layout root so the workspace returns to its
+# intended column structure.
 #
 # Device-agnostic by construction — nothing machine-specific is hardcoded:
 #   * Chromium numbers profile DIRECTORIES in creation order, so "Profile 3" is a
@@ -121,6 +122,7 @@ launch() {
 # webapp <label> <workspace> <profile> <url>
 webapp() {
   local label="$1" ws="$2" profile="$3" url="$4" dir re
+  LAUNCHED_ADDR=""
   dir="$(profile_dir "$profile")" || { log "WARN  skipping $label"; return 1; }
   re="$(anchored_re "$(webapp_class "$url" "$dir")")"
   launch "$label" "$re" "$ws" "$WEBAPP" "$url" --profile-directory="$dir"
@@ -141,18 +143,24 @@ if work_dir="$(profile_dir "$WORK_PROFILE")"; then
 fi
 
 webapp 'FC Gmail' 2 "$WORK_PROFILE" 'https://mail.google.com/mail/u/0/#inbox'
-webapp 'FC Chat' 2 "$CHAT_PROFILE" 'https://console.fleetchaser.com/chats'
 
-# A newly inserted Dialpad otherwise splits whichever workspace-2 window
-# Hyprland last considered active. Promoting only that new window to the root
-# deterministically produces Dialpad on the left and Gmail/Chat stacked on the
-# right. Existing sessions are never normalized or rearranged.
+# A newly inserted window otherwise splits whichever window Hyprland last
+# considered active on that workspace. Promoting only the new window to the root
+# deterministically produces Dialpad left / Gmail right on ws 2 and FC Chat left
+# with Tasks over Linear on ws 3. Existing sessions are never rearranged.
 if [[ -n "$DIALPAD_LAUNCHED_ADDR" ]]; then
   dispatch "hl.dsp.layout(\"movetoroot address:$DIALPAD_LAUNCHED_ADDR\")"
 fi
 
+webapp 'FC Chat' 3 "$CHAT_PROFILE" 'https://console.fleetchaser.com/chats'
+CHAT_LAUNCHED_ADDR="$LAUNCHED_ADDR"
+
 webapp 'FC Tasks' 3 "$TASKS_PROFILE" 'https://console.fleetchaser.com/tasks'
 webapp 'Linear' 3 "$WORK_PROFILE" 'https://linear.app/fleetchaser/agent'
+
+if [[ -n "$CHAT_LAUNCHED_ADDR" ]]; then
+  dispatch "hl.dsp.layout(\"movetoroot address:$CHAT_LAUNCHED_ADDR\")"
+fi
 
 launch 'Spotify' "$SPOTIFY_CLASS" 'special:spotify' \
   spotify
