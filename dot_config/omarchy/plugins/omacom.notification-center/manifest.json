@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "omacom.notification-center",
+  "name": "Omarchy Notification Center",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "Bar popup listing recent Omarchy notifications + DND toggle",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Notification center",
+    "description": "Recent notifications + DND",
+    "category": "Status",
+    "allowMultiple": false
+  }
+}
