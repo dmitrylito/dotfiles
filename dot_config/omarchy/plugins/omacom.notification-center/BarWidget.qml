@@ -22,14 +22,32 @@ BarWidget {
 
   onPopupOpenChanged: if (popupOpen) refreshHistory()
 
-  // Look up the long-running notifications service through the shell host.
-  readonly property var hostShell: bar && bar.shell ? bar.shell : null
-  readonly property var notificationService: hostShell?.firstPartyServiceFor("omarchy.notifications")
+  // omarchy hands the omarchy.notifications proxy only to plugins declaring
+  // kind "bar" (shell.qml createScopedPluginShell), so a bar-widget has to read
+  // the service's on-disk state instead of its QML object.
+  readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/"
+  readonly property string popupDir: stateDir + "notifications/"
+  readonly property string historyDir: popupDir + "history/"
+  readonly property string imagesDir: popupDir + "images/"
+  readonly property string settingsPath: stateDir + "notifications.json"
 
-  readonly property int liveCount: notificationService ? notificationService.popupModel.count : 0
-  readonly property bool dnd: notificationService ? notificationService.doNotDisturb : false
-  readonly property string historyDir: notificationService ? notificationService.historyDir : ""
-  readonly property string imagesDir: notificationService ? notificationService.imagesDir : ""
+  property int liveCount: 0
+  property bool dnd: false
+
+  function toggleDnd() {
+    if (dndProc.running) return
+    dnd = !dnd
+    dndProc.running = true
+  }
+
+  function loadState(raw) {
+    var lines = String(raw || "").split("\n")
+    var count = Number(lines[0] || 0)
+    var changed = count !== liveCount
+    liveCount = count
+    dnd = String(lines[1] || "") === "dnd"
+    if (changed && popupOpen) refreshTimer.restart()
+  }
 
   function sanitizeBody(s, app, appIcon) {
     return NotificationLogic.sanitizeBody(s, app, appIcon)
@@ -56,7 +74,7 @@ BarWidget {
   readonly property color colBorder: Style.normalBorderFor(Color.foreground, Color.accent)
   readonly property color colSurface: Style.normalFillFor(Color.foreground, Color.accent)
   readonly property color colAccent: Color.accent
-  readonly property int cardRadius: notificationService ? notificationService.cornerRadius : 0
+  readonly property int cardRadius: Style.cornerRadius
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -94,16 +112,47 @@ BarWidget {
   }
 
   function clearAll() {
-    if (notificationService) notificationService.clearHistory()
+    if (!clearProc.running) clearProc.running = true
     historyModel.clear()
   }
 
-  // A toast leaving the screen is archived into historyDir through the
-  // service's async file queue — re-read shortly after so an open popup
-  // picks it up once the move has landed.
-  Connections {
-    target: root.notificationService ? root.notificationService.popupModel : null
-    function onCountChanged() { if (root.popupOpen) refreshTimer.restart() }
+  // No signal from the service reaches a bar-widget, so poll the two pieces of
+  // its state we need: one file per on-screen toast, and the DND setting.
+  Timer {
+    interval: 3000
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: if (!stateProc.running) stateProc.running = true
+  }
+
+  Process {
+    id: stateProc
+    running: false
+    command: ["bash", "-c",
+      "shopt -s nullglob\n" +
+      "settings=$2\n" +
+      "set -- \"$1\"/*.json\n" +
+      "printf '%s\\n' \"$#\"\n" +
+      "grep -qs '\"dnd\"[[:space:]]*:[[:space:]]*true' \"$settings\" && echo dnd || echo ok",
+      "--", root.popupDir, root.settingsPath]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.loadState(text)
+    }
+  }
+
+  Process {
+    id: dndProc
+    running: false
+    command: ["omarchy-shell", "-q", "notifications", "toggleDnd"]
+    onExited: if (!stateProc.running) stateProc.running = true
+  }
+
+  Process {
+    id: clearProc
+    running: false
+    command: ["omarchy-shell", "-q", "notifications", "clear"]
   }
 
   Timer {
@@ -146,9 +195,7 @@ BarWidget {
 
     onPressed: function(b) {
       if (b === Qt.RightButton) {
-        if (root.notificationService) {
-          root.notificationService.setDoNotDisturb(!root.notificationService.doNotDisturb)
-        }
+        root.toggleDnd()
       } else {
         root.popupOpen = !root.popupOpen
       }
@@ -191,7 +238,7 @@ BarWidget {
           color: dndOn ? root.colAccent : root.colSurface
           borderSpec: Border.flat(dndOn ? root.colAccent : root.colBorder, Style.normalBorderWidth)
 
-          readonly property bool dndOn: !!root.notificationService && root.notificationService.doNotDisturb
+          readonly property bool dndOn: root.dnd
 
           Row {
             anchors.centerIn: parent
@@ -221,7 +268,7 @@ BarWidget {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: if (root.notificationService) root.notificationService.setDoNotDisturb(!dndPill.dndOn)
+            onClicked: root.toggleDnd()
           }
         }
       }
