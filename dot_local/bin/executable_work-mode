@@ -4,13 +4,13 @@
 #
 #   ws 1 : work browser (chromium, "Work" profile)
 #   ws 2 : Dialpad | FC Gmail
-#   ws 3 : FC Chat | FC Tasks over Linear
+#   ws 3 : FC Chat | Linear | FC Tasks   (one row, three columns)
 #   scratchpad : Spotify
 #
 # Idempotent when every app is open. Missing apps are opened on their assigned
 # workspace. If Dialpad or FC Chat was missing, only that newly opened window is
-# promoted to its workspace's layout root so the workspace returns to its
-# intended column structure.
+# promoted to its workspace's layout root and the row widths are re-applied, so
+# the workspace returns to its intended column structure.
 #
 # Device-agnostic by construction — nothing machine-specific is hardcoded:
 #   * Chromium numbers profile DIRECTORIES in creation order, so "Profile 3" is a
@@ -18,6 +18,8 @@
 #     name (or account email) in Local State and the directory falls out of that.
 #   * The WM_CLASS of an Omarchy web app is derived from the URL plus that resolved
 #     directory (chrome-<host>__<path>-<Profile_Dir>), so URL and class cannot drift.
+#   * Column widths are stored as fractions of the row and turned into pixels from
+#     the live window sizes, so no monitor resolution is baked in.
 # Still device-dependent: which monitor each workspace lives on — that is
 # workspaces.lua (nwg-displays output, per-device and chezmoi-ignored).
 #
@@ -28,6 +30,8 @@
 #     runtime but never removed, so it is no worse than useless here.
 #   * `hyprctl dispatch` arguments are now a Lua expression:
 #     `hyprctl dispatch 'hl.dsp.window.move({ workspace = "4" })'`.
+#   * dwindle's splitratio dispatcher takes a delta only ("exact" is refused), so
+#     widths are set with hl.dsp.window.resize({ exact = true, ... }) instead.
 
 set -uo pipefail
 export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
@@ -38,6 +42,11 @@ CHROMIUM_STATE="${CHROMIUM_USER_DATA_DIR:-$HOME/.config/chromium}/Local State"
 WORK_PROFILE='Work'
 CHAT_PROFILE='FC Chat'
 TASKS_PROFILE='FC Tasks'
+
+# Column widths as a fraction of the row they share (snapshot of the live layout).
+DIALPAD_FRAC=0.556   # Dialpad within Dialpad+Gmail
+CHAT_FRAC=0.330      # FC Chat within the whole ws 3 row
+LINEAR_FRAC=0.450    # Linear within Linear+Tasks
 
 # Recover the Hyprland instance signature when launched from a bare .desktop env.
 if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
@@ -86,6 +95,28 @@ addr_of() {
     | jq -r --arg c "$1" 'first(.[] | select(.class | test($c)) | .address) // empty'
 }
 
+win_size() {
+  hyprctl clients -j \
+    | jq -r --arg a "$1" --argjson i "$2" 'first(.[] | select(.address == $a) | .size[$i]) // empty'
+}
+
+# set_width <addr> <fraction> <sibling-addr>... — give <addr> that fraction of the
+# width its row currently occupies. Pixels, not a split ratio: dwindle's splitratio
+# dispatcher only accepts a delta, and the row width is read live so nothing
+# resolution-specific is stored.
+set_width() {
+  local addr="$1" frac="$2"; shift 2
+  local total=0 a w h
+  for a in "$addr" "$@"; do
+    w="$(win_size "$a" 0)"
+    [[ -n "$w" ]] || { log "WARN  set_width: window $a is gone"; return 1; }
+    total=$((total + w))
+  done
+  h="$(win_size "$addr" 1)"
+  w="$(awk -v t="$total" -v f="$frac" 'BEGIN { printf "%d", t * f + 0.5 }')"
+  dispatch "hl.dsp.window.resize({ x = $w, y = $h, exact = true, window = \"address:$addr\" })"
+}
+
 # Poll up to 15s for a window matching the class regex to map.
 wait_for() {
   local addr="" i
@@ -98,15 +129,18 @@ wait_for() {
 }
 
 # launch <label> <class-regex> <workspace> <launch-cmd...>
+# Sets WIN_ADDR to the window either way; LAUNCHED_ADDR only when it was opened here.
 launch() {
   local label="$1" class_re="$2" ws="$3"; shift 3
   local addr
 
   LAUNCHED_ADDR=""
+  WIN_ADDR=""
 
   addr="$(addr_of "$class_re")"
   if [[ -n "$addr" ]]; then
     log "skip  $label (already open)"
+    WIN_ADDR="$addr"
     return 0
   fi
 
@@ -116,6 +150,7 @@ launch() {
   addr="$(wait_for "$class_re")" || { log "WARN  $label window never appeared"; return 1; }
   dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
   LAUNCHED_ADDR="$addr"
+  WIN_ADDR="$addr"
   sleep 0.4
 }
 
@@ -123,6 +158,7 @@ launch() {
 webapp() {
   local label="$1" ws="$2" profile="$3" url="$4" dir re
   LAUNCHED_ADDR=""
+  WIN_ADDR=""
   dir="$(profile_dir "$profile")" || { log "WARN  skipping $label"; return 1; }
   re="$(anchored_re "$(webapp_class "$url" "$dir")")"
   launch "$label" "$re" "$ws" "$WEBAPP" "$url" --profile-directory="$dir"
@@ -133,9 +169,11 @@ SPOTIFY_CLASS='^spotify$'
 
 FOCUS_ADDR="$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')"
 LAUNCHED_ADDR=""
+WIN_ADDR=""
 
 webapp 'Dialpad' 2 "$WORK_PROFILE" 'https://dialpad.com/app/'
 DIALPAD_LAUNCHED_ADDR="$LAUNCHED_ADDR"
+DIALPAD_ADDR="$WIN_ADDR"
 
 if work_dir="$(profile_dir "$WORK_PROFILE")"; then
   launch 'Work browser' "$BROWSER_CLASS" 1 \
@@ -143,23 +181,33 @@ if work_dir="$(profile_dir "$WORK_PROFILE")"; then
 fi
 
 webapp 'FC Gmail' 2 "$WORK_PROFILE" 'https://mail.google.com/mail/u/0/#inbox'
+GMAIL_ADDR="$WIN_ADDR"
 
 # A newly inserted window otherwise splits whichever window Hyprland last
 # considered active on that workspace. Promoting only the new window to the root
-# deterministically produces Dialpad left / Gmail right on ws 2 and FC Chat left
-# with Tasks over Linear on ws 3. Existing sessions are never rearranged.
+# deterministically produces Dialpad left / Gmail right on ws 2 and FC Chat left of
+# Linear left of FC Tasks on ws 3. Existing sessions are never rearranged.
 if [[ -n "$DIALPAD_LAUNCHED_ADDR" ]]; then
   dispatch "hl.dsp.layout(\"movetoroot address:$DIALPAD_LAUNCHED_ADDR\")"
+  [[ -n "$GMAIL_ADDR" ]] && set_width "$DIALPAD_ADDR" "$DIALPAD_FRAC" "$GMAIL_ADDR"
 fi
 
 webapp 'FC Chat' 3 "$CHAT_PROFILE" 'https://console.fleetchaser.com/chats'
 CHAT_LAUNCHED_ADDR="$LAUNCHED_ADDR"
+CHAT_ADDR="$WIN_ADDR"
+
+webapp 'Linear' 3 "$WORK_PROFILE" 'https://linear.app/fleetchaser/agent'
+LINEAR_ADDR="$WIN_ADDR"
 
 webapp 'FC Tasks' 3 "$TASKS_PROFILE" 'https://console.fleetchaser.com/tasks'
-webapp 'Linear' 3 "$WORK_PROFILE" 'https://linear.app/fleetchaser/agent'
+TASKS_ADDR="$WIN_ADDR"
 
 if [[ -n "$CHAT_LAUNCHED_ADDR" ]]; then
   dispatch "hl.dsp.layout(\"movetoroot address:$CHAT_LAUNCHED_ADDR\")"
+  if [[ -n "$LINEAR_ADDR" && -n "$TASKS_ADDR" ]]; then
+    set_width "$CHAT_ADDR" "$CHAT_FRAC" "$LINEAR_ADDR" "$TASKS_ADDR"
+    set_width "$LINEAR_ADDR" "$LINEAR_FRAC" "$TASKS_ADDR"
+  fi
 fi
 
 launch 'Spotify' "$SPOTIFY_CLASS" 'special:spotify' \
