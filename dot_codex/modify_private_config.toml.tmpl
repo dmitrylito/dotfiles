@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --no-project --with tomlkit==0.13.3 python
 # modify_config.toml — merge the managed Codex baseline into live app state.
 #
 # Codex owns ~/.codex/config.toml at runtime: project trust, hook trust hashes,
@@ -7,9 +7,10 @@
 # made apply overwrite valid local state.
 #
 # The encrypted baseline seeds a new machine. On an established machine, keys
-# missing from the live file are filled recursively while every existing live
-# value is preserved. If python-tomlkit is unavailable, an existing live file is
-# passed through unchanged; a missing file can still be seeded from the baseline.
+# missing from the live file are filled recursively while existing local values
+# are preserved, except for explicitly synchronized settings below. uv supplies
+# the pinned TOML dependency independently of the machine's active Python.
+# Dependency failures must fail apply, never silently skip synchronization.
 
 import copy
 import subprocess
@@ -17,9 +18,12 @@ import sys
 from collections.abc import MutableMapping
 from pathlib import Path
 
+import tomlkit
+
 SOURCE_DIR = Path({{ .chezmoi.sourceDir | quote }})
 BASELINE_PATH = SOURCE_DIR / "scripts/codex-config-baseline.toml.age"
 RETIRED_MCP_SERVERS = {"node_repl"}
+SYNCHRONIZED_SETTINGS = (("tui", "status_line"),)
 
 
 def read_baseline():
@@ -67,17 +71,21 @@ def remove_retired_servers(config):
         servers.pop("node_repl", None)
 
 
+def synchronize_settings(live, baseline):
+    for path in SYNCHRONIZED_SETTINGS:
+        source = baseline
+        target = live
+        for key in path[:-1]:
+            source = source[key]
+            target = target[key]
+        target[path[-1]] = copy.deepcopy(source[path[-1]])
+
+
 live_text = strip_retired_servers(sys.stdin.read())
 baseline_text = strip_retired_servers(read_baseline())
 
 if not live_text.strip():
     sys.stdout.write(baseline_text)
-    raise SystemExit(0)
-
-try:
-    import tomlkit
-except ImportError:
-    sys.stdout.write(live_text)
     raise SystemExit(0)
 
 try:
@@ -88,5 +96,6 @@ except Exception as error:
     raise SystemExit(1)
 
 fill_defaults(live, baseline)
+synchronize_settings(live, baseline)
 remove_retired_servers(live)
 sys.stdout.write(tomlkit.dumps(live))
