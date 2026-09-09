@@ -1,0 +1,13 @@
+#!/bin/sh
+# Shadow the packaged /usr/bin/voxtype with the local GPU-encoder fork's CLI.
+#
+# Why: the daemon runs the fork (voxtype 1.1.0-rc4, see the mgx-fork.conf systemd
+# drop-in), and the packaged 1.0.1 CLI silently no-ops against it -- `record toggle`
+# exits 0 without the daemon ever receiving SIGUSR1, so dictation keybinds do nothing.
+# CLI and daemon must be the same build.
+#
+# Falls back to the packaged binary if the fork is missing, so a wiped build tree
+# degrades to stock voxtype instead of breaking dictation entirely.
+FORK="$HOME/.local/share/voxtype-mgx/vx-rc4/target/release/voxtype"
+[ -x "$FORK" ] || FORK=/usr/bin/voxtype
+exec "$FORK" "$@"
