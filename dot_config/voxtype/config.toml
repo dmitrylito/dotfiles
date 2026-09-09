@@ -110,7 +110,7 @@ model = "parakeet-unified-en-0.6b"
 # keep model resident for low latency
 on_demand_loading = false
 streaming = true
-streaming_chunk_secs = 0.08
+streaming_chunk_secs = 0.16
 streaming_left_context_secs = 5.6
 streaming_right_context_secs = 0.80
 model_type = "tdt"
