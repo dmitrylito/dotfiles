@@ -20,3 +20,11 @@ Do not use for: refactoring, writing scripts from scratch, debugging business lo
 - Before unattended, overnight, or bulk work, record the visible weekly-limit baseline and use a fresh or compacted thread when the current context is large. Do not run bulk supervision from a long-lived investigation thread.
 - Continuous monitoring beyond these limits requires the user's explicit approval of a larger usage budget. A request to run the underlying job is not approval for unlimited Codex polling.
 - Do not silently lower model quality to save usage. Prevent repeated context replay first; offer a cheaper model separately when it is appropriate.
+
+## Worktree convention (2026-09-09)
+
+- Create Codex feature and PR worktrees as siblings of the main repository: `<parent>/<repo>-<short-task-slug>`. For example, `~/Projects/ops-center-answered-questions` beside `~/Projects/ops-center`.
+- Use this layout globally unless the user or a project-specific instruction explicitly requires another location. Do not default to worktrees inside `.codex/`, `.claude/`, or the main checkout.
+- Inspect registered worktrees first and reuse the appropriate existing worktree. Do not move or delete existing worktrees merely to enforce this convention.
+- Run the feature's edits, tests, commits, and PR commands from its worktree. Use the main checkout for operations that explicitly require it, such as ops-center deployment.
+- State the worktree path and branch when creating or taking over a PR. A per-command working directory does not change the session root or its statusline; do not claim that the session switched automatically.
