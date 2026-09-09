@@ -49,5 +49,6 @@ x-scheme-handler/claude-cli=claude-code-url-handler.desktop
 x-scheme-handler/antigravity=antigravity.desktop
 x-scheme-handler/claude=com.anthropic.Claude.desktop
 x-scheme-handler/codex=chatgpt.desktop
+x-scheme-handler/tel=chrome-mohkbeamcbmbidacpegilbjjclnbnaml-Profile_1.desktop
 
 [Added Associations]
