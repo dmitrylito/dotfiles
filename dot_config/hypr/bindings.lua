@@ -19,6 +19,7 @@ local unbinds = {
   "SUPER + L",
   "SUPER + ALT + K",
   "SUPER + ALT + RETURN",
+  "SUPER + RETURN",
   "SUPER + SHIFT + M",
   "SUPER + SHIFT + D",
   "SUPER + SHIFT + Y",
