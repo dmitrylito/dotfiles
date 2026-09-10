@@ -148,6 +148,7 @@ run() {
     rc=$?
 
     if [ "$rc" -eq 0 ]; then
+        record_applied "$src" "$(git -C "$src" rev-parse HEAD 2>/dev/null)"
         log "ok: applied $(git -C "$src" rev-parse --short HEAD)"
     elif [ "$rc" -eq 124 ]; then
         log "failed: apply timed out after ${TIMEOUT_BG}s"
