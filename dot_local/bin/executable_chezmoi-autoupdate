@@ -82,13 +82,29 @@ if [ "${LOCAL:-0}" -eq 1 ]; then
     # to stdin instead, which is /dev/null, so it fails fast. timeout is the second
     # belt; the captured stderr is what makes the next failure diagnosable.
     # Deliberately NOT --force: that would silently overwrite whatever drifted.
+    marker_src=''
+    marker_head=''
+    [ -r "$APPLIED" ] && IFS=$'\t' read -r marker_src marker_head <"$APPLIED"
+
+    # The marker's own source path is trusted rather than re-derived: `chezmoi
+    # source-path` is a second chezmoi process. A re-init that moves the source
+    # invalidates the marker only until the next apply writes a new one.
+    if [ -n "$marker_head" ] && [ -n "$marker_src" ] &&
+       [ "$marker_head" = "$(git -C "$marker_src" rev-parse HEAD 2>/dev/null)" ]; then
+        exit 0
+    fi
+
     apply_local() {
-        local src rc err
+        local src head rc err
         src=$(chezmoi source-path 2>/dev/null) || return
         git -C "$src" diff --quiet HEAD 2>/dev/null || return
+        head=$(git -C "$src" rev-parse HEAD 2>/dev/null)
         err=$($APPLY_TIMEOUT chezmoi apply --no-tty --exclude scripts 2>&1 >/dev/null </dev/null)
         rc=$?
-        [ "$rc" -eq 0 ] && return
+        if [ "$rc" -eq 0 ]; then
+            record_applied "$src" "$head"
+            return
+        fi
         [ "$rc" -eq 124 ] && err="timed out after ${TIMEOUT_LOCAL}s"
         log "failed: local apply returned $rc${err:+ - ${err##*$'\n'}}"
     }
