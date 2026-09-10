@@ -52,6 +52,8 @@ fi
 
 log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >"$LOG"; }
 
+record_applied() { printf '%s\t%s\n' "$1" "$2" >"$APPLIED" 2>/dev/null || true; }
+
 case "${1:-}" in
     --status) [ -r "$LOG" ] && cat "$LOG" || echo "chezmoi-autoupdate: never run"; exit 0 ;;
     --local)  LOCAL=1; FORCE=0 ;;
