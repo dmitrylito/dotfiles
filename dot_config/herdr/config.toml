@@ -39,6 +39,13 @@ focus_pane_down = ["ctrl+j", "prefix+j"]
 focus_pane_up = "ctrl+k"
 focus_pane_right = ["ctrl+l", "prefix+l"]
 
+# Swap the focused pane with its neighbor. prefix+shift+k is not free
+# (close_workspace), so swaps live on prefix+ctrl instead of prefix+shift.
+swap_pane_left = "prefix+ctrl+h"
+swap_pane_down = "prefix+ctrl+j"
+swap_pane_up = "prefix+ctrl+k"
+swap_pane_right = "prefix+ctrl+l"
+
 resize_mode = [
   "prefix+ctrl+left",
   "prefix+ctrl+down",
