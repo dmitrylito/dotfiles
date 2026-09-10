@@ -22,8 +22,16 @@ import tomlkit
 
 SOURCE_DIR = Path({{ .chezmoi.sourceDir | quote }})
 BASELINE_PATH = SOURCE_DIR / "scripts/codex-config-baseline.toml.age"
-RETIRED_MCP_SERVERS = {"node_repl"}
-SYNCHRONIZED_SETTINGS = (("tui", "status_line"),)
+RETIRED_MCP_SERVERS = {"node_repl", "context7"}
+SYNCHRONIZED_SETTINGS = (
+    ("model",),
+    ("approval_policy",),
+    ("tui", "status_line"),
+    ("tui", "animations"),
+    ("tui", "keymap", "composer", "submit"),
+    ("tui", "keymap", "composer", "queue"),
+    ("desktop", "followUpQueueMode"),
+)
 
 
 def read_baseline():
@@ -65,10 +73,8 @@ def fill_defaults(live, baseline):
 def remove_retired_servers(config):
     servers = config.get("mcp_servers")
     if isinstance(servers, MutableMapping):
-        # This server belongs to the packaged ChatGPT desktop runtime. The
-        # standalone Codex installation has no such binary, so retaining the
-        # registration makes every Codex process report a startup failure.
-        servers.pop("node_repl", None)
+        for name in RETIRED_MCP_SERVERS:
+            servers.pop(name, None)
 
 
 def synchronize_settings(live, baseline):
@@ -79,19 +85,6 @@ def synchronize_settings(live, baseline):
             source = source[key]
             target = target[key]
         target[path[-1]] = copy.deepcopy(source[path[-1]])
-
-
-def migrate_context7_credentials(config):
-    """Replace the legacy inline key with the shared environment credential."""
-    server = config.get("mcp_servers", {}).get("context7")
-    if not isinstance(server, MutableMapping):
-        return
-    headers = server.get("http_headers")
-    if isinstance(headers, MutableMapping):
-        headers.pop("CONTEXT7_API_KEY", None)
-        if not headers:
-            del server["http_headers"]
-    server.setdefault("env_http_headers", {})["CONTEXT7_API_KEY"] = "CONTEXT7_API_KEY"
 
 
 live_text = strip_retired_servers(sys.stdin.read())
@@ -111,5 +104,4 @@ except Exception as error:
 fill_defaults(live, baseline)
 synchronize_settings(live, baseline)
 remove_retired_servers(live)
-migrate_context7_credentials(live)
 sys.stdout.write(tomlkit.dumps(live))
