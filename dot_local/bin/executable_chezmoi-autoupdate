@@ -34,6 +34,7 @@ set -uo pipefail
 MAX_AGE=${CHEZMOI_AUTOUPDATE_MAX_AGE:-14400}   # seconds; 4h
 CACHE_DIR=${XDG_CACHE_HOME:-$HOME/.cache}
 STAMP="$CACHE_DIR/chezmoi-autoupdate.stamp"
+APPLIED="$CACHE_DIR/chezmoi-autoupdate.applied"
 LOG="$CACHE_DIR/chezmoi-autoupdate.log"
 LOCK="${TMPDIR:-/tmp}/chezmoi-git-$(id -u).lock"
 
