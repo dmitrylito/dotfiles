@@ -3,7 +3,6 @@
 carapace-bin
 claude-code
 cockpit-compose
-cockpit-pacman
 cockpit-sensors
 gogcli
 pacsea-bin
