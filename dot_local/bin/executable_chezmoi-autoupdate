@@ -8,10 +8,15 @@
 #   chezmoi-autoupdate --status  print the last run's outcome and exit
 #
 # Invoked from ~/.zshrc on interactive shell start, twice: once as --local
-# (synchronous, ~20ms, applies whatever a previous run pulled) and once throttled
+# (synchronous, applies whatever a previous run pulled) and once throttled
 # (detached, does the network). The split is deliberate — a bare `git pull` costs
 # ~700ms of round trip even with nothing to fetch, and hangs unbounded when the
 # network is down, so nothing touching the network may sit in the shell's path.
+#
+# --local skips the apply entirely when the source commit it last applied is still
+# HEAD. A no-op `chezmoi apply` is not cheap here: chezmoi must execute all six
+# modify_ scripts to compute their targets, which costs ~165ms — most of it the
+# Codex config merge. The commit marker turns the common case into two reads.
 #
 # Deliberately runs `apply --exclude scripts`: onchange scripts can install vendor
 # units or restart user services and should only run during an intentional full
