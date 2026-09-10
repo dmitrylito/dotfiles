@@ -1,0 +1,41 @@
+#!/bin/sh
+# Flip the split holding the focused herdr pane: side-by-side becomes stacked
+# and vice versa, keeping the running process alive.
+#
+# Usage: bound to a key in ~/.config/herdr/config.toml as a `type = "shell"`
+#        custom command; also runnable from inside any herdr pane.
+# Needs:  herdr >= 0.8, jq on PATH.
+#
+# herdr has no "rotate split" API, and `pane move --target-pane` onto a pane's
+# own sibling is a no-op, so the pane makes a round trip through a scratch tab —
+# herdr closes that tab automatically once the pane leaves it again.
+set -eu
+
+HERDR="${HERDR_BIN_PATH:-herdr}"
+
+pane="${HERDR_ACTIVE_PANE_ID:-${HERDR_PANE_ID:-}}"
+[ -n "$pane" ] || pane=$("$HERDR" pane current | jq -r '.result.pane.pane_id')
+
+neighbor=
+split=
+for dir in right left down up; do
+	neighbor=$("$HERDR" pane neighbor --pane "$pane" --direction "$dir" |
+		jq -r '.result.neighbor.neighbor_pane_id // empty')
+	if [ -n "$neighbor" ]; then
+		case "$dir" in
+		right | left) split=down ;;
+		*) split=right ;;
+		esac
+		break
+	fi
+done
+
+if [ -z "$neighbor" ]; then
+	echo "herdr-rotate-split: $pane has no neighbor to rotate against" >&2
+	exit 1
+fi
+
+tab=$("$HERDR" pane get "$pane" | jq -r '.result.pane.tab_id')
+
+"$HERDR" pane move "$pane" --new-tab --no-focus >/dev/null
+"$HERDR" pane move "$pane" --tab "$tab" --target-pane "$neighbor" --split "$split" --focus >/dev/null

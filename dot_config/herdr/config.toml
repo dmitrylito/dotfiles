@@ -92,6 +92,13 @@ type = "plugin_action"
 command = "drovr.move-tab"
 description = "move tab to workspace"
 
+# Flip the current split's orientation (see ~/.local/bin/herdr-rotate-split)
+[[keys.command]]
+key = "prefix+ctrl+r"
+type = "shell"
+command = "herdr-rotate-split"
+description = "rotate split orientation"
+
 # Lazygit popup
 [[keys.command]]
 key = "prefix+g"
