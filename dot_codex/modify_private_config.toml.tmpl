@@ -28,7 +28,7 @@ SYNCHRONIZED_SETTINGS = (("tui", "status_line"),)
 
 def read_baseline():
     result = subprocess.run(
-        ["chezmoi", "decrypt", str(BASELINE_PATH)],
+        ["chezmoi", "--use-builtin-age=true", "decrypt", str(BASELINE_PATH)],
         check=True,
         stdout=subprocess.PIPE,
         text=True,
@@ -81,6 +81,19 @@ def synchronize_settings(live, baseline):
         target[path[-1]] = copy.deepcopy(source[path[-1]])
 
 
+def migrate_context7_credentials(config):
+    """Replace the legacy inline key with the shared environment credential."""
+    server = config.get("mcp_servers", {}).get("context7")
+    if not isinstance(server, MutableMapping):
+        return
+    headers = server.get("http_headers")
+    if isinstance(headers, MutableMapping):
+        headers.pop("CONTEXT7_API_KEY", None)
+        if not headers:
+            del server["http_headers"]
+    server.setdefault("env_http_headers", {})["CONTEXT7_API_KEY"] = "CONTEXT7_API_KEY"
+
+
 live_text = strip_retired_servers(sys.stdin.read())
 baseline_text = strip_retired_servers(read_baseline())
 
@@ -98,4 +111,5 @@ except Exception as error:
 fill_defaults(live, baseline)
 synchronize_settings(live, baseline)
 remove_retired_servers(live)
+migrate_context7_credentials(live)
 sys.stdout.write(tomlkit.dumps(live))

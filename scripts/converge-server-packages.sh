@@ -16,7 +16,7 @@ state_dir=/var/lib/chezmoi-server-package-sync
 applied_file="$state_dir/applied.sha256"
 runtime_dir="/run/user/$login_uid"
 reconcile_marker="$runtime_dir/chezmoi-package-reconcile.active"
-ansible_tmp="/tmp/ansible-$login_user"
+ansible_tmp="$state_dir/ansible"
 git_lock="/tmp/chezmoi-git-$login_uid.lock"
 
 mkdir -p "$state_dir" "$ansible_tmp"

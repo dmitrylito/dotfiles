@@ -23,7 +23,9 @@ command -v ansible-playbook >/dev/null 2>&1 || {
 ansible_cfg="$source_dir/ansible.cfg"
 playbook="$source_dir/playbook.yml"
 extra_vars="chezmoi_source_dir=$source_dir non_root_user=$(id -un) profile=$profile work=$work"
-tmp_root="${TMPDIR:-/tmp}/ansible-${USER}"
+# Keep the user-created controller directory separate from the root timer's
+# scratch space. A shared /tmp/ansible-$USER can be created root-owned first.
+tmp_root="${XDG_CACHE_HOME:-$HOME/.cache}/chezmoi/ansible"
 mkdir -p "$tmp_root"
 chmod 700 "$tmp_root"
 

@@ -4,6 +4,8 @@
 # The identity lives outside the source tree and is never committed; copy it to a new
 # machine out of band before the first `chezmoi apply`, or encrypted files stay unreadable.
 encryption = "age"
+# Avoid external age shims: encryption must work before mise is configured.
+useBuiltinAge = true
 
 [data]
     profile = {{ $profile | lower | quote }}

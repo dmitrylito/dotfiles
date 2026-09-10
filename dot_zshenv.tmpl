@@ -29,6 +29,11 @@ export STARSHIP_CONFIG="$XDG_CONFIG_HOME/starship.toml"
 export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
 export GOOGLE_CLOUD_LOCATION="global"
 
+# Shared credentials are stored age-encrypted in the Chezmoi source.
+if [[ -r "$HOME/.config/secrets/shared.env" ]]; then
+  source "$HOME/.config/secrets/shared.env"
+fi
+
 # Machine-local secrets/env (NOT managed by chezmoi — never add it).
 if [[ -f "$HOME/.env" ]]; then
   source "$HOME/.env"

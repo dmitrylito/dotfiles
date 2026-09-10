@@ -1,7 +1,9 @@
 [tools]
 bun = "latest"
 claude = "latest"
+{{ if ne (.profile | lower) "server" -}}
 codex = "latest"
+{{ end -}}
 gh = "latest"
 "github:basecamp/hey-cli" = "latest"
 node = "26"
