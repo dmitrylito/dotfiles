@@ -10,4 +10,24 @@
 # degrades to stock voxtype instead of breaking dictation entirely.
 FORK="$HOME/.local/share/voxtype-mgx/vx-rc4/target/release/voxtype"
 [ -x "$FORK" ] || FORK=/usr/bin/voxtype
+
+# TEMPORARY (2026-09-11): tracing who stops dictation a few seconds after it starts.
+# Records every `record` subcommand with its caller chain. Remove this block and the
+# log at ~/.cache/voxtype/cli-trace.log once the culprit is identified.
+case " $* " in
+  *" record "*)
+    _log="${XDG_CACHE_HOME:-$HOME/.cache}/voxtype/cli-trace.log"
+    mkdir -p "${_log%/*}"
+    _chain=""
+    _p=$PPID
+    _n=0
+    while [ "$_p" -gt 1 ] && [ "$_n" -lt 6 ]; do
+      _chain="$_chain <- $(cat "/proc/$_p/comm" 2>/dev/null || echo '?')[$_p]"
+      _p=$(awk '{print $4}' "/proc/$_p/stat" 2>/dev/null || echo 1)
+      _n=$((_n + 1))
+    done
+    printf '%s args=[%s]%s\n' "$(date +%H:%M:%S.%N)" "$*" "$_chain" >> "$_log"
+    ;;
+esac
+
 exec "$FORK" "$@"
