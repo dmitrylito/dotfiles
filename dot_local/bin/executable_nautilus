@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Wrapper for /usr/bin/nautilus.
+#
+# Why: system libpython3.14 derives sys.prefix by finding `python3` on PATH. The mise
+# shims sit ahead of /usr/bin in the session PATH, so nautilus-python's embedded
+# interpreter resolves to the mise install, which has no `gi` — every nautilus-python
+# extension dies with ModuleNotFoundError. PYTHONHOME pins the prefix to the system
+# python without touching PATH, so mise stays intact for everything else.
+#
+# Scope: this wrapper (PATH launches) plus ~/.local/share/dbus-1/services/org.gnome.Nautilus.service
+# (D-Bus activation). Keep both in sync.
+#
+# Caveat: PYTHONHOME is inherited by processes nautilus spawns. None of the installed
+# extensions spawn a python, but a shell opened from one would see it.
+
+exec env PYTHONHOME=/usr /usr/bin/nautilus "$@"
