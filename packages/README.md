@@ -43,7 +43,7 @@ mutate the dotfiles repository.
 - tmux and sesh are retired. Omarchy still ships tmux in its base snapshot, so
   `removed.txt` overrides it on each known host.
 - Herdr is the supported multiplexer; its package/vendor installer owns it.
-- `claude`, `codex`, GitHub CLI, Hey, Grok, Pi, Node, and Gemini-style npm tools
+- `claude`, `codex`, GitHub CLI, Hey, Grok, Pi, Node, and similar npm tools
   belong to the managed mise configuration, not duplicate distro packages.
 - `zsh-sage` and the other shell plugins are cloned by `playbook.yml`;
   do not add duplicate distro packages.

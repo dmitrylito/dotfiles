@@ -30,7 +30,7 @@ large vendor binary; it means its owner and consumer are known.
 | `moshi-hook` 0.2.59 and `moshi` symlink | Moshi gateway/hook client | keep; vendor binary |
 | `pass-cli` 2.2.3 | Proton Pass CLI; secrets/doctor integration | keep; vendor binary |
 | `spotify-cli` | uv-tool symlink | keep; owned by uv |
-| `claude`, `codex`, `gh`, `gemini`, `grok`, `hey`, `node`, `opencode`, `pi` | installed and activated by managed mise config | keep; no local wrapper |
+| `claude`, `codex`, `gh`, `grok`, `hey`, `node`, `opencode`, `pi` | installed and activated by managed mise config | keep; no local wrapper |
 
 ## Removed to Trash
 
