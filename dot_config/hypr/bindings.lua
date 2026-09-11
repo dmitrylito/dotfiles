@@ -55,6 +55,8 @@ o.bind("SUPER + semicolon", "Terminal", { launch = 'xdg-terminal-exec --dir="$(o
 -- server-side [[keys.command]] popups (prefix+g lazygit, prefix+u urls) never fire
 o.bind("SUPER + B", "Herdr remote (choose SSH target)", { launch = "xdg-terminal-exec ~/.local/bin/herdr-remote-picker" })
 o.bind("SUPER + SHIFT + D", "Discord", 'omarchy-launch-or-focus ^discord$ "uwsm-app -- discord.desktop"')
+-- Omarchy default here was nautilus, which hardcodes dot entries to sort last.
+o.rebind("SUPER + SHIFT + F", "File manager", { tui = "yazi", focus = true })
 
 -- Push-to-mute Discord on the same V that games use as their in-game push-to-talk:
 -- non_consuming keeps V flowing to the game, dont_inhibit keeps it firing when a
