@@ -1,7 +1,7 @@
 # Code style
 
 Default to no comments and no docstrings — well-named functions, variables, and small
-focused units are the documentation. A repo's own CLAUDE.md/style guide wins if it says so.
+focused units are the documentation. The repository's own agent/style guide wins if it says so.
 
 - Comment ONLY to prevent a real mistake: a non-obvious constraint, a footgun, a subtle
   invariant not visible in the code. Explaining *why* can justify a comment; explaining

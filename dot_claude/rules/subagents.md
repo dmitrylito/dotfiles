@@ -23,7 +23,8 @@ Stay inline when no:
 
 ## Make the spawns that pass as cheap as they can be
 
-- Mechanical location, zero judgement → `lookup` (haiku).
+- Mechanical location, zero judgement → `lookup` (haiku) only when the user has
+  approved using a cheaper model; otherwise preserve the chosen model quality.
 - Wide read-only exploration where I want the conclusion → `Explore`.
 - Reserve main-model-inheriting agents for work that actually needs reasoning.
 - One well-scoped agent beats three overlapping ones. Give each a specific question, not a

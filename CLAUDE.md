@@ -64,3 +64,20 @@ so its own transactions cannot rewrite policy. Omarchy retains no publisher.
 If paths under `packages/` change, update the playbook, run-on-change hashes, and
 generator scripts together. `packages/README.md` is the canonical ownership
 summary.
+
+## Shared global agent instructions
+
+Universal policy lives in `.chezmoitemplates/agent-rules.md`; shared code style
+lives in `.chezmoitemplates/agent-code-style.md`. Chezmoi renders these into
+`~/.codex/AGENTS.md` and Claude's auto-loaded `~/.claude/rules/` files. Edit
+the shared templates to update both tools, then preview/apply the affected
+targets and verify content equality. Keep tool-specific memory, permission,
+model, hook, and documentation-tool settings in their own adapters.
+
+These are instruction policies, not a new job runner or enforcing hook.
+Long-running tasks must implement the documented logs and completion markers.
+Start fresh agent sessions after applying instruction changes.
+
+References: [Codex instructions](https://developers.openai.com/codex/guides/agents-md),
+[Claude global rules](https://code.claude.com/docs/en/memory),
+and [chezmoi templates](https://www.chezmoi.io/user-guide/templating/).
