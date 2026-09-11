@@ -7,6 +7,10 @@ readonly BRANCH=production
 readonly STATE_DIR=/home/dmitrylito/.local/state/cer-production
 readonly DEPLOYED_REVISION_FILE="$STATE_DIR/deployed-revision"
 
+if [[ -x "$REPO/docker/watch-production.sh" ]]; then
+  exec "$REPO/docker/watch-production.sh"
+fi
+
 mkdir -p "$STATE_DIR"
 exec 9>"$STATE_DIR/deploy.lock"
 if ! flock -n 9; then
@@ -51,14 +55,24 @@ if [[ "$deployed_revision" == "$TARGET_REVISION" ]]; then
   exit 0
 fi
 
-readonly -a COMPOSE=(
-  docker compose
-  --project-directory "$REPO/docker"
-  -p prod
-  -f "$REPO/docker/docker-compose.yml"
-  -f "$REPO/docker/docker-compose.prod.yml"
-)
-export CER_PRODUCTION_CHECKOUT="$REPO"
+if [[ -f "$REPO/docker/compose.yaml" ]]; then
+  readonly -a COMPOSE=(
+    docker compose
+    --project-directory "$REPO/docker"
+    -p prod
+    -f "$REPO/docker/compose.yaml"
+  )
+else
+  # Transitional support until compose.yaml reaches the production branch.
+  readonly -a COMPOSE=(
+    docker compose
+    --project-directory "$REPO/docker"
+    -p prod
+    -f "$REPO/docker/docker-compose.yml"
+    -f "$REPO/docker/docker-compose.prod.yml"
+  )
+  export CER_PRODUCTION_CHECKOUT="$REPO"
+fi
 
 echo "Deploying CER production revision $TARGET_REVISION..."
 "${COMPOSE[@]}" config --quiet

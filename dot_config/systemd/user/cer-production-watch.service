@@ -5,7 +5,12 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/dmitrylito/.local/bin/cer-production-watch
+EnvironmentFile=%h/.config/cer-production/deploy.env
+LoadCredentialEncrypted=application.env:%h/.config/cer-production/application.env.cred
+LoadCredentialEncrypted=database.env:%h/.config/cer-production/database.env.cred
+LoadCredentialEncrypted=git-deploy-key:%h/.config/cer-production/git-deploy-key.cred
+LoadCredentialEncrypted=ghcr-token:%h/.config/cer-production/ghcr-token.cred
+ExecStart=%h/.local/libexec/cer-production/watch-production.sh
 TimeoutStartSec=15min
 Nice=10
-
+UMask=0077

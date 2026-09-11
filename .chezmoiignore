@@ -97,3 +97,12 @@ Projects/fleetchaser/
 .config/systemd/user/chezmoi-package-capture.service
 .config/systemd/user/chezmoi-package-capture.timer
 {{ end }}
+
+{{ if or (ne $profile "server") (ne .chezmoi.hostname "dlco-prod") }}
+# Production deployment is owned by dlco-prod, not every Linux host.
+.config/cer-production/
+.local/libexec/cer-production/
+.local/bin/cer-production-watch
+.config/systemd/user/cer-production-watch.service
+.config/systemd/user/cer-production-watch.timer
+{{ end }}
