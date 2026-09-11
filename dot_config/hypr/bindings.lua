@@ -72,7 +72,7 @@ o.bind("SUPER + CTRL + ALT + L", "Suspend", "systemctl suspend", { locked = true
 
 -- Dictation
 o.bind("SUPER + Z", "Start dictation", "voxtype record toggle")
-o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true })
+o.bind("RETURN", "Stop dictation", "voxtype record toggle", { non_consuming = true })
 
 -- Window management
 --
