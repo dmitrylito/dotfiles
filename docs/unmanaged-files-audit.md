@@ -11,8 +11,7 @@ Audited on `dlco-prod`, profile `server`, work role disabled.
 - Restricted all CER configuration, scripts, service, and timer to `dlco-prod`
   with the server profile. No service restart or deployment was performed.
 - `.ssh/config`, which includes the already-managed `config.d` snippets.
-- `GEMINI.md`, correcting its blanket forced-apply instruction to a targeted
-  preview and apply workflow.
+- `GEMINI.md` was subsequently removed at the user's request; Gemini is no longer used.
 
 ## Left unmanaged
 
