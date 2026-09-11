@@ -92,7 +92,7 @@ Projects/fleetchaser/
 
 {{ if ne $profile "server" }}
 # Podman quadlets and their app config live only where the containers run.
-.config/containers/systemd/
+.config/containers/
 docker-appdata/
 
 # Remote Control daemon only makes sense on the always-on server.
