@@ -4,7 +4,6 @@
 -- workspaces.lua is generated per device and intentionally not tracked.
 local require_optional = require("default.hypr.require_optional")
 require_optional.module("hypr.workspaces")
-require("hypr.voxtype_submap")
 
 -- Give any monitor without a per-device rule its preferred mode automatically.
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
