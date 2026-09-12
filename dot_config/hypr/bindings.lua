@@ -71,7 +71,7 @@ o.bind("SUPER + SHIFT + Y", "YouTube", 'omarchy-launch-webapp "https://youtube.c
 o.bind("SUPER + CTRL + ALT + L", "Suspend", "systemctl suspend", { locked = true })
 
 -- Dictation
-o.bind("CTRL + Z", "Toggle dictation", "voxtype record toggle")
+o.bind("SUPER + Z", "Toggle dictation", "voxtype record toggle")
 o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true })
 
 -- Window management
