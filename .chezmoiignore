@@ -77,6 +77,8 @@ Projects/fleetchaser/
 {{ if or (ne $profile "omarchy") (ne .chezmoi.hostname "fcoffice") }}
 # Granite Ridge iGPU/9070 XT ordering is specific to the fcoffice desktop.
 .config/environment.d/
+# Shim for the local voxtype GPU-encoder fork, which only fcoffice builds.
+.local/bin/voxtype
 {{ end }}
 
 {{ if ne $profile "mac"}}
