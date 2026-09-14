@@ -51,6 +51,8 @@ x-scheme-handler/claude=com.anthropic.Claude.desktop
 x-scheme-handler/codex=chatgpt.desktop
 x-scheme-handler/tel=chrome-mohkbeamcbmbidacpegilbjjclnbnaml-Profile_1.desktop
 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=libreoffice-calc.desktop
+text/csv=libreoffice-calc.desktop
 
 [Added Associations]
 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=libreoffice-calc.desktop;
+text/csv=libreoffice-calc.desktop;
