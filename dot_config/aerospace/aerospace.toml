@@ -290,9 +290,9 @@ if.app-id = 'com.apple.print.PrinterProxy' # Printer utility
 run = 'layout floating'
 
 # User specific routing:
-# 1. Arc to always be on workspace 1
+# 1. Chrome to always be on workspace 1
 [[on-window-detected]]
-if.app-id = 'company.thebrowser.Browser'
+if.app-id = 'com.google.Chrome'
 run = 'move-node-to-workspace 1'
 
 # 2. Ghostty to be on workspace 2
