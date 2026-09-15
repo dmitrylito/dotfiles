@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Suspend AeroSpace — and with it focus-follows-mouse — for a few seconds.
 #
-# Usage: pause.sh [seconds]   (default 15)
+# Usage: pause.sh [seconds]   (default 8)
 # Called from a key binding via exec-and-forget.
 #
 # For transient overlay panels (the Quick Look preview Messages opens when you
@@ -14,7 +14,7 @@
 # the first pause short.
 
 set -u
-secs="${1:-15}"
+secs="${1:-8}"
 lock="${TMPDIR:-/tmp}/aerospace-pause.lock"
 
 if ! mkdir "$lock" 2>/dev/null; then
