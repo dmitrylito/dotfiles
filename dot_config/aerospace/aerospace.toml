@@ -208,6 +208,12 @@ cmd-ctrl-alt-s = 'mode summon'
 # Fullscreen State (f + Hyper) — matches Hyprland's SUPER+F
 cmd-ctrl-alt-f = 'fullscreen'
 
+# Pause AeroSpace for 15s (p + Hyper), which is the only way to silence
+# focus-follows-mouse. Needed for overlay panels AeroSpace cannot see — the Quick
+# Look preview Messages opens on an image — where any mouse move otherwise raises
+# the tiled window under the cursor over the preview.
+cmd-ctrl-alt-p = 'exec-and-forget $HOME/.config/aerospace/pause.sh 15'
+
 # Enter Service Mode (Shift + Semicolon + Hyper)
 cmd-ctrl-alt-shift-semicolon = 'mode service'
 
