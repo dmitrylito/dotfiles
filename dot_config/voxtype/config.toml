@@ -52,10 +52,8 @@ type_delay_ms = 0
 auto_submit = false
 shift_enter_newlines = false
 
-# Compositor integration hooks (modifier key fix)
-# pre_recording_command = "hyprctl dispatch submap voxtype_recording"
-# pre_output_command = "hyprctl dispatch submap voxtype_suppress"
-# post_output_command = "hyprctl dispatch submap reset"
+# No compositor hooks: the voxtype submaps these drive are deliberately gone and
+# are not to be reintroduced. Dictation stops via the Enter bind in hypr/bindings.lua.
 
 # Preferred driver order: prioritize dotool (via persistent dotoold daemon)
 # to avoid Wayland device-churn and focus jitter under streaming mode.
