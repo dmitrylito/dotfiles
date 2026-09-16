@@ -7,10 +7,10 @@
 #   ws 3 : FC Chat | Linear | FC Tasks   (one row, three columns)
 #   scratchpad : Spotify
 #
-# Missing apps are opened on their assigned workspace. Every run then re-promotes
-# Dialpad and FC Chat to their workspace's layout root and re-applies the row
-# widths, so a workspace whose columns drifted is put back to the structure above
-# whether or not anything was launched this run.
+# Missing apps are opened on their assigned workspace. Every run then rebuilds
+# ws 2 and ws 3 into the column order above and re-applies the widths, so a
+# workspace whose layout drifted is put back whether or not anything was launched
+# this run. A row already in the right order is left alone.
 #
 # Device-agnostic by construction — nothing machine-specific is hardcoded:
 #   * Chromium numbers profile DIRECTORIES in creation order, so "Profile 3" is a
@@ -65,16 +65,8 @@ dispatch() {
   return 1
 }
 
-# Hyprland refuses movetoroot with "can't movetoroot in the current workspace"
-# when the window already IS the root, which is the normal case on a re-run, so
-# that one message is not a failure.
-promote_to_root() {
-  local out
-  out="$(hyprctl dispatch "hl.dsp.layout(\"movetoroot address:$1\")" 2>&1 | tail -1)"
-  [[ "$out" == "ok" || "$out" == *"can't movetoroot in the current workspace"* ]] && return 0
-  log "WARN  movetoroot rejected for $1 -> $out"
-  return 1
-}
+# Rebuilding a row (see rebuild_row) parks windows here first. Never displayed.
+STAGE_WS=90
 
 # profile_dir <display name or account email> -> directory name ("Profile 3")
 profile_dir() {
@@ -126,6 +118,72 @@ set_width() {
   h="$(win_size "$addr" 1)"
   w="$(awk -v t="$total" -v f="$frac" 'BEGIN { printf "%d", t * f + 0.5 }')"
   dispatch "hl.dsp.window.resize({ x = $w, y = $h, exact = true, window = \"address:$addr\" })"
+}
+
+win_at() {
+  hyprctl clients -j \
+    | jq -r --arg a "$1" --argjson i "$2" 'first(.[] | select(.address == $a) | .at[$i]) // empty'
+}
+
+# row_is_ok <addr>... — true when the windows already form one left-to-right row
+# in the given order: same top edge, same height, strictly increasing x.
+row_is_ok() {
+  local a y0="" h0="" prev_x="" x y h
+  for a in "$@"; do
+    x="$(win_at "$a" 0)"; y="$(win_at "$a" 1)"; h="$(win_size "$a" 1)"
+    [[ -n "$x" && -n "$y" && -n "$h" ]] || return 1
+    if [[ -z "$y0" ]]; then
+      y0="$y"; h0="$h"
+    else
+      [[ "$y" == "$y0" && "$h" == "$h0" && "$x" -gt "$prev_x" ]] || return 1
+    fi
+    prev_x="$x"
+  done
+  return 0
+}
+
+# rebuild_row <workspace> <addr>... — force the workspace into one left-to-right
+# row in the given order. There is no dispatcher that reorders a dwindle tree, so
+# every window after the first is parked on STAGE_WS and re-inserted anchored on
+# the one before it. Two config settings shape the result and both are handled:
+# force_split=2 always drops the re-inserted window right/bottom of the focused
+# one (so insertion order IS left-to-right order), and preserve_split=true makes
+# it inherit the parent's axis, which stacks it — corrected with togglesplit.
+# No-op when the row is already correct, because the churn is visible.
+rebuild_row() {
+  local ws="$1"; shift
+  local prev="$1"; shift
+  local rest=("$@") a stray=""
+
+  row_is_ok "$prev" "${rest[@]}" && return 0
+  log "fix   workspace $ws column order"
+
+  for a in "${rest[@]}"; do
+    dispatch "hl.dsp.window.move({ workspace = \"$STAGE_WS\", follow = false, window = \"address:$a\" })"
+  done
+  sleep 0.3
+
+  for a in "${rest[@]}"; do
+    dispatch "hl.dsp.focus({ window = \"address:$prev\" })"
+    sleep 0.2
+    dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$a\" })"
+    sleep 0.3
+    # Landed below the anchor instead of beside it: flip that node's split.
+    if [[ "$(win_at "$a" 1)" -gt "$(win_at "$prev" 1)" ]]; then
+      dispatch "hl.dsp.focus({ window = \"address:$a\" })"
+      sleep 0.2
+      dispatch 'hl.dsp.layout("togglesplit")'
+      sleep 0.3
+    fi
+    prev="$a"
+  done
+
+  for a in "${rest[@]}"; do
+    [[ "$(hyprctl clients -j | jq -r --arg a "$a" \
+         'first(.[] | select(.address == $a) | .workspace.id) // empty')" == "$ws" ]] \
+      || stray+=" $a"
+  done
+  [[ -z "$stray" ]] || log "WARN  stranded on workspace $STAGE_WS:$stray"
 }
 
 # Poll up to 15s for a window matching the class regex to map.
@@ -189,12 +247,10 @@ webapp 'FC Gmail' 2 "$WORK_PROFILE" 'https://mail.google.com/mail/u/0/#inbox'
 GMAIL_ADDR="$WIN_ADDR"
 
 # A newly inserted window splits whichever window Hyprland last considered active
-# on that workspace, so the column order is otherwise luck. Promoting Dialpad to
-# the root gives Dialpad left / Gmail right; on ws 3 promoting FC Chat gives
-# FC Chat left of Linear left of FC Tasks. Both are no-ops once the window is
-# already the root, so this runs on every invocation, not only after a launch.
+# on that workspace, so the column order is otherwise luck. Both rows are rebuilt
+# into their intended order on every run, not only after a launch.
 if [[ -n "$DIALPAD_ADDR" && -n "$GMAIL_ADDR" ]]; then
-  promote_to_root "$DIALPAD_ADDR"
+  rebuild_row 2 "$DIALPAD_ADDR" "$GMAIL_ADDR"
   set_width "$DIALPAD_ADDR" "$DIALPAD_FRAC" "$GMAIL_ADDR"
 fi
 
@@ -208,7 +264,7 @@ webapp 'FC Tasks' 3 "$TASKS_PROFILE" 'https://console.fleetchaser.com/tasks'
 TASKS_ADDR="$WIN_ADDR"
 
 if [[ -n "$CHAT_ADDR" && -n "$LINEAR_ADDR" && -n "$TASKS_ADDR" ]]; then
-  promote_to_root "$CHAT_ADDR"
+  rebuild_row 3 "$CHAT_ADDR" "$LINEAR_ADDR" "$TASKS_ADDR"
   set_width "$CHAT_ADDR" "$CHAT_FRAC" "$LINEAR_ADDR" "$TASKS_ADDR"
   set_width "$LINEAR_ADDR" "$LINEAR_FRAC" "$TASKS_ADDR"
 fi
