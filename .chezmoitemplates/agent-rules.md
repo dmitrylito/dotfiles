@@ -4,6 +4,17 @@ These rules apply across projects. Follow the user's current instructions and th
 repository's more specific architecture, runtime, validation, and authorization
 rules. A tool permission or an old memory is not authorization for a new action.
 
+## Instruction files: AGENTS.md is the only source
+
+- Project instructions live in `AGENTS.md` at the repo root (and in subdirectories that
+  need their own). Never write project guidance into `CLAUDE.md`, `GEMINI.md`, or any
+  other tool-specific file.
+- `CLAUDE.md` exists only as a symlink to `AGENTS.md` so Claude Code loads the same text:
+  `ln -s AGENTS.md CLAUDE.md`. If a repo has a real `CLAUDE.md`, fold its content into
+  `AGENTS.md` and replace the file with the symlink; do not keep two copies in sync.
+- Tool-specific mechanics (hooks, permissions, MCP servers, skills) stay in that tool's own
+  config files, not in `AGENTS.md`.
+
 ## Current documentation
 
 - Use current official documentation for library, framework, SDK, API, CLI, and
