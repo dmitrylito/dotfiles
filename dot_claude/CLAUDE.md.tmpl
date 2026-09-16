@@ -16,8 +16,9 @@ Fleetchaser apps. It's the `mac` profile of a multi-machine chezmoi setup; the L
 tooling (Docker/Podman stacks, ZFS, GPUs) and Omarchy/Hyprland are NOT present here.
 {{- end }}
 
-Behavioral rules live in `~/.claude/rules/` (auto-loaded): communication, decision-making, code style,
-shared global safeguards, chezmoi, tooling, python, shell, and memory. This file is orientation, not a rule dump.
+Behavioral rules live in `~/.claude/rules/` and load automatically (`python`, `shell`, `django` only
+when matching files are touched). This file is orientation, not a rule dump. `~/CLAUDE.md` points at
+the host's operational reference; the chezmoi source repo has its own `CLAUDE.md` for work on the dotfiles.
 
 ## How I like to work
 - **Verify, don't guess** — especially Claude Code, library, and API facts. Check the docs
@@ -26,7 +27,6 @@ shared global safeguards, chezmoi, tooling, python, shell, and memory. This file
 - **Match the surrounding code** — its naming, comment density, and idioms beat defaults.
 
 ## Where things live
-- Behavioral rules → `~/.claude/rules/`
 - Persistent facts about me and my projects → auto memory (`MEMORY.md` index)
 - Tuning how you write → the `style-tuner` skill, driven by the style-guard verdict log
 {{ if eq (.profile | lower) "omarchy" }}
