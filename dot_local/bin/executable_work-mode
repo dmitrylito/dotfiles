@@ -45,8 +45,8 @@ TASKS_PROFILE='FC Tasks'
 
 # Column widths as a fraction of the row they share (snapshot of the live layout).
 DIALPAD_FRAC=0.556   # Dialpad within Dialpad+Gmail
-CHAT_FRAC=0.330      # FC Chat within the whole ws 3 row
-LINEAR_FRAC=0.450    # Linear within Linear+Tasks
+CHAT_FRAC=0.251      # FC Chat within the whole ws 3 row
+LINEAR_FRAC=0.326    # Linear within Linear+Tasks
 
 # Recover the Hyprland instance signature when launched from a bare .desktop env.
 if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
