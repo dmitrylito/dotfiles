@@ -1,0 +1,68 @@
+# Agent guide for this home directory
+
+{{ if eq (.profile | lower) "omarchy" -}}
+You're working with **Dmitry** on host `{{ .chezmoi.hostname }}` — an Arch **desktop** running
+Omarchy (Hyprland with Lua config, Quickshell-based omarchy shell, Ghostty), which is also a homelab
+(Docker/Podman stacks, ZFS, GPUs) and a dev host for Fleetchaser apps. It's the `omarchy` profile
+of a multi-machine chezmoi setup.
+{{- else if eq (.profile | lower) "server" -}}
+You're working with **Dmitry** on host `{{ .chezmoi.hostname }}` — a headless Arch **server** that's
+both a homelab (Docker/Podman stacks, ZFS, GPUs) and a dev host for Fleetchaser apps. It's the
+`server` profile of a multi-machine chezmoi setup; desktop tooling (Omarchy, Hyprland, Ghostty) is
+NOT present here.
+{{- else if eq (.profile | lower) "mac" -}}
+You're working with **Dmitry** on host `{{ .chezmoi.hostname }}` — a **macOS** dev machine for
+Fleetchaser apps (Ghostty, AeroSpace). It's the `mac` profile of a multi-machine chezmoi setup; the
+Linux homelab tooling (Docker/Podman stacks, ZFS, GPUs) and Omarchy/Hyprland are NOT present here.
+{{- end }}
+
+Every project under `~` inherits this file, so it stays short. `AGENTS.md` is the only instruction
+file: `CLAUDE.md` and `GEMINI.md` here are symlinks to it, and the same holds in every repo.
+
+## How I like to work
+
+- **Verify, don't guess** — especially Claude Code, library, and API facts. Check the docs or the
+  code before asserting, and flag anything still unverified.
+- **Smallest change that works** — don't restructure, rename, or add abstraction unprompted.
+- **Match the surrounding code** — its naming, comment density, and idioms beat defaults.
+
+## Dotfiles are chezmoi-managed — never edit targets in place
+
+Source of truth: `~/.local/share/chezmoi/` (its own guide is `.claude/CLAUDE.md` there). Editing a
+managed target (`~/.zshrc`, `~/.config/**`, `~/.claude/**`, …) is silently wiped on the next
+`chezmoi apply`.
+
+- `ce <file>` (`chezmoi edit --apply`), or edit the source and run `chezmoi apply`.
+- `chezmoi add <path>` brings a new file under management; `chezmoi status` shows drift.
+- `~/.bashrc` is the exception — unmanaged, safe to edit directly.
+- Before modifying any file NOT under chezmoi or git, copy it to `<file>.bak.<timestamp>` first.
+- Source is multi-profile (`omarchy` / `server` / `mac`): preserve `{{ "{{ if eq .profile … }}" }}`
+  branches when editing `.tmpl` files.
+
+## Shell and runtimes
+
+- Interactive shell is Zsh + Oh My Zsh. Both `~/.bashrc` and `~/.zshrc` run
+  `unalias ga gd 2>/dev/null` before sourcing their function folders — OMZ's git aliases collide
+  with same-named custom functions. Keep that line or shell init breaks.
+- Personal aliases go in `~/.aliases` (sourced at the bottom of both rc files).
+- Runtimes come from mise (`~/.config/mise/config.toml`); run `mise trust <dir>` after creating a
+  folder or worktree that carries env config.
+- Avoid commands that trigger interactive `sudo` prompts unless asked.
+{{ if eq (.profile | lower) "server" }}
+## Operating this box
+
+**`~/SERVER.md` is the operational reference** — services and compose stacks, ports, the nightly DB
+refresh, ZFS pools (`/data`, `/scratch`), what is precious vs disposable, and the disk-cleanup
+runbook. Read it before touching Docker, storage, or cleanup here.
+{{- else if eq (.profile | lower) "omarchy" }}
+## Omarchy desktop
+
+- Never edit `/usr/share/omarchy/` or `~/.local/share/omarchy/` — package-owned, overwritten on
+  `omarchy update`. Customize in `~/.config/hypr/*.lua` (Hyprland) and `~/.config/omarchy/shell.json`
+  (bar/notifications).
+- Hyprland Lua reloads on save; validate with `hyprctl reload` then `hyprctl configerrors`. The
+  omarchy shell hot-reloads (`omarchy restart shell` if needed); terminals need
+  `omarchy restart terminal`.
+- `omarchy commands` lists built-ins; `omarchy theme set "<Theme>"`; `omarchy refresh <app>` resets a
+  config with a timestamped backup; `omarchy debug --no-sudo --print` for logs without prompts.
+{{- end }}

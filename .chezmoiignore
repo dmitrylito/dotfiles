@@ -2,7 +2,6 @@
 {{- $work := .work -}}
 # Repo tooling — lives in the chezmoi source dir, never deployed to $HOME
 README.md
-CLAUDE.md
 package-lock.json
 playbook.yml
 ansible.cfg

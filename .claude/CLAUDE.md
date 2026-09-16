@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the **chezmoi source directory** (`~/.local/share/chezmoi`) — the Git-backed source of truth for Dmitry's dotfiles across three machine profiles: **omarchy** (Arch/Hyprland desktop), **mac**, and **server**. There is no build or test suite; "running" this repo means deploying its files into `$HOME` with chezmoi.
 
-`AGENTS.md` (deployed to `~/AGENTS.md`) is the broader home-directory agent guide covering Omarchy, mise, and shell conventions. Read it for rules about operating *in the live home directory*. This file covers working *on the source repo itself*.
+`AGENTS.md.tmpl` renders per profile to `~/AGENTS.md`, the home-directory agent guide; `~/CLAUDE.md` and `~/GEMINI.md` are symlinks to it (`symlink_CLAUDE.md`, `symlink_GEMINI.md`). This file covers working *on the source repo itself*. It lives at `.claude/CLAUDE.md` because a root `CLAUDE.md` would deploy to `$HOME` — chezmoi skips dot-prefixed source entries, which is also why Codex gets no repo-level guide here.
 
 ## Critical mechanics
 

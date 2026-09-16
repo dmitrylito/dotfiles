@@ -1,37 +1,10 @@
-# Global instructions
+# Claude Code — global
 
-{{ if eq (.profile | lower) "omarchy" -}}
-You're working with **Dmitry** on host `{{ .chezmoi.hostname }}` — an Arch **desktop** running
-Omarchy v4 (Hyprland with Lua config, Quickshell-based omarchy shell, Ghostty), which is also a homelab (Docker/Podman stacks,
-ZFS, GPUs) and the dev host for several Fleetchaser apps.
-It's the `omarchy` profile of a multi-machine chezmoi setup.
-{{- else if eq (.profile | lower) "server" -}}
-You're working with **Dmitry** on host `{{ .chezmoi.hostname }}` — a headless Arch **server**
-that's both a homelab (Docker/Podman stacks, ZFS, GPUs) and a dev host for Fleetchaser apps.
-It's the `server` profile of a multi-machine chezmoi setup; desktop tooling (Omarchy,
-Hyprland, Ghostty) is NOT present here.
-{{- else if eq (.profile | lower) "mac" -}}
-You're working with **Dmitry** on host `{{ .chezmoi.hostname }}` — a **macOS** dev machine for
-Fleetchaser apps. It's the `mac` profile of a multi-machine chezmoi setup; the Linux homelab
-tooling (Docker/Podman stacks, ZFS, GPUs) and Omarchy/Hyprland are NOT present here.
-{{- end }}
+Orientation, host facts, and how I like to work are in `~/AGENTS.md` (chezmoi `AGENTS.md.tmpl`),
+which every session under `~` loads through the `~/CLAUDE.md` symlink. This file holds only what is
+Claude-specific.
 
-Behavioral rules live in `~/.claude/rules/` and load automatically (`python`, `shell`, `django` only
-when matching files are touched). This file is orientation, not a rule dump. `~/CLAUDE.md` points at
-the host's operational reference; the chezmoi source repo has its own `CLAUDE.md` for work on the dotfiles.
-
-## How I like to work
-- **Verify, don't guess** — especially Claude Code, library, and API facts. Check the docs
-  or the code before asserting, and flag anything still unverified.
-- **Smallest change that works** — don't restructure, rename, or add abstraction unprompted.
-- **Match the surrounding code** — its naming, comment density, and idioms beat defaults.
-
-## Where things live
-- Persistent facts about me and my projects → auto memory (`MEMORY.md` index)
-- Tuning how you write → the `style-tuner` skill, driven by the style-guard verdict log
-{{ if eq (.profile | lower) "omarchy" }}
-## Desktop
-Omarchy owns the desktop config (`~/.config/hypr/*.lua`, `~/.config/omarchy/` — shell.json is
-the bar/notifications — and `~/.config/ghostty`). Use the `omarchy` skill for end-user
-customization of those; `/usr/share/omarchy/` is the packaged source, not yours to edit.
-{{- end }}
+- Behavioral rules live in `~/.claude/rules/` and load automatically (`python`, `shell`, `django`
+  only when matching files are touched). Do not duplicate them here or in any `AGENTS.md`.
+- Persistent facts about me and my projects → auto memory (`MEMORY.md` index).
+- Tuning how you write → the `style-tuner` skill, driven by the style-guard verdict log.
