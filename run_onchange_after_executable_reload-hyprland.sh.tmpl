@@ -1,0 +1,26 @@
+#!/bin/sh
+# Reload Hyprland after chezmoi rewrites any ~/.config/hypr Lua module.
+#
+# Hyprland auto-reloads on config change, but that reload has been observed to
+# come up missing individual binds (2026-09-16: the bare-RETURN "Stop dictation"
+# bind was absent from `hyprctl binds` while every neighbouring bind was live;
+# an explicit `hyprctl reload` restored it). The exact race is unconfirmed, so
+# this forces one deterministic reload at the end of apply instead.
+#
+# run_onchange keys on this script's rendered text, so the hashes below make it
+# re-run only when a hypr module actually changes. Omarchy profile only; a
+# no-op when Hyprland is not running (TTY, server, apply over SSH).
+{{ if eq .profile "omarchy" -}}
+# hypr config hashes:
+{{ range (glob (joinPath .chezmoi.sourceDir "dot_config/hypr/*.lua")) -}}
+#   {{ base . }} {{ include . | sha256sum }}
+{{ end -}}
+set -eu
+
+command -v hyprctl >/dev/null 2>&1 || exit 0
+[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || exit 0
+
+hyprctl reload >/dev/null
+{{ else -}}
+exit 0
+{{ end -}}
