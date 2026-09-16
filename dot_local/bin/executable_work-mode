@@ -7,10 +7,10 @@
 #   ws 3 : FC Chat | Linear | FC Tasks   (one row, three columns)
 #   scratchpad : Spotify
 #
-# Idempotent when every app is open. Missing apps are opened on their assigned
-# workspace. If Dialpad or FC Chat was missing, only that newly opened window is
-# promoted to its workspace's layout root and the row widths are re-applied, so
-# the workspace returns to its intended column structure.
+# Missing apps are opened on their assigned workspace. Every run then re-promotes
+# Dialpad and FC Chat to their workspace's layout root and re-applies the row
+# widths, so a workspace whose columns drifted is put back to the structure above
+# whether or not anything was launched this run.
 #
 # Device-agnostic by construction — nothing machine-specific is hardcoded:
 #   * Chromium numbers profile DIRECTORIES in creation order, so "Profile 3" is a
@@ -62,6 +62,17 @@ dispatch() {
   out="$(hyprctl dispatch "$1" 2>&1 | tail -1)"
   [[ "$out" == "ok" ]] && return 0
   log "WARN  dispatch rejected: $1 -> $out"
+  return 1
+}
+
+# Hyprland refuses movetoroot with "can't movetoroot in the current workspace"
+# when the window already IS the root, which is the normal case on a re-run, so
+# that one message is not a failure.
+promote_to_root() {
+  local out
+  out="$(hyprctl dispatch "hl.dsp.layout(\"movetoroot address:$1\")" 2>&1 | tail -1)"
+  [[ "$out" == "ok" || "$out" == *"can't movetoroot in the current workspace"* ]] && return 0
+  log "WARN  movetoroot rejected for $1 -> $out"
   return 1
 }
 
@@ -128,13 +139,11 @@ wait_for() {
   return 1
 }
 
-# launch <label> <class-regex> <workspace> <launch-cmd...>
-# Sets WIN_ADDR to the window either way; LAUNCHED_ADDR only when it was opened here.
+# launch <label> <class-regex> <workspace> <launch-cmd...> — sets WIN_ADDR.
 launch() {
   local label="$1" class_re="$2" ws="$3"; shift 3
   local addr
 
-  LAUNCHED_ADDR=""
   WIN_ADDR=""
 
   addr="$(addr_of "$class_re")"
@@ -149,7 +158,6 @@ launch() {
 
   addr="$(wait_for "$class_re")" || { log "WARN  $label window never appeared"; return 1; }
   dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
-  LAUNCHED_ADDR="$addr"
   WIN_ADDR="$addr"
   sleep 0.4
 }
@@ -157,7 +165,6 @@ launch() {
 # webapp <label> <workspace> <profile> <url>
 webapp() {
   local label="$1" ws="$2" profile="$3" url="$4" dir re
-  LAUNCHED_ADDR=""
   WIN_ADDR=""
   dir="$(profile_dir "$profile")" || { log "WARN  skipping $label"; return 1; }
   re="$(anchored_re "$(webapp_class "$url" "$dir")")"
@@ -168,11 +175,9 @@ BROWSER_CLASS='^chromium$'
 SPOTIFY_CLASS='^spotify$'
 
 FOCUS_ADDR="$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')"
-LAUNCHED_ADDR=""
 WIN_ADDR=""
 
 webapp 'Dialpad' 2 "$WORK_PROFILE" 'https://dialpad.com/app/'
-DIALPAD_LAUNCHED_ADDR="$LAUNCHED_ADDR"
 DIALPAD_ADDR="$WIN_ADDR"
 
 if work_dir="$(profile_dir "$WORK_PROFILE")"; then
@@ -183,17 +188,17 @@ fi
 webapp 'FC Gmail' 2 "$WORK_PROFILE" 'https://mail.google.com/mail/u/0/#inbox'
 GMAIL_ADDR="$WIN_ADDR"
 
-# A newly inserted window otherwise splits whichever window Hyprland last
-# considered active on that workspace. Promoting only the new window to the root
-# deterministically produces Dialpad left / Gmail right on ws 2 and FC Chat left of
-# Linear left of FC Tasks on ws 3. Existing sessions are never rearranged.
-if [[ -n "$DIALPAD_LAUNCHED_ADDR" ]]; then
-  dispatch "hl.dsp.layout(\"movetoroot address:$DIALPAD_LAUNCHED_ADDR\")"
-  [[ -n "$GMAIL_ADDR" ]] && set_width "$DIALPAD_ADDR" "$DIALPAD_FRAC" "$GMAIL_ADDR"
+# A newly inserted window splits whichever window Hyprland last considered active
+# on that workspace, so the column order is otherwise luck. Promoting Dialpad to
+# the root gives Dialpad left / Gmail right; on ws 3 promoting FC Chat gives
+# FC Chat left of Linear left of FC Tasks. Both are no-ops once the window is
+# already the root, so this runs on every invocation, not only after a launch.
+if [[ -n "$DIALPAD_ADDR" && -n "$GMAIL_ADDR" ]]; then
+  promote_to_root "$DIALPAD_ADDR"
+  set_width "$DIALPAD_ADDR" "$DIALPAD_FRAC" "$GMAIL_ADDR"
 fi
 
 webapp 'FC Chat' 3 "$CHAT_PROFILE" 'https://console.fleetchaser.com/chats'
-CHAT_LAUNCHED_ADDR="$LAUNCHED_ADDR"
 CHAT_ADDR="$WIN_ADDR"
 
 webapp 'Linear' 3 "$WORK_PROFILE" 'https://linear.app/fleetchaser/agent'
@@ -202,12 +207,10 @@ LINEAR_ADDR="$WIN_ADDR"
 webapp 'FC Tasks' 3 "$TASKS_PROFILE" 'https://console.fleetchaser.com/tasks'
 TASKS_ADDR="$WIN_ADDR"
 
-if [[ -n "$CHAT_LAUNCHED_ADDR" ]]; then
-  dispatch "hl.dsp.layout(\"movetoroot address:$CHAT_LAUNCHED_ADDR\")"
-  if [[ -n "$LINEAR_ADDR" && -n "$TASKS_ADDR" ]]; then
-    set_width "$CHAT_ADDR" "$CHAT_FRAC" "$LINEAR_ADDR" "$TASKS_ADDR"
-    set_width "$LINEAR_ADDR" "$LINEAR_FRAC" "$TASKS_ADDR"
-  fi
+if [[ -n "$CHAT_ADDR" && -n "$LINEAR_ADDR" && -n "$TASKS_ADDR" ]]; then
+  promote_to_root "$CHAT_ADDR"
+  set_width "$CHAT_ADDR" "$CHAT_FRAC" "$LINEAR_ADDR" "$TASKS_ADDR"
+  set_width "$LINEAR_ADDR" "$LINEAR_FRAC" "$TASKS_ADDR"
 fi
 
 launch 'Spotify' "$SPOTIFY_CLASS" 'special:spotify' \
