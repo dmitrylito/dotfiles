@@ -7,6 +7,13 @@
 #   ws 3 : FC Chat | Linear | FC Tasks   (one row, three columns)
 #   scratchpad : Spotify
 #
+# Every app is its ~/.local/share/applications entry, launched through uwsm-app
+# exactly as the SUPER+SPACE launcher would launch it. Nothing about an app is
+# repeated here: the profile and the URL live in the entry's Exec line (which goes
+# through ~/.local/bin/chromium-profile-launch), so editing the entry changes what
+# work-mode opens, and the window it opens is the one the launcher already knows.
+# Only the workspace and the column order are this script's own.
+#
 # Every run re-applies the whole layout, whether or not anything was launched:
 # each window is moved to its assigned workspace even when it was already open on
 # the wrong one, then ws 2 and ws 3 are rebuilt into the column order above and
@@ -17,16 +24,16 @@
 #
 # Launching is a separate phase from placing, so the cold starts overlap instead
 # of running end to end. Ordering is only enforced WITHIN a chromium profile: the
-# first window of a profile starts that profile's singleton process, and firing
-# several --app invocations at a cold profile at once races on its lock. Separate
-# profiles share nothing, so they start in parallel. Spotify is spawned first and
-# reaches its scratchpad through a silent window rule in chezmoi.lua, so it never
-# flashes over the foreground.
+# first process for a profile directory becomes its browser process and every
+# later window of that profile is a forwarded command line, so the entry that
+# opens a plain browser window goes first and is waited for. Separate profiles
+# share nothing and start in parallel. Spotify reaches its scratchpad through a
+# silent window rule in chezmoi.lua, so it never flashes over the foreground.
 #
 # Device-agnostic by construction — nothing machine-specific is hardcoded:
 #   * Chromium numbers profile DIRECTORIES in creation order, so "Profile 3" is a
-#     different account on another machine. Profiles are looked up by their display
-#     name (or account email) in Local State and the directory falls out of that.
+#     different account on another machine. chromium-profile-launch resolves a
+#     profile's display name to its directory out of Local State.
 #   * The WM_CLASS of an Omarchy web app is derived from the URL plus that resolved
 #     directory (chrome-<host>__<path>-<Profile_Dir>), so URL and class cannot drift.
 #   * Column widths are stored as fractions of the row and turned into pixels from
@@ -47,27 +54,28 @@
 set -uo pipefail
 export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
-WEBAPP="$HOME/.local/share/omarchy/bin/omarchy-launch-webapp"
-CHROMIUM_STATE="${CHROMIUM_USER_DATA_DIR:-$HOME/.config/chromium}/Local State"
+LAUNCHER="$HOME/.local/bin/chromium-profile-launch"
+ENTRY_DIRS=("$HOME/.local/share/applications" /usr/share/applications)
 
-WORK_PROFILE='Work'
-CHAT_PROFILE='FC Chat'
-TASKS_PROFILE='FC Tasks'
+# <desktop entry>|<workspace>|<class regex, only where it cannot be derived>
+APPS=(
+  'spotify.desktop|special:spotify|^spotify$'
+  'FC Chat.desktop|3|'
+  'FC Tasks.desktop|3|'
+  'DL-Chrome-Work.desktop|1|'
+  'FC-Dialpad.desktop|2|'
+  'FC Gmail.desktop|2|'
+  'Linear.desktop|3|'
+)
 
-DIALPAD_URL='https://dialpad.com/app/'
-GMAIL_URL='https://mail.google.com/mail/u/0/#inbox'
-LINEAR_URL='https://linear.app/fleetchaser/agent'
-CHAT_URL='https://console.fleetchaser.com/chats'
-TASKS_URL='https://console.fleetchaser.com/tasks'
+# Left-to-right column order, and each column's share of the row it and the
+# columns after it occupy (a snapshot of the live layout).
+ROW2=('FC-Dialpad.desktop' 'FC Gmail.desktop')
+ROW2_FRACS=(0.556)
+ROW3=('FC Chat.desktop' 'Linear.desktop' 'FC Tasks.desktop')
+ROW3_FRACS=(0.251 0.326)
 
 BROWSER_CLASS='^chromium$'
-SPOTIFY_CLASS='^spotify$'
-SPOTIFY_WS='special:spotify'
-
-# Column widths as a fraction of the row they share (snapshot of the live layout).
-DIALPAD_FRAC=0.556   # Dialpad within Dialpad+Gmail
-CHAT_FRAC=0.251      # FC Chat within the whole ws 3 row
-LINEAR_FRAC=0.326    # Linear within Linear+Tasks
 
 # Recover the Hyprland instance signature when launched from a bare .desktop env.
 if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
@@ -89,15 +97,16 @@ dispatch() {
 # Rebuilding a row (see rebuild_row) parks windows here first. Never displayed.
 STAGE_WS=90
 
-# profile_dir <display name or account email> -> directory name ("Profile 3")
-profile_dir() {
-  local dir
-  dir="$(jq -r --arg n "$1" \
-    'first(.profile.info_cache | to_entries[]
-           | select(.value.name == $n or .value.user_name == $n) | .key) // empty' \
-    "$CHROMIUM_STATE" 2>/dev/null)"
-  [[ -n "$dir" ]] || { log "WARN  no chromium profile named \"$1\""; return 1; }
-  printf '%s\n' "$dir"
+entry_path() {
+  local d
+  for d in "${ENTRY_DIRS[@]}"; do
+    [[ -r "$d/$1" ]] && { printf '%s\n' "$d/$1"; return 0; }
+  done
+  return 1
+}
+
+entry_field() {
+  sed -n "/^\\[Desktop Entry\\]/,/^\\[/{ /^$2=/{ s/^$2=//p; q; } }" "$1"
 }
 
 # The class Chromium gives an --app window: host, then "__", then the path with
@@ -112,11 +121,6 @@ webapp_class() {
 # The class only ever holds [A-Za-z0-9._-], so "." is the sole regex metacharacter.
 anchored_re() {
   printf '^%s$\n' "${1//./\\.}"
-}
-
-# webapp_re <url> <profile-dir>
-webapp_re() {
-  anchored_re "$(webapp_class "$1" "$2")"
 }
 
 addr_of() {
@@ -220,8 +224,8 @@ rebuild_row() {
 }
 
 # Poll up to 30s for a window matching the class regex to map. Cold chromium
-# profiles now start in parallel, so the slowest one is waited on while the others
-# are already up — the budget is per app, not per run.
+# profiles start in parallel, so the slowest one is waited on while the others are
+# already up — the budget is per app, not per run.
 wait_for() {
   local addr="" i
   for ((i = 0; i < 120; i++)); do
@@ -250,94 +254,111 @@ place() {
   return 1
 }
 
-# spawn <label> <class-regex> <launch-cmd...> — start an app without waiting for it.
-spawn() {
-  local label="$1" class_re="$2"; shift 2
+declare -A E_FILE E_LABEL E_WS E_CLASS E_PROFILE E_URL ADDR
+ENTRIES=()
 
-  if [[ -n "$(addr_of "$class_re")" ]]; then
-    log "skip  $label (already open)"
+# Read every entry up front: its label, the profile and URL its Exec line carries,
+# and the window class those two imply.
+for spec in "${APPS[@]}"; do
+  IFS='|' read -r name ws class_override <<<"$spec"
+
+  file="$(entry_path "$name")" || { log "WARN  no desktop entry named \"$name\""; continue; }
+  exec_line="$(entry_field "$file" Exec)"
+
+  profile=""; url=""
+  if [[ "$exec_line" == *chromium-profile-launch* ]]; then
+    profile="$(sed -n 's/.*chromium-profile-launch "\([^"]*\)".*/\1/p' <<<"$exec_line")"
+    url="$(sed -n 's/.*chromium-profile-launch "[^"]*" webapp "\([^"]*\)".*/\1/p' <<<"$exec_line")"
+  fi
+
+  if [[ -n "$class_override" ]]; then
+    class="$class_override"
+  elif [[ -n "$url" ]]; then
+    dir="$("$LAUNCHER" "$profile" resolve)" \
+      || { log "WARN  skipping $name: cannot resolve profile \"$profile\""; continue; }
+    class="$(anchored_re "$(webapp_class "$url" "$dir")")"
+  elif [[ -n "$profile" ]]; then
+    class="$BROWSER_CLASS"
+  else
+    log "WARN  skipping $name: no class, and its Exec line is not a chromium web app"
+    continue
+  fi
+
+  ENTRIES+=("$name")
+  E_FILE["$name"]="$file"
+  E_LABEL["$name"]="$(entry_field "$file" Name)"
+  E_WS["$name"]="$ws"
+  E_CLASS["$name"]="$class"
+  E_PROFILE["$name"]="$profile"
+  E_URL["$name"]="$url"
+done
+
+# spawn <entry> — launch it the way the application launcher would, and only if it
+# is not already open.
+spawn() {
+  local name="$1"
+
+  if [[ -n "$(addr_of "${E_CLASS[$name]}")" ]]; then
+    log "skip  ${E_LABEL[$name]} (already open)"
     return 0
   fi
 
-  log "open  $label"
-  setsid -f "$@" >/dev/null 2>&1
-}
-
-# settle <label> <class-regex> <workspace> — wait for a spawned app, then place it.
-# Sets WIN_ADDR.
-settle() {
-  local label="$1" class_re="$2" ws="$3" addr
-  WIN_ADDR=""
-
-  addr="$(wait_for "$class_re")" || { log "WARN  $label window never appeared"; return 1; }
-  place "$addr" "$ws" "$label"
-  WIN_ADDR="$addr"
+  log "open  ${E_LABEL[$name]}"
+  setsid -f uwsm-app -- "${E_FILE[$name]}" >/dev/null 2>&1
 }
 
 FOCUS_ADDR="$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')"
-WIN_ADDR=""
 
-work_dir="$(profile_dir "$WORK_PROFILE")" || work_dir=""
-chat_dir="$(profile_dir "$CHAT_PROFILE")" || chat_dir=""
-tasks_dir="$(profile_dir "$TASKS_PROFILE")" || tasks_dir=""
+# The entry that opens a plain browser window owns its profile's process, so it is
+# launched before that profile's web apps and waited for.
+OWNER=""
+for name in "${ENTRIES[@]}"; do
+  [[ -n "${E_PROFILE[$name]}" && -z "${E_URL[$name]}" ]] && { OWNER="$name"; break; }
+done
+OWNER_PROFILE="${OWNER:+${E_PROFILE[$OWNER]}}"
 
-spawn 'Spotify' "$SPOTIFY_CLASS" spotify
+for name in "${ENTRIES[@]}"; do
+  [[ "$name" == "$OWNER" ]] && continue
+  [[ -n "$OWNER_PROFILE" && "${E_PROFILE[$name]}" == "$OWNER_PROFILE" ]] && continue
+  spawn "$name"
+done
 
-if [[ -n "$chat_dir" ]]; then
-  CHAT_RE="$(webapp_re "$CHAT_URL" "$chat_dir")"
-  spawn 'FC Chat' "$CHAT_RE" "$WEBAPP" "$CHAT_URL" --profile-directory="$chat_dir"
+if [[ -n "$OWNER" ]]; then
+  spawn "$OWNER"
+  wait_for "${E_CLASS[$OWNER]}" >/dev/null || log "WARN  ${E_LABEL[$OWNER]} window never appeared"
+  for name in "${ENTRIES[@]}"; do
+    [[ "$name" != "$OWNER" && "${E_PROFILE[$name]}" == "$OWNER_PROFILE" ]] && spawn "$name"
+  done
 fi
 
-if [[ -n "$tasks_dir" ]]; then
-  TASKS_RE="$(webapp_re "$TASKS_URL" "$tasks_dir")"
-  spawn 'FC Tasks' "$TASKS_RE" "$WEBAPP" "$TASKS_URL" --profile-directory="$tasks_dir"
-fi
-
-if [[ -n "$work_dir" ]]; then
-  DIALPAD_RE="$(webapp_re "$DIALPAD_URL" "$work_dir")"
-  GMAIL_RE="$(webapp_re "$GMAIL_URL" "$work_dir")"
-  LINEAR_RE="$(webapp_re "$LINEAR_URL" "$work_dir")"
-
-  # Through uwsm-app, like omarchy-launch-webapp and omarchy-launch-browser: the
-  # first process for a profile owns every later window of it, so launching it
-  # outside the graphical session scope would give the whole profile a different
-  # environment from one started by hand.
-  spawn 'Work browser' "$BROWSER_CLASS" uwsm-app -- chromium --profile-directory="$work_dir"
-  # The Work profile's other three windows are --app invocations against this same
-  # profile, so they wait for its singleton process rather than race it.
-  wait_for "$BROWSER_CLASS" >/dev/null || log "WARN  Work browser window never appeared"
-  spawn 'Dialpad' "$DIALPAD_RE" "$WEBAPP" "$DIALPAD_URL" --profile-directory="$work_dir"
-  spawn 'FC Gmail' "$GMAIL_RE" "$WEBAPP" "$GMAIL_URL" --profile-directory="$work_dir"
-  spawn 'Linear' "$LINEAR_RE" "$WEBAPP" "$LINEAR_URL" --profile-directory="$work_dir"
-else
-  log "WARN  skipping every Work profile app"
-fi
-
-DIALPAD_ADDR=""; GMAIL_ADDR=""; CHAT_ADDR=""; LINEAR_ADDR=""; TASKS_ADDR=""
-
-if [[ -n "$work_dir" ]]; then
-  settle 'Work browser' "$BROWSER_CLASS" 1
-  settle 'Dialpad' "$DIALPAD_RE" 2 && DIALPAD_ADDR="$WIN_ADDR"
-  settle 'FC Gmail' "$GMAIL_RE" 2 && GMAIL_ADDR="$WIN_ADDR"
-  settle 'Linear' "$LINEAR_RE" 3 && LINEAR_ADDR="$WIN_ADDR"
-fi
-[[ -n "$chat_dir" ]] && { settle 'FC Chat' "$CHAT_RE" 3 && CHAT_ADDR="$WIN_ADDR"; }
-[[ -n "$tasks_dir" ]] && { settle 'FC Tasks' "$TASKS_RE" 3 && TASKS_ADDR="$WIN_ADDR"; }
-settle 'Spotify' "$SPOTIFY_CLASS" "$SPOTIFY_WS"
+for name in "${ENTRIES[@]}"; do
+  addr="$(wait_for "${E_CLASS[$name]}")" \
+    || { log "WARN  ${E_LABEL[$name]} window never appeared"; continue; }
+  ADDR["$name"]="$addr"
+  place "$addr" "${E_WS[$name]}" "${E_LABEL[$name]}"
+done
 
 # A newly inserted window splits whichever window Hyprland last considered active
 # on that workspace, so the column order is otherwise luck. Both rows are rebuilt
 # into their intended order on every run, not only after a launch.
-if [[ -n "$DIALPAD_ADDR" && -n "$GMAIL_ADDR" ]]; then
-  rebuild_row 2 "$DIALPAD_ADDR" "$GMAIL_ADDR"
-  set_width "$DIALPAD_ADDR" "$DIALPAD_FRAC" "$GMAIL_ADDR"
-fi
+apply_row() {
+  local ws="$1"; shift
+  local -n row="$1" fracs="$2"
+  local addrs=() name i
 
-if [[ -n "$CHAT_ADDR" && -n "$LINEAR_ADDR" && -n "$TASKS_ADDR" ]]; then
-  rebuild_row 3 "$CHAT_ADDR" "$LINEAR_ADDR" "$TASKS_ADDR"
-  set_width "$CHAT_ADDR" "$CHAT_FRAC" "$LINEAR_ADDR" "$TASKS_ADDR"
-  set_width "$LINEAR_ADDR" "$LINEAR_FRAC" "$TASKS_ADDR"
-fi
+  for name in "${row[@]}"; do
+    [[ -n "${ADDR[$name]:-}" ]] || return 0
+    addrs+=("${ADDR[$name]}")
+  done
+
+  rebuild_row "$ws" "${addrs[@]}"
+  for i in "${!fracs[@]}"; do
+    set_width "${addrs[$i]}" "${fracs[$i]}" "${addrs[@]:$i+1}"
+  done
+}
+
+apply_row 2 ROW2 ROW2_FRACS
+apply_row 3 ROW3 ROW3_FRACS
 
 [[ -n "$FOCUS_ADDR" ]] && dispatch "hl.dsp.focus({ window = \"address:$FOCUS_ADDR\" })"
 
