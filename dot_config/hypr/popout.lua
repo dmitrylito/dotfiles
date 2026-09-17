@@ -184,9 +184,16 @@ local function popout_set_axis(address, key, target)
 		if current == nil then
 			return
 		end
+		-- The mirrored retry can overshoot past zero, and resize rejects a
+		-- non-positive extent with an "Invalid size" error overlay.
+		local wanted = math.floor(value)
+		local keep = math.floor(popout_coord(current.size, other))
+		if wanted < 1 or keep < 1 then
+			return
+		end
 		local args = { relative = false }
-		args[key] = math.floor(value)
-		args[other] = math.floor(popout_coord(current.size, other))
+		args[key] = wanted
+		args[other] = keep
 		hl.dispatch(hl.dsp.focus({ window = "address:" .. address }))
 		hl.dispatch(hl.dsp.window.resize(args))
 	end
