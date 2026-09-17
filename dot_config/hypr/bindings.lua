@@ -1,3 +1,7 @@
+-- ---------------------------------------------------------------------------
+-- Unbinds
+-- ---------------------------------------------------------------------------
+
 -- Omarchy defaults deliberately disabled (vim-style HJKL is used instead of
 -- arrows) or replaced by a binding below.
 local unbinds = {
@@ -24,9 +28,6 @@ local unbinds = {
 	"SUPER + SHIFT + D",
 	"SUPER + SHIFT + Y",
 }
-for _, keys in ipairs(unbinds) do
-	hl.unbind(keys)
-end
 
 -- Omarchy preinstalled app/web-app defaults that are not used on this system.
 -- Keep these explicit so package updates cannot silently restore stale shortcuts.
@@ -44,35 +45,54 @@ local unused_default_app_bindings = {
 	"SUPER + SHIFT + P", -- Google Photos
 	"SUPER + SHIFT + S", -- Google Maps
 }
+
+for _, keys in ipairs(unbinds) do
+	hl.unbind(keys)
+end
 for _, keys in ipairs(unused_default_app_bindings) do
 	hl.unbind(keys)
 end
 
+-- ---------------------------------------------------------------------------
 -- Applications
-o.bind("SUPER + ALT + RETURN", "Terminal", { launch = 'xdg-terminal-exec --dir="$(omarchy-cmd-terminal-cwd)"' })
-o.bind("SUPER + semicolon", "Terminal", { launch = 'xdg-terminal-exec --dir="$(omarchy-cmd-terminal-cwd)"' })
--- server keybindings: with the default (local) the client owns prefix mode, so the
--- server-side [[keys.command]] popups (prefix+g lazygit, prefix+u urls) never fire
-o.bind(
-	"SUPER + B",
-	"Herdr remote (choose SSH target)",
-	{ launch = "xdg-terminal-exec ~/.local/bin/herdr-remote-picker" }
-)
-o.bind("SUPER + SHIFT + D", "Discord", 'omarchy-launch-or-focus ^discord$ "uwsm-app -- discord.desktop"')
--- Omarchy default here was nautilus, which hardcodes dot entries to sort last.
-o.rebind("SUPER + SHIFT + F", "File manager", { tui = "yazi", focus = true })
+-- ---------------------------------------------------------------------------
 
--- Web apps
+local terminal = 'xdg-terminal-exec --dir="$(omarchy-cmd-terminal-cwd)"'
+
+o.bind("SUPER + ALT + RETURN", "Terminal", { launch = terminal })
+o.bind("SUPER + semicolon", "Terminal", { launch = terminal })
+-- Remote, not local: with a local herdr the client owns prefix mode, so the server-side
+-- [[keys.command]] popups (prefix+g lazygit, prefix+u urls) never fire.
+o.bind("SUPER + B", "Herdr remote (choose SSH target)", { launch = "xdg-terminal-exec ~/.local/bin/herdr-remote-picker" })
+o.rebind("SUPER + SHIFT + F", "File manager", { tui = "yazi", focus = true }) -- yazi over the default nautilus, which hardcodes dot entries to sort last
+o.bind("SUPER + SHIFT + D", "Discord", 'omarchy-launch-or-focus ^discord$ "uwsm-app -- discord.desktop"')
 o.bind("SUPER + SHIFT + Y", "YouTube", 'omarchy-launch-webapp "https://youtube.com/" --profile-directory="Default"')
 
--- System
-o.bind("SUPER + CTRL + ALT + L", "Suspend", "systemctl suspend", { locked = true })
+-- ---------------------------------------------------------------------------
+-- Window focus and movement
+-- ---------------------------------------------------------------------------
 
--- Dictation
-o.bind("SUPER + Z", "Toggle dictation", "voxtype record toggle")
-o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true })
+o.bind("SUPER + H", "Focus left window", hl.dsp.focus({ direction = "l" }))
+o.bind("SUPER + J", "Focus next window", hl.dsp.focus({ direction = "d" }))
+o.bind("SUPER + K", "Focus previous window", hl.dsp.focus({ direction = "u" }))
+o.bind("SUPER + L", "Focus right window", hl.dsp.focus({ direction = "r" }))
 
--- Window management
+o.bind("SUPER + SHIFT + H", "Swap window to the left", hl.dsp.window.swap({ direction = "l" }))
+o.bind("SUPER + SHIFT + J", "Swap window down", hl.dsp.window.swap({ direction = "d" }))
+o.bind("SUPER + SHIFT + K", "Swap window up", hl.dsp.window.swap({ direction = "u" }))
+o.bind("SUPER + SHIFT + L", "Swap window to the right", hl.dsp.window.swap({ direction = "r" }))
+
+o.bind("SUPER + ALT + H", "Move window to group on right", "hyprctl dispatch moveintogroup r")
+o.bind("SUPER + ALT + J", "Move window to group on bottom", "hyprctl dispatch moveintogroup d")
+o.bind("SUPER + ALT + K", "Move window to group on top", "hyprctl dispatch moveintogroup u")
+o.bind("SUPER + ALT + L", "Move window to group on left", "hyprctl dispatch moveintogroup l")
+
+o.bind("SUPER + N", "Toggle window split", hl.dsp.layout("togglesplit"))
+
+-- ---------------------------------------------------------------------------
+-- Pop-out
+-- ---------------------------------------------------------------------------
+
 local popout = require("hypr.popout")
 
 hl.unbind("SUPER + U")
@@ -84,26 +104,10 @@ hl.bind(
 	{ description = "Toggle window pop-out (Bash fallback)" }
 )
 
-o.bind("SUPER + H", "Focus left window", hl.dsp.focus({ direction = "l" }))
-o.bind("SUPER + J", "Focus next window", hl.dsp.focus({ direction = "d" }))
-o.bind("SUPER + K", "Focus previous window", hl.dsp.focus({ direction = "u" }))
-o.bind("SUPER + L", "Focus right window", hl.dsp.focus({ direction = "r" }))
-o.bind("SUPER + SHIFT + H", "Swap window to the left", hl.dsp.window.swap({ direction = "l" }))
-o.bind("SUPER + SHIFT + L", "Swap window to the right", hl.dsp.window.swap({ direction = "r" }))
-o.bind("SUPER + SHIFT + K", "Swap window up", hl.dsp.window.swap({ direction = "u" }))
-o.bind("SUPER + SHIFT + J", "Swap window down", hl.dsp.window.swap({ direction = "d" }))
+-- ---------------------------------------------------------------------------
+-- Scratchpads
+-- ---------------------------------------------------------------------------
 
--- Groups
-o.bind("SUPER + ALT + L", "Move window to group on left", "hyprctl dispatch moveintogroup l")
-o.bind("SUPER + ALT + H", "Move window to group on right", "hyprctl dispatch moveintogroup r")
-o.bind("SUPER + ALT + K", "Move window to group on top", "hyprctl dispatch moveintogroup u")
-o.bind("SUPER + ALT + J", "Move window to group on bottom", "hyprctl dispatch moveintogroup d")
-
--- Layout
-o.bind("SUPER + M", "Show key bindings", "omarchy-menu-keybindings")
-o.bind("SUPER + N", "Toggle window split", hl.dsp.layout("togglesplit"))
-
--- Special workspace
 -- Omarchy keeps one global geometry rule for the qconsole. On mixed-size
 -- monitors that rule can still contain the previous monitor's bottom gap when
 -- SUPER+S runs, so refit it synchronously against the monitor receiving the
@@ -136,12 +140,6 @@ local function qconsole_toggle()
 	hl.timer(qconsole_refit, { timeout = 50, type = "oneshot" })
 end
 
-hl.unbind("SUPER + S") -- Omarchy default: Toggle scratchpad
-hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad (fit current monitor)" })
-
-o.bind("SUPER + A", "Toggle scratchpad A", hl.dsp.workspace.toggle_special("A"))
-o.bind("SUPER + ALT + A", "Move window to AI", hl.dsp.window.move({ workspace = "special:A", follow = false }))
-
 -- Focusing a window on a hidden special workspace does not reveal it, so toggle the
 -- workspace; chezmoi.lua's rule is silent (work-mode needs that), so a cold launch
 -- must be revealed here once the window exists.
@@ -168,10 +166,25 @@ local function spotify_toggle()
 	hl.dispatch(hl.dsp.workspace.toggle_special("spotify"))
 end
 
+hl.unbind("SUPER + S") -- Omarchy default: Toggle scratchpad
+hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad (fit current monitor)" })
+o.bind("SUPER + A", "Toggle AI scratchpad", hl.dsp.workspace.toggle_special("AI"))
 o.bind("SUPER + D", "Toggle Spotify scratchpad", spotify_toggle)
 o.bind("SUPER + SHIFT + M", "Music", spotify_toggle)
-o.bind(
-	"SUPER + ALT + D",
-	"Move window to Spotify",
-	hl.dsp.window.move({ workspace = "special:spotify", follow = false })
-)
+
+o.bind("SUPER + ALT + A", "Move window to AI", hl.dsp.window.move({ workspace = "special:AI", follow = false }))
+o.bind("SUPER + ALT + D", "Move window to Spotify", hl.dsp.window.move({ workspace = "special:spotify", follow = false }))
+
+-- ---------------------------------------------------------------------------
+-- Dictation
+-- ---------------------------------------------------------------------------
+
+o.bind("SUPER + Z", "Toggle dictation", "voxtype record toggle")
+o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true }) -- re-added after omarchy's region picker tears down; see chezmoi.lua
+
+-- ---------------------------------------------------------------------------
+-- System
+-- ---------------------------------------------------------------------------
+
+o.bind("SUPER + M", "Show key bindings", "omarchy-menu-keybindings")
+o.bind("SUPER + CTRL + ALT + L", "Suspend", "systemctl suspend", { locked = true })
