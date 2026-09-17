@@ -53,6 +53,9 @@ hl.on("monitor.layout_changed", configure_lg_dual_mode)
 -- is how work-mode starts it). SUPER + D reveals it after a cold launch instead --
 -- see spotify_toggle in bindings.lua. Nothing autostarts spotify.
 o.window({ class = "^(spotify)$" }, { workspace = "special:spotify silent" })
+-- hypr-testbed's nested compositor. Silent, so starting one never lands a window on
+-- whatever workspace is in front; `hypr-testbed show` reveals the scratchpad.
+o.window({ class = "^(aquamarine)$" }, { workspace = "special:testbed silent" })
 o.window({ class = "^(steam)$", title = "^(Counter-Strike 2)$" }, { workspace = "1 silent" })
 o.window({ class = "^(cs2)$" }, { fullscreen = true, immediate = true, workspace = "1 silent" })
 o.window({ class = "^(gamescope)$" }, { workspace = "1 silent" })

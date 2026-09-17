@@ -6,6 +6,9 @@
 #   hypr-testbed start [monitors]   start it (default 3 monitors), print its env
 #   hypr-testbed env                print the same env again, for `eval "$(...)"`
 #   hypr-testbed run <cmd...>       run a command against it
+#   hypr-testbed show               bring its screen up, to click around in it
+#                                   (that screen is monitor 1 = workspace 1)
+#   hypr-testbed hide               put it away again
 #   hypr-testbed status             is it up, and what is in it
 #   hypr-testbed stop               kill it and clean up
 #
@@ -16,13 +19,17 @@
 #   hypr-testbed stop
 #
 # It runs nested: Hyprland's Wayland backend needs one window in the host session to
-# start, and every monitor it actually uses is a virtual output added at runtime.
-# Once those exist the starting window is removed, so the running testbed has no
-# window in the host session at all — nothing to see, nothing to focus, nothing in
-# the way. Set HYPR_TESTBED_VISIBLE=1 to keep it (parked on PARK_WS) when the point
-# is to watch. Aquamarine 0.15.1 has no headless-only backend (CBackend::create()
-# fails with no WAYLAND_DISPLAY), so a host Wayland session is still required: this
-# cannot run over a bare SSH shell.
+# start, and the monitors under test are virtual outputs added at runtime. That
+# window is kept but moved to a hidden scratchpad workspace, so a running testbed is
+# out of the way without being gone — `show` brings it up whenever the testbed needs
+# a pair of hands (signing Chromium in, clicking something), `hide` puts it back,
+# and nothing in it is lost either way. Removing the window instead is a one-way
+# door: `hyprctl output create wayland` answers ok and creates nothing.
+#
+# Set HYPR_TESTBED_VISIBLE=1 to park it on PARK_WS as an ordinary window instead.
+# Aquamarine 0.15.1 has no headless-only backend (CBackend::create() fails with no
+# WAYLAND_DISPLAY), so a host Wayland session is required: this cannot run over a
+# bare SSH shell.
 #
 # Layout settings are copied from the omarchy session so a layout that passes here
 # behaves the same there. The workspace-to-monitor map mirrors the real one:
@@ -48,6 +55,7 @@ STATE="$STATE_DIR/state"
 CONFIG="$STATE_DIR/config.lua"
 LOG="$STATE_DIR/hyprland.log"
 PARK_WS="${HYPR_TESTBED_PARK_WS:-9}"
+SCRATCH="${HYPR_TESTBED_SCRATCHPAD:-testbed}"
 
 die() { printf 'hypr-testbed: %s\n' "$*" >&2; exit 1; }
 
@@ -96,10 +104,19 @@ hl.config({
     dwindle = { force_split = 2, preserve_split = true, smart_split = false },
     misc = { disable_hyprland_logo = true, disable_splash_rendering = true },
 })
+
+-- The window the Wayland backend draws into is monitor 1, pinned to the same size
+-- as the virtual ones so every monitor under test has identical geometry. It is
+-- also the only monitor with a screen, so `hypr-testbed show` shows workspace 1.
+hl.monitor({ output = "WAYLAND-1", mode = "1920x1080", position = "0x0", scale = 1 })
 LUA
 
   for n in $(seq 1 10); do
-    if ((n < monitors)); then target="HEADLESS-$n"; else target="HEADLESS-$monitors"; fi
+    if ((n == 1)); then target="WAYLAND-1"
+    elif ((n < monitors)); then target="HEADLESS-$((n - 1))"
+    else target="HEADLESS-$((monitors - 1))"
+    fi
+    ((monitors == 1)) && target="WAYLAND-1"
     printf 'hl.workspace_rule({ workspace = "%s", monitor = "%s" })\n' "$n" "$target" >> "$CONFIG"
   done
 }
@@ -138,19 +155,12 @@ start() {
   display="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -1)"
   [[ -n "$display" ]] || die "cannot tell which wayland socket the testbed took"
 
-  for ((i = 0; i < monitors; i++)); do
+  for ((i = 1; i < monitors; i++)); do
     HYPRLAND_INSTANCE_SIGNATURE="$nested" hyprctl output create headless >/dev/null
   done
   sleep 0.5
 
-  # The window Hyprland needed to start is not one of the monitors under test, and
-  # removing it once the virtual ones exist leaves nothing in the host session.
-  if [[ -n "${HYPR_TESTBED_VISIBLE:-}" ]]; then
-    park "$host" "$nested"
-  else
-    HYPRLAND_INSTANCE_SIGNATURE="$nested" hyprctl output remove WAYLAND-1 >/dev/null
-    sleep 0.3
-  fi
+  park "$host" "$nested"
 
   local names=()
   mapfile -t names < <(HYPRLAND_INSTANCE_SIGNATURE="$nested" hyprctl monitors -j | jq -r '.[].name')
@@ -158,19 +168,50 @@ start() {
   printf 'SIG=%s\nDISPLAY=%s\nHOST=%s\nPID=%s\n' "$nested" "$display" "$host" \
     "$(pgrep -f "^Hyprland -c $CONFIG$" | head -1)" > "$STATE"
   printf 'hypr-testbed: up, %s monitors, %s\n' "${#names[@]}" \
-    "${HYPR_TESTBED_VISIBLE:+visible, parked on host workspace $PARK_WS}${HYPR_TESTBED_VISIBLE:-invisible in the host session}" >&2
+    "${HYPR_TESTBED_VISIBLE:+parked on host workspace $PARK_WS}${HYPR_TESTBED_VISIBLE:-hidden; \"hypr-testbed show\" to use it by hand}" >&2
   env_for_eval
 }
 
-# The nested compositor is a window in the host session; put it somewhere it is not
-# in the way. It is never focused, so it never steals input.
+# The nested compositor is a window in the host session; put it out of the way
+# without closing it. It is never focused, so it never steals input.
 park() {
-  local host="$1" nested="$2" addr
+  local host="$1" nested="$2" addr target
   addr="$(HYPRLAND_INSTANCE_SIGNATURE="$host" hyprctl clients -j \
-    | jq -r --arg d "$nested" 'first(.[] | select(.class == "aquamarine") | .address) // empty')"
+    | jq -r 'first(.[] | select(.class == "aquamarine") | .address) // empty')"
   [[ -n "$addr" ]] || return 0
+
+  target="special:$SCRATCH"
+  [[ -n "${HYPR_TESTBED_VISIBLE:-}" ]] && target="$PARK_WS"
+
   HYPRLAND_INSTANCE_SIGNATURE="$host" hyprctl dispatch \
-    "hl.dsp.window.move({ workspace = \"$PARK_WS\", follow = false, window = \"address:$addr\" })" >/dev/null
+    "hl.dsp.window.move({ workspace = \"$target\", follow = false, window = \"address:$addr\" })" >/dev/null
+}
+
+# show/hide toggle the host scratchpad the nested window lives on. That window IS
+# the testbed's monitor 1, so what it reveals is workspace 1, driven with a real
+# keyboard and mouse like any other window — which is how Chromium gets signed in
+# inside it. Workspaces on the virtual monitors have no screen; move a window to
+# workspace 1 to see it.
+reveal() {
+  local want="$1" host shown
+  running || die "not running"
+  host="$(sed -n 's/^HOST=//p' "$STATE")"
+
+  shown="$(HYPRLAND_INSTANCE_SIGNATURE="$host" hyprctl monitors -j \
+    | jq -r --arg w "special:$SCRATCH" '[.[] | select(.specialWorkspace.name == $w)] | length')"
+
+  if [[ "$want" == show && "$shown" == 0 ]] || [[ "$want" == hide && "$shown" != 0 ]]; then
+    HYPRLAND_INSTANCE_SIGNATURE="$host" hyprctl dispatch \
+      "hl.dsp.workspace.toggle_special(\"$SCRATCH\")" >/dev/null
+  fi
+
+  if [[ "$want" == show ]]; then
+    local addr
+    addr="$(HYPRLAND_INSTANCE_SIGNATURE="$host" hyprctl clients -j \
+      | jq -r 'first(.[] | select(.class == "aquamarine") | .address) // empty')"
+    [[ -n "$addr" ]] && HYPRLAND_INSTANCE_SIGNATURE="$host" hyprctl dispatch \
+      "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null
+  fi
 }
 
 running() {
@@ -208,6 +249,8 @@ case "${1:-}" in
           env HYPRLAND_INSTANCE_SIGNATURE="$(sed -n 's/^SIG=//p' "$STATE")" \
               WAYLAND_DISPLAY="$(sed -n 's/^DISPLAY=//p' "$STATE")" \
               CHROMIUM_USER_DATA_DIR="$CHROMIUM_DIR" "$@" ;;
+  show)   reveal show ;;
+  hide)   reveal hide ;;
   status) if running; then
             sig="$(sed -n 's/^SIG=//p' "$STATE")"
             printf 'running: %s\n' "$sig"
