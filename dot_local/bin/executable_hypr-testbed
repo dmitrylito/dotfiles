@@ -155,7 +155,8 @@ start() {
   local names=()
   mapfile -t names < <(HYPRLAND_INSTANCE_SIGNATURE="$nested" hyprctl monitors -j | jq -r '.[].name')
 
-  printf 'SIG=%s\nDISPLAY=%s\nHOST=%s\n' "$nested" "$display" "$host" > "$STATE"
+  printf 'SIG=%s\nDISPLAY=%s\nHOST=%s\nPID=%s\n' "$nested" "$display" "$host" \
+    "$(pgrep -f "^Hyprland -c $CONFIG$" | head -1)" > "$STATE"
   printf 'hypr-testbed: up, %s monitors, %s\n' "${#names[@]}" \
     "${HYPR_TESTBED_VISIBLE:+visible, parked on host workspace $PARK_WS}${HYPR_TESTBED_VISIBLE:-invisible in the host session}" >&2
   env_for_eval
@@ -184,9 +185,17 @@ env_for_eval() {
     "$(sed -n 's/^SIG=//p' "$STATE")" "$(sed -n 's/^DISPLAY=//p' "$STATE")" "$CHROMIUM_DIR"
 }
 
+# Killed by the PID recorded at start, checked to still be Hyprland: a pkill pattern
+# also matches any shell whose command line happens to mention the config path.
 stop() {
+  local pid
   [[ -r "$STATE" ]] || { printf 'hypr-testbed: not running\n' >&2; return 0; }
-  pkill -f "Hyprland -c $CONFIG" 2>/dev/null
+
+  pid="$(sed -n 's/^PID=//p' "$STATE")"
+  if [[ -n "$pid" && "$(ps -o comm= -p "$pid" 2>/dev/null)" == "Hyprland" ]]; then
+    kill "$pid" 2>/dev/null
+  fi
+
   rm -f "$STATE"
   printf 'hypr-testbed: stopped\n' >&2
 }
