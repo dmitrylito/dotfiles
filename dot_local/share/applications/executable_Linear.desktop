@@ -2,7 +2,7 @@
 Version=1.0
 Name=Linear
 Comment=Linear
-Exec=/usr/bin/bash /home/dmitrylito/.local/bin/chromium-profile-launch "Work" webapp "https://linear.app/fleetchaser/agent"
+Exec=/usr/bin/bash /home/dmitrylito/.local/bin/chromium-profile-launch "Work" webapp "https://linear.app/fleetchaser/team/OPS/all"
 Terminal=false
 Type=Application
 Icon=/home/dmitrylito/.local/share/applications/icons/Linear.png
