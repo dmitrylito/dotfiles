@@ -63,3 +63,26 @@ o.window({ class = "^(gamescope)$" }, { workspace = "1 silent" })
 -- Herdr runs inside Ghostty and titles its host window as "hostname: workspace".
 -- Keep agent/session updates from activating it over whatever is being used.
 o.window({ class = "^(com\\.mitchellh\\.ghostty)$", title = "^.+: .+$" }, { focus_on_activate = false })
+
+-- Omarchy's region picker (default/hypr/bindings/utilities.lua) registers a bare
+-- RETURN bind while a slurp "selection" layer is up. That registration replaces our
+-- dictation-stop bind, and the picker's teardown removes only its own handle, so ours
+-- never comes back: Enter stops dictation until the first screenshot, then never again.
+-- Re-add it once the picker is gone. This module loads after omarchy's, so this
+-- handler runs after theirs.
+local selection_layers = 0
+
+hl.on("layer.opened", function(layer)
+	if layer.namespace == "selection" then
+		selection_layers = selection_layers + 1
+	end
+end)
+
+hl.on("layer.closed", function(layer)
+	if layer.namespace == "selection" and selection_layers > 0 then
+		selection_layers = selection_layers - 1
+		if selection_layers == 0 then
+			o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true })
+		end
+	end
+end)
