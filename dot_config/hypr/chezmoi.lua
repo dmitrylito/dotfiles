@@ -5,7 +5,6 @@
 local require_optional = require("default.hypr.require_optional")
 require_optional.module("hypr.workspaces")
 
--- Give any monitor without a per-device rule its preferred mode automatically.
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 
 -- The LG dual-mode panel switches between 4K@144 and 1080p@480 in its own OSD;
@@ -50,9 +49,6 @@ configure_lg_dual_mode()
 hl.on("monitor.added", configure_lg_dual_mode)
 hl.on("monitor.layout_changed", configure_lg_dual_mode)
 
--- Float Chromium extension windows and keep PiP floating + pinned.
--- o.window({ class = "^(chromium)$", title = "^(Picture-in-Picture)$" }, { float = true, pin = true })
--- o.window({ class = "^(chromium)$", title = "^(Extension:.*)$" }, { float = true })
 -- Silent, so a launch never flashes the scratchpad over whatever is in front (this
 -- is how work-mode starts it). SUPER + D reveals it after a cold launch instead --
 -- see spotify_toggle in bindings.lua. Nothing autostarts spotify.
@@ -65,12 +61,10 @@ o.window({ class = "^(gamescope)$" }, { workspace = "1 silent" })
 -- Keep agent/session updates from activating it over whatever is being used.
 o.window({ class = "^(com\\.mitchellh\\.ghostty)$", title = "^.+: .+$" }, { focus_on_activate = false })
 
--- Omarchy's region picker (default/hypr/bindings/utilities.lua) registers a bare
--- RETURN bind while a slurp "selection" layer is up. That registration replaces our
--- dictation-stop bind, and the picker's teardown removes only its own handle, so ours
--- never comes back: Enter stops dictation until the first screenshot, then never again.
--- Re-add it once the picker is gone. This module loads after omarchy's, so this
--- handler runs after theirs.
+-- Omarchy's region picker binds a bare RETURN while its slurp "selection" layer is up,
+-- replacing our dictation-stop bind, and its teardown removes only its own handle -- so
+-- ours never comes back. Re-add it once the picker is gone (this module loads after
+-- omarchy's, so this handler runs after theirs).
 local selection_layers = 0
 
 hl.on("layer.opened", function(layer)

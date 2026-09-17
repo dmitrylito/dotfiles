@@ -93,7 +93,7 @@ o.bind("SUPER + SHIFT + L", "Swap window to the right", hl.dsp.window.swap({ dir
 o.bind("SUPER + SHIFT + K", "Swap window up", hl.dsp.window.swap({ direction = "u" }))
 o.bind("SUPER + SHIFT + J", "Swap window down", hl.dsp.window.swap({ direction = "d" }))
 
--- Groups (dispatch args preserved from the legacy config)
+-- Groups
 o.bind("SUPER + ALT + L", "Move window to group on left", "hyprctl dispatch moveintogroup l")
 o.bind("SUPER + ALT + H", "Move window to group on right", "hyprctl dispatch moveintogroup r")
 o.bind("SUPER + ALT + K", "Move window to group on top", "hyprctl dispatch moveintogroup u")
@@ -142,10 +142,9 @@ hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad (fit cu
 o.bind("SUPER + A", "Toggle AI scratchpad", hl.dsp.workspace.toggle_special("AI"))
 o.bind("SUPER + ALT + A", "Move window to AI", hl.dsp.window.move({ workspace = "special:AI", follow = false }))
 
--- chezmoi.lua sends spotify to special:spotify silently, and focusing a window on a
--- hidden special workspace does not reveal it, so show the workspace instead of the
--- window. The silent rule means a cold launch has to be revealed here once the
--- window exists; the rule stays silent so work-mode can start spotify unseen.
+-- Focusing a window on a hidden special workspace does not reveal it, so toggle the
+-- workspace; chezmoi.lua's rule is silent (work-mode needs that), so a cold launch
+-- must be revealed here once the window exists.
 -- get_windows' class filter is a substring match, not a regex.
 local function spotify_reveal_when_mapped(attempts)
 	if #hl.get_windows({ class = "spotify" }) > 0 then
