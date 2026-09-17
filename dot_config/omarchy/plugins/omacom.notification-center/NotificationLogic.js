@@ -56,3 +56,17 @@ function relativeTime(timestamp, now) {
   if (hours < 24) return hours + "h"
   return Math.round(hours / 24) + "d"
 }
+
+// Which window a history row should focus, as a case-insensitive regex for
+// omarchy-hyprland-focus-app. A Chromium PWA notifies as plain "Chromium"
+// while its window class is chrome-<host>__<path>-Profile_N, so the bare app
+// name matches the wrong window; the origin Chromium prepends to the body
+// names the right one.
+function focusPattern(app, appIcon, body) {
+  var name = String(app || "")
+  if (!isChromiumDerived(app, appIcon)) return name
+
+  var host = /(?:^|[">\s])(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[:/"<\s]|$)/i
+             .exec(String(body || ""))
+  return host ? host[1] : name
+}

@@ -111,6 +111,19 @@ BarWidget {
     removeProc.running = true
   }
 
+  // History rows are dead notifications — the sender is long gone and no
+  // D-Bus action survives — so clicking one focuses the sending window, which
+  // is what clicking a chat toast is for.
+  function focusHistoryRow(index) {
+    if (index < 0 || index >= historyModel.count) return
+    var row = historyModel.get(index)
+    var pattern = NotificationLogic.focusPattern(row.app, row.appIcon, row.body)
+    if (!pattern) return
+    focusProc.command = ["omarchy-hyprland-focus-app", pattern]
+    focusProc.running = true
+    root.popupOpen = false
+  }
+
   function clearAll() {
     if (!clearProc.running) clearProc.running = true
     historyModel.clear()
@@ -172,6 +185,11 @@ BarWidget {
       waitForEnd: true
       onStreamFinished: root.loadHistory(text)
     }
+  }
+
+  Process {
+    id: focusProc
+    running: false
   }
 
   Process {
@@ -347,6 +365,14 @@ BarWidget {
           radius: root.cardRadius
           color: "transparent"
           borderSpec: Border.flat(root.colBorder, Style.normalBorderWidth)
+
+          // Declared before rowContent so the row's own close button, a later
+          // sibling, keeps the click.
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.focusHistoryRow(rowCard.index)
+          }
 
           RowLayout {
             id: rowContent
