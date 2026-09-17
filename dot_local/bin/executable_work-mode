@@ -298,7 +298,11 @@ if [[ -n "$work_dir" ]]; then
   GMAIL_RE="$(webapp_re "$GMAIL_URL" "$work_dir")"
   LINEAR_RE="$(webapp_re "$LINEAR_URL" "$work_dir")"
 
-  spawn 'Work browser' "$BROWSER_CLASS" chromium --profile-directory="$work_dir"
+  # Through uwsm-app, like omarchy-launch-webapp and omarchy-launch-browser: the
+  # first process for a profile owns every later window of it, so launching it
+  # outside the graphical session scope would give the whole profile a different
+  # environment from one started by hand.
+  spawn 'Work browser' "$BROWSER_CLASS" uwsm-app -- chromium --profile-directory="$work_dir"
   # The Work profile's other three windows are --app invocations against this same
   # profile, so they wait for its singleton process rather than race it.
   wait_for "$BROWSER_CLASS" >/dev/null || log "WARN  Work browser window never appeared"
