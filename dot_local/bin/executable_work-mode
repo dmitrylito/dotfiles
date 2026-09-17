@@ -7,10 +7,13 @@
 #   ws 3 : FC Chat | Linear | FC Tasks   (one row, three columns)
 #   scratchpad : Spotify
 #
-# Missing apps are opened on their assigned workspace. Every run then rebuilds
-# ws 2 and ws 3 into the column order above and re-applies the widths, so a
-# workspace whose layout drifted is put back whether or not anything was launched
-# this run. A row already in the right order is left alone.
+# Every run re-applies the whole layout, whether or not anything was launched:
+# each window is moved to its assigned workspace even when it was already open on
+# the wrong one, then ws 2 and ws 3 are rebuilt into the column order above and
+# the widths re-applied. A row already in the right order is left alone.
+#
+# Nothing reads the workspace the script was invoked from, so it can be run from
+# any workspace; the focused window is restored at the end.
 #
 # Device-agnostic by construction — nothing machine-specific is hardcoded:
 #   * Chromium numbers profile DIRECTORIES in creation order, so "Profile 3" is a
@@ -96,6 +99,13 @@ anchored_re() {
 addr_of() {
   hyprctl clients -j \
     | jq -r --arg c "$1" 'first(.[] | select(.class | test($c)) | .address) // empty'
+}
+
+# The workspace a window is on, as the same string a workspace argument takes
+# ("3", "special:spotify").
+ws_of() {
+  hyprctl clients -j \
+    | jq -r --arg a "$1" 'first(.[] | select(.address == $a) | .workspace.name) // empty'
 }
 
 win_size() {
@@ -197,6 +207,24 @@ wait_for() {
   return 1
 }
 
+# place <addr> <workspace> <label> — put a window on its workspace. hyprctl answers
+# "ok" for a dispatch that matched nothing, so the landing workspace is read back
+# rather than trusted, and a move that never took effect is reported.
+place() {
+  local addr="$1" ws="$2" label="$3" i
+  [[ -n "$addr" ]] || return 1
+  [[ "$(ws_of "$addr")" == "$ws" ]] && return 0
+
+  dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
+  for ((i = 0; i < 10; i++)); do
+    sleep 0.2
+    [[ "$(ws_of "$addr")" == "$ws" ]] && { log "move  $label -> workspace $ws"; return 0; }
+  done
+
+  log "WARN  $label stayed on workspace $(ws_of "$addr"), wanted $ws"
+  return 1
+}
+
 # launch <label> <class-regex> <workspace> <launch-cmd...> — sets WIN_ADDR.
 launch() {
   local label="$1" class_re="$2" ws="$3"; shift 3
@@ -207,17 +235,14 @@ launch() {
   addr="$(addr_of "$class_re")"
   if [[ -n "$addr" ]]; then
     log "skip  $label (already open)"
-    WIN_ADDR="$addr"
-    return 0
+  else
+    log "open  $label -> workspace $ws"
+    setsid -f "$@" >/dev/null 2>&1
+    addr="$(wait_for "$class_re")" || { log "WARN  $label window never appeared"; return 1; }
   fi
 
-  log "open  $label -> workspace $ws"
-  setsid -f "$@" >/dev/null 2>&1
-
-  addr="$(wait_for "$class_re")" || { log "WARN  $label window never appeared"; return 1; }
-  dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
+  place "$addr" "$ws" "$label"
   WIN_ADDR="$addr"
-  sleep 0.4
 }
 
 # webapp <label> <workspace> <profile> <url>
