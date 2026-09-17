@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "dmitrylito.meeting-alert",
+  "name": "Meeting Alert",
+  "version": "1.0.0",
+  "author": "dmitrylito",
+  "description": "Full-screen alert when a work calendar meeting starts",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "MeetingAlert.qml"
+  }
+}

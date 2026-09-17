@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh meeting alert schedule
+
+[Timer]
+OnStartupSec=30s
+OnUnitInactiveSec=5min
+RandomizedDelaySec=20s
+Persistent=true
+Unit=meeting-alert-sync.service
+
+[Install]
+WantedBy=timers.target

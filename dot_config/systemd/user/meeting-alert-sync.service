@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule full-screen alerts for upcoming calendar meetings
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/meeting-alert sync
+TimeoutStartSec=2min
+Nice=10

@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""Full-screen alert at the start of work-calendar meetings.
+
+  meeting-alert sync              schedule transient timers for upcoming meetings
+  meeting-alert list              show what is scheduled
+  meeting-alert fire --payload J  show the overlay now (what a timer runs)
+  meeting-alert test              show a fake alert to check the overlay
+
+Reads Google Calendar through gcalcli (auth once: `gcalcli init`).
+Config: ~/.config/meeting-alert/config.env (KEY=VALUE, see CONFIG_DEFAULTS).
+Run by the meeting-alert-sync.timer user unit every 5 minutes.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "meeting-alert" / "config.env"
+CONFIG_DEFAULTS = {
+    "CALENDARS": "",
+    "LEAD_SECONDS": "0",
+    "HORIZON_HOURS": "12",
+    "AUTO_DISMISS_SECONDS": "120",
+    "SNOOZE_MINUTES": "5",
+}
+UNIT_PREFIX = "meeting-alert-ev-"
+PLUGIN_ID = "dmitrylito.meeting-alert"
+OMARCHY_PATH = os.environ.get("OMARCHY_PATH") or "/usr/share/omarchy"
+SELF = str(Path(__file__).resolve())
+
+
+def load_config():
+    config = dict(CONFIG_DEFAULTS)
+    if CONFIG_PATH.exists():
+        for line in CONFIG_PATH.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            config[key.strip()] = value.strip().strip('"').strip("'")
+    return config
+
+
+def gcalcli_bin():
+    found = shutil.which("gcalcli") or str(Path.home() / ".local/bin/gcalcli")
+    if not Path(found).exists():
+        sys.exit("gcalcli not found; install with: uv tool install gcalcli")
+    return found
+
+
+def fetch_events(config):
+    calendars = [c.strip() for c in re.split(r"[;\n]", config["CALENDARS"]) if c.strip()]
+    if not calendars:
+        print("CALENDARS is unset in %s; nothing to schedule." % CONFIG_PATH, file=sys.stderr)
+        return []
+
+    now = datetime.now()
+    end = now + timedelta(hours=float(config["HORIZON_HOURS"]))
+    cmd = [gcalcli_bin(), "--nocolor"]
+    for name in calendars:
+        cmd += ["--calendar", name]
+    cmd += [
+        "agenda", "--tsv", "--military", "--nodeclined",
+        "--details", "id", "--details", "time", "--details", "url",
+        "--details", "conference", "--details", "title", "--details", "calendar",
+        now.strftime("%Y-%m-%d %H:%M"), end.strftime("%Y-%m-%d %H:%M"),
+    ]
+    out = subprocess.run(cmd, capture_output=True, text=True)
+    if out.returncode != 0:
+        sys.exit("gcalcli failed: %s" % (out.stderr.strip() or out.stdout.strip()))
+
+    lines = [l for l in out.stdout.splitlines() if l.strip()]
+    if not lines:
+        return []
+    header = lines[0].split("\t")
+    events = []
+    for line in lines[1:]:
+        row = dict(zip(header, line.split("\t")))
+        if not row.get("start_time"):  # all-day event
+            continue
+        try:
+            start = datetime.strptime("%s %s" % (row["start_date"], row["start_time"]), "%Y-%m-%d %H:%M")
+        except (KeyError, ValueError):
+            continue
+        events.append({
+            "id": row.get("id", ""),
+            "title": row.get("title", "").strip() or "(no title)",
+            "start": start,
+            "end_time": row.get("end_time", ""),
+            "calendar": row.get("calendar", ""),
+            "link": row.get("conference_uri") or row.get("hangout_link") or row.get("html_link") or "",
+        })
+    return events
+
+
+def unit_name(event):
+    digest = hashlib.sha1(("%s|%s" % (event["id"], event["start"].isoformat())).encode()).hexdigest()[:12]
+    return UNIT_PREFIX + digest
+
+
+def scheduled_units():
+    out = subprocess.run(
+        ["systemctl", "--user", "list-timers", "--all", "--no-legend", "--no-pager", UNIT_PREFIX + "*.timer"],
+        capture_output=True, text=True,
+    )
+    return {m.group(0) for m in re.finditer(UNIT_PREFIX + r"[0-9a-f]+\.timer", out.stdout)}
+
+
+def payload_for(event, config):
+    time_text = event["start"].strftime("%-H:%M")
+    if event["end_time"]:
+        time_text += "–" + event["end_time"]
+    return json.dumps({
+        "title": event["title"],
+        "time": time_text,
+        "calendar": event["calendar"],
+        "link": event["link"],
+        "autoDismissSeconds": int(config["AUTO_DISMISS_SECONDS"]),
+        "snoozeMinutes": int(config["SNOOZE_MINUTES"]),
+    }, ensure_ascii=False)
+
+
+def sync(config):
+    events = fetch_events(config)
+    lead = int(config["LEAD_SECONDS"])
+    now = datetime.now()
+
+    wanted, created = {}, 0
+    for event in events:
+        fire_at = event["start"] - timedelta(seconds=lead)
+        delay = (fire_at - now).total_seconds()
+        if delay < 0:  # already started before this sync saw it
+            continue
+        wanted[unit_name(event) + ".timer"] = event
+
+    existing = scheduled_units()
+    for stale in existing - set(wanted):
+        subprocess.run(["systemctl", "--user", "stop", stale], capture_output=True)
+
+    for timer, event in wanted.items():
+        if timer in existing:
+            continue
+        delay = int(((event["start"] - timedelta(seconds=lead)) - now).total_seconds())
+        subprocess.run([
+            "systemd-run", "--user", "--quiet", "--collect",
+            "--on-active=%ds" % max(delay, 1),
+            "--unit=" + timer[: -len(".timer")],
+            SELF, "fire", "--payload", payload_for(event, config),
+        ], check=False)
+        created += 1
+
+    print("meeting-alert: %d upcoming, %d newly scheduled, %d stale cleared"
+          % (len(wanted), created, len(existing - set(wanted))))
+
+
+def fire(payload):
+    shell = Path(OMARCHY_PATH) / "bin" / "omarchy-shell"
+    result = subprocess.run([str(shell), "shell", "summon", PLUGIN_ID, payload], capture_output=True, text=True)
+    if result.returncode == 0 and "true" in result.stdout.lower():
+        return
+    data = json.loads(payload)
+    subprocess.run([
+        str(Path(OMARCHY_PATH) / "bin" / "omarchy-notification-send"),
+        "-u", "critical", "Meeting starting", "%s %s" % (data.get("time", ""), data.get("title", "")),
+    ], check=False)
+
+
+def list_scheduled():
+    subprocess.run(["systemctl", "--user", "list-timers", "--all", UNIT_PREFIX + "*.timer"], check=False)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("sync")
+    sub.add_parser("list")
+    sub.add_parser("test")
+    fire_parser = sub.add_parser("fire")
+    fire_parser.add_argument("--payload", required=True)
+
+    args = parser.parse_args()
+    config = load_config()
+
+    if args.command == "sync":
+        sync(config)
+    elif args.command == "list":
+        list_scheduled()
+    elif args.command == "fire":
+        fire(args.payload)
+    elif args.command == "test":
+        fire(json.dumps({
+            "title": "Test meeting — this is what a meeting alert looks like",
+            "time": datetime.now().strftime("%-H:%M"),
+            "calendar": "test",
+            "link": "",
+            "autoDismissSeconds": 20,
+            "snoozeMinutes": int(config["SNOOZE_MINUTES"]),
+        }))
+
+
+if __name__ == "__main__":
+    main()

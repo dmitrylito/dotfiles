@@ -70,6 +70,9 @@
   "plugins": [
     {
       "id": "dmitrylito.notifications"
+    },
+    {
+      "id": "dmitrylito.meeting-alert"
     }
   ],
   "version": 1,
