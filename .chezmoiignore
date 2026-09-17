@@ -60,12 +60,12 @@ Projects/fleetchaser/
 .local/share/applications/DL-Chrome-FCChat.desktop
 .local/share/applications/DL-Chrome-FCTasks.desktop
 .local/share/applications/DL-Chrome-Work.desktop
-.local/share/applications/FC Chat.desktop
-.local/share/applications/FC Gmail.desktop
-.local/share/applications/FC Tasks.desktop
+.local/share/applications/FC-Chat.desktop
+.local/share/applications/FC-Gmail.desktop
+.local/share/applications/FC-Tasks.desktop
 .local/share/applications/FC-Dialpad.desktop
 .local/share/applications/Linear.desktop
-.local/share/applications/Work Mode.desktop
+.local/share/applications/Work-Mode.desktop
 .local/share/applications/icons/Dialpad.png
 .local/share/applications/icons/FC Chat.png
 .local/share/applications/icons/FC Gmail.png

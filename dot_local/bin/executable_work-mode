@@ -68,18 +68,18 @@ ENTRY_DIRS=("$HOME/.local/share/applications" /usr/share/applications)
 # <desktop entry>|<workspace>|<class regex, only where it cannot be derived>
 APPS=(
   'spotify.desktop|special:spotify|^spotify$'
-  'FC Chat.desktop|2|'
-  'FC Tasks.desktop|3|'
+  'FC-Chat.desktop|2|'
+  'FC-Tasks.desktop|3|'
   'DL-Chrome-Work.desktop|1|'
   'FC-Dialpad.desktop|2|'
-  'FC Gmail.desktop|2|'
+  'FC-Gmail.desktop|2|'
   'Linear.desktop|3|'
 )
 
 # Columns "|" left to right, entries "," stacked top to bottom within a column.
-LAYOUT_2='FC-Dialpad.desktop,FC Chat.desktop | FC Gmail.desktop'
+LAYOUT_2='FC-Dialpad.desktop,FC-Chat.desktop | FC-Gmail.desktop'
 WIDTHS_2=(0.556)
-LAYOUT_3='Linear.desktop | FC Tasks.desktop'
+LAYOUT_3='Linear.desktop | FC-Tasks.desktop'
 WIDTHS_3=()
 
 BROWSER_CLASS='^chromium$'

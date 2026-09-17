@@ -15,25 +15,35 @@
 #   foot --app-id=probe &           # appears in the testbed, not on your screen
 #   hypr-testbed stop
 #
-# It runs nested: Hyprland's Wayland backend draws into one window in the host
-# session, and the extra monitors are virtual outputs added at runtime. Aquamarine
-# 0.15.1 has no headless-only backend (CBackend::create() fails with no
-# WAYLAND_DISPLAY), so a host Wayland session is required — this cannot run over a
-# bare SSH shell. The nested window is parked on PARK_WS and never focused.
+# It runs nested: Hyprland's Wayland backend needs one window in the host session to
+# start, and every monitor it actually uses is a virtual output added at runtime.
+# Once those exist the starting window is removed, so the running testbed has no
+# window in the host session at all — nothing to see, nothing to focus, nothing in
+# the way. Set HYPR_TESTBED_VISIBLE=1 to keep it (parked on PARK_WS) when the point
+# is to watch. Aquamarine 0.15.1 has no headless-only backend (CBackend::create()
+# fails with no WAYLAND_DISPLAY), so a host Wayland session is still required: this
+# cannot run over a bare SSH shell.
 #
 # Layout settings are copied from the omarchy session so a layout that passes here
 # behaves the same there. The workspace-to-monitor map mirrors the real one:
 # ws 1 -> first monitor, ws 2 -> second, ws 3 and up -> third.
 #
-# Not isolated: anything that talks to an already-running singleton escapes into
-# the host session. A chromium web app for a profile whose browser process is
-# already running in the host session opens ITS window in the host session, not
-# here. Test those with a throwaway --user-data-dir, or with stand-in windows
-# (`foot --app-id=<the class>`).
+# Chromium is handled: the testbed exports CHROMIUM_USER_DATA_DIR pointing at its
+# own profile tree, which chromium-profile-launch passes to Chromium as
+# --user-data-dir. Without that a launch is handed to the Chromium that already
+# owns the real data dir and the window opens in the host session. The profile
+# names are copied from the real Local State so a web app resolves to the same
+# profile directory, and therefore to the same WM_CLASS, as it does for real.
+#
+# Anything else that talks to an already-running singleton still escapes the same
+# way; a stand-in window (`foot --app-id=<the class>`) is the fallback.
 
 set -uo pipefail
 
 STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr-testbed"
+# Chromium's data dir is a real profile tree, so it lives on disk rather than in
+# the tmpfs runtime dir, and it is kept between runs so test logins survive.
+CHROMIUM_DIR="${HYPR_TESTBED_CHROMIUM_DIR:-$HOME/.cache/hypr-testbed/chromium}"
 STATE="$STATE_DIR/state"
 CONFIG="$STATE_DIR/config.lua"
 LOG="$STATE_DIR/hyprland.log"
@@ -59,6 +69,21 @@ host_signature() {
 # write_config <monitor count>. The nested compositor always names its own output
 # WAYLAND-1 and the ones added at runtime HEADLESS-1, HEADLESS-2, ... so the rules
 # can be written before those outputs exist; Hyprland applies each when it appears.
+# Chromium numbers profile directories in creation order, so a fresh data dir would
+# hand out different directories and every derived WM_CLASS would change. Seeding
+# the name-to-directory map up front keeps the testbed's classes identical to the
+# real session's. Only names are copied; nothing else from the real profile.
+seed_chromium() {
+  local real="$HOME/.config/chromium/Local State"
+
+  mkdir -p "$CHROMIUM_DIR"
+  [[ -e "$CHROMIUM_DIR/Local State" ]] && return 0
+  [[ -r "$real" ]] || { printf 'hypr-testbed: no real Local State to copy profile names from\n' >&2; return 0; }
+
+  jq '{ profile: { info_cache: (.profile.info_cache | with_entries(.value |= { name: .name, user_name: .user_name })) } }' \
+    "$real" > "$CHROMIUM_DIR/Local State"
+}
+
 write_config() {
   local monitors="$1" n target
 
@@ -74,11 +99,7 @@ hl.config({
 LUA
 
   for n in $(seq 1 10); do
-    if ((n == 1)); then target="WAYLAND-1"
-    elif ((n < monitors)); then target="HEADLESS-$((n - 1))"
-    else target="HEADLESS-$((monitors - 1))"
-    fi
-    ((monitors == 1)) && target="WAYLAND-1"
+    if ((n < monitors)); then target="HEADLESS-$n"; else target="HEADLESS-$monitors"; fi
     printf 'hl.workspace_rule({ workspace = "%s", monitor = "%s" })\n' "$n" "$target" >> "$CONFIG"
   done
 }
@@ -92,6 +113,7 @@ start() {
 
   host="$(host_signature)" || die "no live Hyprland to nest inside"
   mkdir -p "$STATE_DIR"
+  seed_chromium
   write_config "$monitors"
 
   # Hyprland picks the next free wayland-N for its own socket; which one it took is
@@ -116,19 +138,26 @@ start() {
   display="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -1)"
   [[ -n "$display" ]] || die "cannot tell which wayland socket the testbed took"
 
-  for ((i = 1; i < monitors; i++)); do
+  for ((i = 0; i < monitors; i++)); do
     HYPRLAND_INSTANCE_SIGNATURE="$nested" hyprctl output create headless >/dev/null
   done
   sleep 0.5
 
+  # The window Hyprland needed to start is not one of the monitors under test, and
+  # removing it once the virtual ones exist leaves nothing in the host session.
+  if [[ -n "${HYPR_TESTBED_VISIBLE:-}" ]]; then
+    park "$host" "$nested"
+  else
+    HYPRLAND_INSTANCE_SIGNATURE="$nested" hyprctl output remove WAYLAND-1 >/dev/null
+    sleep 0.3
+  fi
+
   local names=()
   mapfile -t names < <(HYPRLAND_INSTANCE_SIGNATURE="$nested" hyprctl monitors -j | jq -r '.[].name')
 
-  park "$host" "$nested"
-
   printf 'SIG=%s\nDISPLAY=%s\nHOST=%s\n' "$nested" "$display" "$host" > "$STATE"
-  printf 'hypr-testbed: up, %s monitors, nested window parked on host workspace %s\n' \
-    "${#names[@]}" "$PARK_WS" >&2
+  printf 'hypr-testbed: up, %s monitors, %s\n' "${#names[@]}" \
+    "${HYPR_TESTBED_VISIBLE:+visible, parked on host workspace $PARK_WS}${HYPR_TESTBED_VISIBLE:-invisible in the host session}" >&2
   env_for_eval
 }
 
@@ -151,8 +180,8 @@ running() {
 
 env_for_eval() {
   running || die "not running"
-  printf 'export HYPRLAND_INSTANCE_SIGNATURE=%s\nexport WAYLAND_DISPLAY=%s\n' \
-    "$(sed -n 's/^SIG=//p' "$STATE")" "$(sed -n 's/^DISPLAY=//p' "$STATE")"
+  printf 'export HYPRLAND_INSTANCE_SIGNATURE=%s\nexport WAYLAND_DISPLAY=%s\nexport CHROMIUM_USER_DATA_DIR=%s\n' \
+    "$(sed -n 's/^SIG=//p' "$STATE")" "$(sed -n 's/^DISPLAY=//p' "$STATE")" "$CHROMIUM_DIR"
 }
 
 stop() {
@@ -168,7 +197,8 @@ case "${1:-}" in
   run)    shift; [[ $# -gt 0 ]] || die "run needs a command"
           running || die "not running"
           env HYPRLAND_INSTANCE_SIGNATURE="$(sed -n 's/^SIG=//p' "$STATE")" \
-              WAYLAND_DISPLAY="$(sed -n 's/^DISPLAY=//p' "$STATE")" "$@" ;;
+              WAYLAND_DISPLAY="$(sed -n 's/^DISPLAY=//p' "$STATE")" \
+              CHROMIUM_USER_DATA_DIR="$CHROMIUM_DIR" "$@" ;;
   status) if running; then
             sig="$(sed -n 's/^SIG=//p' "$STATE")"
             printf 'running: %s\n' "$sig"
