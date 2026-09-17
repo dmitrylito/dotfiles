@@ -139,8 +139,8 @@ end
 hl.unbind("SUPER + S") -- Omarchy default: Toggle scratchpad
 hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad (fit current monitor)" })
 
-o.bind("SUPER + A", "Toggle AI scratchpad", hl.dsp.workspace.toggle_special("AI"))
-o.bind("SUPER + ALT + A", "Move window to AI", hl.dsp.window.move({ workspace = "special:AI", follow = false }))
+o.bind("SUPER + A", "Toggle scratchpad A", hl.dsp.workspace.toggle_special("A"))
+o.bind("SUPER + ALT + A", "Move window to AI", hl.dsp.window.move({ workspace = "special:A", follow = false }))
 
 -- Focusing a window on a hidden special workspace does not reveal it, so toggle the
 -- workspace; chezmoi.lua's rule is silent (work-mode needs that), so a cold launch
