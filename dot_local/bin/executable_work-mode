@@ -87,14 +87,27 @@ BROWSER_CLASS='^chromium$'
 # Rebuilding a layout parks windows here first. Never displayed.
 STAGE_WS=90
 
-# Recover the Hyprland instance signature when launched from a bare .desktop env.
-if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
-  sig_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr"
-  HYPRLAND_INSTANCE_SIGNATURE="$(ls -t "$sig_dir" 2>/dev/null | head -1)"
+log() { printf '[work-mode] %s\n' "$*" >&2; }
+
+# Recover the Hyprland instance signature when launched from a bare .desktop env,
+# or when the inherited one is stale. The runtime directory keeps the signatures of
+# previous sessions and some of them still hold a .socket.sock, so neither "the
+# newest" nor "the one in the environment" is reliably the live compositor — every
+# candidate is asked before it is used. Guessing wrong is not a quick failure:
+# every lookup then returns nothing and the script waits out each app's timeout.
+hypr_signature() {
+  local sig
+  for sig in $(ls -t "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr" 2>/dev/null); do
+    HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl version >/dev/null 2>&1 \
+      && { printf '%s\n' "$sig"; return 0; }
+  done
+  return 1
+}
+
+if ! hyprctl version >/dev/null 2>&1; then
+  HYPRLAND_INSTANCE_SIGNATURE="$(hypr_signature)" || { log "FATAL no Hyprland to talk to"; exit 1; }
   export HYPRLAND_INSTANCE_SIGNATURE
 fi
-
-log() { printf '[work-mode] %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------- event socket
 
