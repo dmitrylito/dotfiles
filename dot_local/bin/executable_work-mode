@@ -3,8 +3,8 @@
 # work-mode — open the "work" apps and place them predictably.
 #
 #   ws 1 : work browser (chromium, "Work" profile)
-#   ws 2 : Dialpad | FC Gmail
-#   ws 3 : FC Chat | Linear | FC Tasks   (one row, three columns)
+#   ws 2 : Dialpad over FC Chat | FC Gmail
+#   ws 3 : Linear | FC Tasks
 #   scratchpad : Spotify
 #
 # Every app is its ~/.local/share/applications entry, launched through uwsm-app
@@ -12,12 +12,14 @@
 # repeated here: the profile and the URL live in the entry's Exec line (which goes
 # through ~/.local/bin/chromium-profile-launch), so editing the entry changes what
 # work-mode opens, and the window it opens is the one the launcher already knows.
-# Only the workspace and the column order are this script's own.
+# Only the workspace and the layout below are this script's own.
 #
-# Every run re-applies the whole layout, whether or not anything was launched:
-# each window is moved to its assigned workspace even when it was already open on
-# the wrong one, then ws 2 and ws 3 are rebuilt into the column order above and
-# the widths re-applied. A row already in the right order is left alone.
+# A layout is columns left to right, separated by "|", each holding one or more
+# entries stacked top to bottom, separated by ",". Splits are even unless a width
+# fraction is given. Every run re-applies the whole thing, whether or not anything
+# was launched: a window already open on the wrong workspace is moved, and a
+# workspace whose tree drifted is rebuilt. A layout already correct is left alone,
+# because the churn of rebuilding it is visible.
 #
 # Nothing reads the workspace the script was invoked from, so it can be run from
 # any workspace; the focused window is restored at the end.
@@ -30,26 +32,32 @@
 # share nothing and start in parallel. Spotify reaches its scratchpad through a
 # silent window rule in chezmoi.lua, so it never flashes over the foreground.
 #
+# Waiting is driven by Hyprland's event socket rather than by polling: every
+# dispatch that has an event confirming it (a move, a focus) is waited on instead
+# of slept through, so the script runs at the speed Hyprland actually works at.
+# Addresses arrive from the socket without their "0x", hence the ${addr#0x} below.
+#
 # Device-agnostic by construction — nothing machine-specific is hardcoded:
 #   * Chromium numbers profile DIRECTORIES in creation order, so "Profile 3" is a
 #     different account on another machine. chromium-profile-launch resolves a
 #     profile's display name to its directory out of Local State.
 #   * The WM_CLASS of an Omarchy web app is derived from the URL plus that resolved
 #     directory (chrome-<host>__<path>-<Profile_Dir>), so URL and class cannot drift.
-#   * Column widths are stored as fractions of the row and turned into pixels from
-#     the live window sizes, so no monitor resolution is baked in.
+#   * Widths are fractions of the row, turned into pixels from the live window
+#     sizes, so no monitor resolution is baked in.
 # Still device-dependent: which monitor each workspace lives on — that is
 # workspaces.lua (nwg-displays output, per-device and chezmoi-ignored).
 #
 # Hyprland 0.56 parses its config in Lua, which changed how a script drives it:
 #   * `hyprctl keyword ...` is refused outright ("keyword can't work with
-#     non-legacy parsers"), so the transient class-matched windowrules this
-#     script used for placement are gone. `hl.window_rule` can be added at
-#     runtime but never removed, so it is no worse than useless here.
+#     non-legacy parsers"), so transient class-matched windowrules are gone, and
+#     `hl.window_rule` can be added at runtime but never removed.
 #   * `hyprctl dispatch` arguments are now a Lua expression:
 #     `hyprctl dispatch 'hl.dsp.window.move({ workspace = "4" })'`.
 #   * dwindle's splitratio dispatcher takes a delta only ("exact" is refused), so
 #     widths are set with hl.dsp.window.resize({ exact = true, ... }) instead.
+#   * There is no dispatcher that reorders a dwindle tree and no preselect, so a
+#     layout is rebuilt by re-inserting windows one at a time (see rebuild).
 
 set -uo pipefail
 export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
@@ -60,7 +68,7 @@ ENTRY_DIRS=("$HOME/.local/share/applications" /usr/share/applications)
 # <desktop entry>|<workspace>|<class regex, only where it cannot be derived>
 APPS=(
   'spotify.desktop|special:spotify|^spotify$'
-  'FC Chat.desktop|3|'
+  'FC Chat.desktop|2|'
   'FC Tasks.desktop|3|'
   'DL-Chrome-Work.desktop|1|'
   'FC-Dialpad.desktop|2|'
@@ -68,14 +76,16 @@ APPS=(
   'Linear.desktop|3|'
 )
 
-# Left-to-right column order, and each column's share of the row it and the
-# columns after it occupy (a snapshot of the live layout).
-ROW2=('FC-Dialpad.desktop' 'FC Gmail.desktop')
-ROW2_FRACS=(0.556)
-ROW3=('FC Chat.desktop' 'Linear.desktop' 'FC Tasks.desktop')
-ROW3_FRACS=(0.251 0.326)
+# Columns "|" left to right, entries "," stacked top to bottom within a column.
+LAYOUT_2='FC-Dialpad.desktop,FC Chat.desktop | FC Gmail.desktop'
+WIDTHS_2=(0.556)
+LAYOUT_3='Linear.desktop | FC Tasks.desktop'
+WIDTHS_3=()
 
 BROWSER_CLASS='^chromium$'
+
+# Rebuilding a layout parks windows here first. Never displayed.
+STAGE_WS=90
 
 # Recover the Hyprland instance signature when launched from a bare .desktop env.
 if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
@@ -86,6 +96,47 @@ fi
 
 log() { printf '[work-mode] %s\n' "$*" >&2; }
 
+# ---------------------------------------------------------------- event socket
+
+EVENT_LOG=""
+EVENT_PID=""
+
+events_stop() {
+  [[ -n "$EVENT_PID" ]] && kill "$EVENT_PID" 2>/dev/null
+  [[ -n "$EVENT_LOG" ]] && rm -f "$EVENT_LOG"
+}
+trap events_stop EXIT
+
+events_start() {
+  local sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+  command -v socat >/dev/null || { log "WARN  no socat; falling back to fixed waits"; return 1; }
+  [[ -S "$sock" ]] || { log "WARN  no event socket; falling back to fixed waits"; return 1; }
+
+  EVENT_LOG="$(mktemp -t work-mode-events.XXXXXX)"
+  socat -u "UNIX-CONNECT:$sock" - >"$EVENT_LOG" 2>/dev/null &
+  EVENT_PID=$!
+}
+
+# A line number to wait from. Taken BEFORE the dispatch, so an event that lands
+# between the dispatch and the read is still seen.
+event_mark() {
+  [[ -n "$EVENT_LOG" ]] && wc -l <"$EVENT_LOG" || echo 0
+}
+
+# await <mark> <extended regex> <timeout seconds> — true once a matching event
+# arrives. Without an event socket this is the fixed wait it replaced.
+await() {
+  local mark="$1" re="$2" timeout="$3" line
+  # Without an event socket there is nothing to wait on, so fall back to a short
+  # fixed pause rather than burning the whole timeout.
+  [[ -n "$EVENT_LOG" ]] || { sleep 0.3; return 0; }
+
+  while IFS= read -r line; do
+    [[ "$line" =~ $re ]] && return 0
+  done < <(timeout "$timeout" tail -n "+$((mark + 1))" -f "$EVENT_LOG" 2>/dev/null)
+  return 1
+}
+
 dispatch() {
   local out
   out="$(hyprctl dispatch "$1" 2>&1 | tail -1)"
@@ -94,8 +145,7 @@ dispatch() {
   return 1
 }
 
-# Rebuilding a row (see rebuild_row) parks windows here first. Never displayed.
-STAGE_WS=90
+# ------------------------------------------------------------- desktop entries
 
 entry_path() {
   local d
@@ -123,6 +173,8 @@ anchored_re() {
   printf '^%s$\n' "${1//./\\.}"
 }
 
+# ------------------------------------------------------------- window geometry
+
 addr_of() {
   hyprctl clients -j \
     | jq -r --arg c "$1" 'first(.[] | select(.class | test($c)) | .address) // empty'
@@ -135,124 +187,205 @@ ws_of() {
     | jq -r --arg a "$1" 'first(.[] | select(.address == $a) | .workspace.name) // empty'
 }
 
-win_size() {
-  hyprctl clients -j \
-    | jq -r --arg a "$1" --argjson i "$2" 'first(.[] | select(.address == $a) | .size[$i]) // empty'
+# geom <addr> -> "x y w h"
+geom() {
+  hyprctl clients -j | jq -r --arg a "$1" \
+    'first(.[] | select(.address == $a) | "\(.at[0]) \(.at[1]) \(.size[0]) \(.size[1])") // empty'
 }
 
+# ------------------------------------------------------------------- placement
+
+# place <addr> <workspace> <label> — put a window on its workspace. hyprctl answers
+# "ok" for a dispatch that matched nothing, so the landing workspace is read back
+# rather than trusted.
+place() {
+  local addr="$1" ws="$2" label="$3" mark
+  [[ -n "$addr" ]] || return 1
+  [[ "$(ws_of "$addr")" == "$ws" ]] && return 0
+
+  mark="$(event_mark)"
+  dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
+  await "$mark" "^movewindowv2>>${addr#0x}," 2
+
+  if [[ "$(ws_of "$addr")" == "$ws" ]]; then
+    log "move  $label -> workspace $ws"
+    return 0
+  fi
+  log "WARN  $label stayed on workspace $(ws_of "$addr"), wanted $ws"
+  return 1
+}
+
+move_to() {
+  local addr="$1" ws="$2" mark
+  mark="$(event_mark)"
+  dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
+  await "$mark" "^movewindowv2>>${addr#0x}," 2
+}
+
+focus_window() {
+  local addr="$1" mark
+  mark="$(event_mark)"
+  dispatch "hl.dsp.focus({ window = \"address:$addr\" })"
+  await "$mark" "^activewindowv2>>${addr#0x}$" 2
+}
+
+# Wait for a window of this class to exist. Driven by openwindow events, but the
+# client list is what answers: a class read off the event can lag what Hyprland
+# ends up matching rules against.
+wait_for() {
+  local re="$1" deadline=$((SECONDS + 30)) addr mark
+
+  while :; do
+    addr="$(addr_of "$re")"
+    [[ -n "$addr" ]] && { printf '%s\n' "$addr"; return 0; }
+    ((SECONDS >= deadline)) && return 1
+
+    mark="$(event_mark)"
+    await "$mark" '^openwindow>>' 2
+  done
+}
+
+# ---------------------------------------------------------------------- layout
+
 # set_width <addr> <fraction> <sibling-addr>... — give <addr> that fraction of the
-# width its row currently occupies. Pixels, not a split ratio: dwindle's splitratio
-# dispatcher only accepts a delta, and the row width is read live so nothing
+# width it and its siblings currently occupy. Pixels, not a split ratio: dwindle's
+# splitratio dispatcher only accepts a delta, and the width is read live so nothing
 # resolution-specific is stored.
 set_width() {
   local addr="$1" frac="$2"; shift 2
-  local total=0 a w h
+  local total=0 a x y w h
+
   for a in "$addr" "$@"; do
-    w="$(win_size "$a" 0)"
+    read -r x y w h <<<"$(geom "$a")"
     [[ -n "$w" ]] || { log "WARN  set_width: window $a is gone"; return 1; }
     total=$((total + w))
   done
-  h="$(win_size "$addr" 1)"
+
+  read -r x y w h <<<"$(geom "$addr")"
   w="$(awk -v t="$total" -v f="$frac" 'BEGIN { printf "%d", t * f + 0.5 }')"
   dispatch "hl.dsp.window.resize({ x = $w, y = $h, exact = true, window = \"address:$addr\" })"
 }
 
-win_at() {
-  hyprctl clients -j \
-    | jq -r --arg a "$1" --argjson i "$2" 'first(.[] | select(.address == $a) | .at[$i]) // empty'
+# insert <anchor> <addr> <h|v> — bring a parked window back beside or below the
+# anchor. force_split=2 always drops it right/bottom of the focused window, and
+# preserve_split=true makes it inherit the parent's axis; whichever of the two
+# wins, the result is measured and corrected with togglesplit rather than assumed.
+insert() {
+  local anchor="$1" addr="$2" dir="$3" ws="$4"
+  local ax ay aw ah nx ny nw nh wrong=0
+
+  focus_window "$anchor"
+  move_to "$addr" "$ws"
+
+  read -r ax ay aw ah <<<"$(geom "$anchor")"
+  read -r nx ny nw nh <<<"$(geom "$addr")"
+  [[ -n "$nx" && -n "$ax" ]] || return 1
+
+  case "$dir" in
+    h) ((ny > ay)) && wrong=1 ;;
+    v) ((nx > ax)) && wrong=1 ;;
+  esac
+
+  if ((wrong)); then
+    focus_window "$addr"
+    dispatch 'hl.dsp.layout("togglesplit")'
+    # Nothing is emitted for a layout change, so this one wait stays a sleep.
+    sleep 0.25
+  fi
 }
 
-# row_is_ok <addr>... — true when the windows already form one left-to-right row
-# in the given order: same top edge, same height, strictly increasing x.
-row_is_ok() {
-  local a y0="" h0="" prev_x="" x y h
-  for a in "$@"; do
-    x="$(win_at "$a" 0)"; y="$(win_at "$a" 1)"; h="$(win_size "$a" 1)"
-    [[ -n "$x" && -n "$y" && -n "$h" ]] || return 1
-    if [[ -z "$y0" ]]; then
-      y0="$y"; h0="$h"
+# layout_is_ok <columns...> where each column is a newline-separated address list.
+layout_is_ok() {
+  local col prev_x="" first=1 a x y w h col_x col_w prev_y
+  for col in "$@"; do
+    col_x=""; col_w=""; prev_y=""
+    while IFS= read -r a; do
+      [[ -n "$a" ]] || continue
+      read -r x y w h <<<"$(geom "$a")"
+      [[ -n "$x" ]] || return 1
+      if [[ -z "$col_x" ]]; then
+        col_x="$x"; col_w="$w"
+      else
+        [[ "$x" == "$col_x" && "$w" == "$col_w" && "$y" -gt "$prev_y" ]] || return 1
+      fi
+      prev_y="$y"
+    done <<<"$col"
+
+    if ((first)); then
+      first=0
     else
-      [[ "$y" == "$y0" && "$h" == "$h0" && "$x" -gt "$prev_x" ]] || return 1
+      [[ "$col_x" -gt "$prev_x" ]] || return 1
     fi
-    prev_x="$x"
+    prev_x="$col_x"
   done
   return 0
 }
 
-# rebuild_row <workspace> <addr>... — force the workspace into one left-to-right
-# row in the given order. There is no dispatcher that reorders a dwindle tree, so
-# every window after the first is parked on STAGE_WS and re-inserted anchored on
-# the one before it. Two config settings shape the result and both are handled:
-# force_split=2 always drops the re-inserted window right/bottom of the focused
-# one (so insertion order IS left-to-right order), and preserve_split=true makes
-# it inherit the parent's axis, which stacks it — corrected with togglesplit.
-# No-op when the row is already correct, because the churn is visible.
-rebuild_row() {
+# rebuild <workspace> <column>... — force the workspace into the given columns.
+# The head of every column is inserted first, left to right, so that a column with
+# several windows becomes the sibling of the whole next column rather than of its
+# top window; only then is each column stacked. Going the other way would need
+# preselect, which 0.56's Lua dispatcher set does not have.
+rebuild() {
   local ws="$1"; shift
-  local prev="$1"; shift
-  local rest=("$@") a stray=""
+  local cols=("$@") col a heads=() rest=() first="" prev head
 
-  row_is_ok "$prev" "${rest[@]}" && return 0
-  log "fix   workspace $ws column order"
-
-  for a in "${rest[@]}"; do
-    dispatch "hl.dsp.window.move({ workspace = \"$STAGE_WS\", follow = false, window = \"address:$a\" })"
+  for col in "${cols[@]}"; do
+    head=""
+    while IFS= read -r a; do
+      [[ -n "$a" ]] || continue
+      if [[ -z "$head" ]]; then head="$a"; heads+=("$a")
+      else rest+=("$head|$a"); head="$a"
+      fi
+    done <<<"$col"
   done
-  sleep 0.3
 
-  for a in "${rest[@]}"; do
-    dispatch "hl.dsp.focus({ window = \"address:$prev\" })"
-    sleep 0.2
-    dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$a\" })"
-    sleep 0.3
-    # Landed below the anchor instead of beside it: flip that node's split.
-    if [[ "$(win_at "$a" 1)" -gt "$(win_at "$prev" 1)" ]]; then
-      dispatch "hl.dsp.focus({ window = \"address:$a\" })"
-      sleep 0.2
-      dispatch 'hl.dsp.layout("togglesplit")'
-      sleep 0.3
-    fi
+  first="${heads[0]}"
+  for a in "${heads[@]:1}" ; do move_to "$a" "$STAGE_WS"; done
+  for a in "${rest[@]}"; do move_to "${a#*|}" "$STAGE_WS"; done
+
+  prev="$first"
+  for a in "${heads[@]:1}"; do
+    insert "$prev" "$a" h "$ws"
     prev="$a"
   done
-
   for a in "${rest[@]}"; do
-    [[ "$(hyprctl clients -j | jq -r --arg a "$a" \
-         'first(.[] | select(.address == $a) | .workspace.id) // empty')" == "$ws" ]] \
-      || stray+=" $a"
+    insert "${a%%|*}" "${a#*|}" v "$ws"
   done
-  [[ -z "$stray" ]] || log "WARN  stranded on workspace $STAGE_WS:$stray"
 }
 
-# Poll up to 30s for a window matching the class regex to map. Cold chromium
-# profiles start in parallel, so the slowest one is waited on while the others are
-# already up — the budget is per app, not per run.
-wait_for() {
-  local addr="" i
-  for ((i = 0; i < 120; i++)); do
-    addr="$(addr_of "$1")"
-    [[ -n "$addr" ]] && { printf '%s\n' "$addr"; return 0; }
-    sleep 0.25
-  done
-  return 1
-}
+# apply_layout <workspace> <layout string> <width fraction>...
+apply_layout() {
+  local ws="$1" spec="$2"; shift 2
+  local fracs=("$@") cols=() heads=() parts=() members=() part entry addrs a i
 
-# place <addr> <workspace> <label> — put a window on its workspace. hyprctl answers
-# "ok" for a dispatch that matched nothing, so the landing workspace is read back
-# rather than trusted, and a move that never took effect is reported.
-place() {
-  local addr="$1" ws="$2" label="$3" i
-  [[ -n "$addr" ]] || return 1
-  [[ "$(ws_of "$addr")" == "$ws" ]] && return 0
-
-  dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
-  for ((i = 0; i < 10; i++)); do
-    sleep 0.2
-    [[ "$(ws_of "$addr")" == "$ws" ]] && { log "move  $label -> workspace $ws"; return 0; }
+  IFS='|' read -r -a parts <<<"$spec"
+  for part in "${parts[@]}"; do
+    addrs=""
+    IFS=',' read -r -a members <<<"$part"
+    for entry in "${members[@]}"; do
+      entry="${entry#"${entry%%[![:space:]]*}"}"
+      entry="${entry%"${entry##*[![:space:]]}"}"
+      a="${ADDR[$entry]:-}"
+      [[ -n "$a" ]] || { log "WARN  workspace $ws layout skipped: $entry is not open"; return 0; }
+      addrs+="${addrs:+$'\n'}$a"
+    done
+    cols+=("$addrs")
+    heads+=("${addrs%%$'\n'*}")
   done
 
-  log "WARN  $label stayed on workspace $(ws_of "$addr"), wanted $ws"
-  return 1
+  if ! layout_is_ok "${cols[@]}"; then
+    log "fix   workspace $ws layout"
+    rebuild "$ws" "${cols[@]}"
+  fi
+
+  for i in "${!fracs[@]}"; do
+    [[ -n "${fracs[$i]}" ]] || continue
+    set_width "${heads[$i]}" "${fracs[$i]}" "${heads[@]:$i+1}"
+  done
 }
+
+# ------------------------------------------------------------------------ main
 
 declare -A E_FILE E_LABEL E_WS E_CLASS E_PROFILE E_URL ADDR
 ENTRIES=()
@@ -307,6 +440,7 @@ spawn() {
   setsid -f uwsm-app -- "${E_FILE[$name]}" >/dev/null 2>&1
 }
 
+events_start
 FOCUS_ADDR="$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')"
 
 # The entry that opens a plain browser window owns its profile's process, so it is
@@ -338,28 +472,9 @@ for name in "${ENTRIES[@]}"; do
   place "$addr" "${E_WS[$name]}" "${E_LABEL[$name]}"
 done
 
-# A newly inserted window splits whichever window Hyprland last considered active
-# on that workspace, so the column order is otherwise luck. Both rows are rebuilt
-# into their intended order on every run, not only after a launch.
-apply_row() {
-  local ws="$1"; shift
-  local -n row="$1" fracs="$2"
-  local addrs=() name i
+apply_layout 2 "$LAYOUT_2" ${WIDTHS_2[@]+"${WIDTHS_2[@]}"}
+apply_layout 3 "$LAYOUT_3" ${WIDTHS_3[@]+"${WIDTHS_3[@]}"}
 
-  for name in "${row[@]}"; do
-    [[ -n "${ADDR[$name]:-}" ]] || return 0
-    addrs+=("${ADDR[$name]}")
-  done
-
-  rebuild_row "$ws" "${addrs[@]}"
-  for i in "${!fracs[@]}"; do
-    set_width "${addrs[$i]}" "${fracs[$i]}" "${addrs[@]:$i+1}"
-  done
-}
-
-apply_row 2 ROW2 ROW2_FRACS
-apply_row 3 ROW3 ROW3_FRACS
-
-[[ -n "$FOCUS_ADDR" ]] && dispatch "hl.dsp.focus({ window = \"address:$FOCUS_ADDR\" })"
+[[ -n "$FOCUS_ADDR" ]] && focus_window "$FOCUS_ADDR"
 
 log "done"
