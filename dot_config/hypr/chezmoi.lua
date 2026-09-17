@@ -53,9 +53,10 @@ hl.on("monitor.layout_changed", configure_lg_dual_mode)
 -- Float Chromium extension windows and keep PiP floating + pinned.
 -- o.window({ class = "^(chromium)$", title = "^(Picture-in-Picture)$" }, { float = true, pin = true })
 -- o.window({ class = "^(chromium)$", title = "^(Extension:.*)$" }, { float = true })
--- Not silent: a cold launch has to reveal the workspace itself, since the binding
--- cannot toggle it before the window maps. Nothing autostarts spotify.
-o.window({ class = "^(spotify)$" }, { workspace = "special:spotify" })
+-- Silent, so a launch never flashes the scratchpad over whatever is in front (this
+-- is how work-mode starts it). SUPER + D reveals it after a cold launch instead --
+-- see spotify_toggle in bindings.lua. Nothing autostarts spotify.
+o.window({ class = "^(spotify)$" }, { workspace = "special:spotify silent" })
 o.window({ class = "^(steam)$", title = "^(Counter-Strike 2)$" }, { workspace = "1 silent" })
 o.window({ class = "^(cs2)$" }, { fullscreen = true, immediate = true, workspace = "1 silent" })
 o.window({ class = "^(gamescope)$" }, { workspace = "1 silent" })

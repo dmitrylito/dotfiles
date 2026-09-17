@@ -470,12 +470,28 @@ hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad (fit cu
 o.bind("SUPER + A", "Toggle AI scratchpad", hl.dsp.workspace.toggle_special("AI"))
 o.bind("SUPER + ALT + A", "Move window to AI", hl.dsp.window.move({ workspace = "special:AI", follow = false }))
 
--- hyprland.lua sends spotify to special:spotify, and focusing a window on a hidden
--- special workspace does not reveal it, so show the workspace instead of the window.
+-- chezmoi.lua sends spotify to special:spotify silently, and focusing a window on a
+-- hidden special workspace does not reveal it, so show the workspace instead of the
+-- window. The silent rule means a cold launch has to be revealed here once the
+-- window exists; the rule stays silent so work-mode can start spotify unseen.
 -- get_windows' class filter is a substring match, not a regex.
+local function spotify_reveal_when_mapped(attempts)
+	if #hl.get_windows({ class = "spotify" }) > 0 then
+		hl.dispatch(hl.dsp.workspace.toggle_special("spotify"))
+		return
+	end
+	if attempts <= 0 then
+		return
+	end
+	hl.timer(function()
+		spotify_reveal_when_mapped(attempts - 1)
+	end, { timeout = 250, type = "oneshot" })
+end
+
 local function spotify_toggle()
 	if #hl.get_windows({ class = "spotify" }) == 0 then
 		hl.exec_cmd(o.launch("spotify"))
+		spotify_reveal_when_mapped(80)
 		return
 	end
 	hl.dispatch(hl.dsp.workspace.toggle_special("spotify"))

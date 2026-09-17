@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# work-mode — open the "work" apps and place newly opened windows predictably.
+# work-mode — open the "work" apps and place them predictably.
 #
 #   ws 1 : work browser (chromium, "Work" profile)
 #   ws 2 : Dialpad | FC Gmail
@@ -14,6 +14,14 @@
 #
 # Nothing reads the workspace the script was invoked from, so it can be run from
 # any workspace; the focused window is restored at the end.
+#
+# Launching is a separate phase from placing, so the cold starts overlap instead
+# of running end to end. Ordering is only enforced WITHIN a chromium profile: the
+# first window of a profile starts that profile's singleton process, and firing
+# several --app invocations at a cold profile at once races on its lock. Separate
+# profiles share nothing, so they start in parallel. Spotify is spawned first and
+# reaches its scratchpad through a silent window rule in chezmoi.lua, so it never
+# flashes over the foreground.
 #
 # Device-agnostic by construction — nothing machine-specific is hardcoded:
 #   * Chromium numbers profile DIRECTORIES in creation order, so "Profile 3" is a
@@ -45,6 +53,16 @@ CHROMIUM_STATE="${CHROMIUM_USER_DATA_DIR:-$HOME/.config/chromium}/Local State"
 WORK_PROFILE='Work'
 CHAT_PROFILE='FC Chat'
 TASKS_PROFILE='FC Tasks'
+
+DIALPAD_URL='https://dialpad.com/app/'
+GMAIL_URL='https://mail.google.com/mail/u/0/#inbox'
+LINEAR_URL='https://linear.app/fleetchaser/agent'
+CHAT_URL='https://console.fleetchaser.com/chats'
+TASKS_URL='https://console.fleetchaser.com/tasks'
+
+BROWSER_CLASS='^chromium$'
+SPOTIFY_CLASS='^spotify$'
+SPOTIFY_WS='special:spotify'
 
 # Column widths as a fraction of the row they share (snapshot of the live layout).
 DIALPAD_FRAC=0.556   # Dialpad within Dialpad+Gmail
@@ -94,6 +112,11 @@ webapp_class() {
 # The class only ever holds [A-Za-z0-9._-], so "." is the sole regex metacharacter.
 anchored_re() {
   printf '^%s$\n' "${1//./\\.}"
+}
+
+# webapp_re <url> <profile-dir>
+webapp_re() {
+  anchored_re "$(webapp_class "$1" "$2")"
 }
 
 addr_of() {
@@ -196,10 +219,12 @@ rebuild_row() {
   [[ -z "$stray" ]] || log "WARN  stranded on workspace $STAGE_WS:$stray"
 }
 
-# Poll up to 15s for a window matching the class regex to map.
+# Poll up to 30s for a window matching the class regex to map. Cold chromium
+# profiles now start in parallel, so the slowest one is waited on while the others
+# are already up — the budget is per app, not per run.
 wait_for() {
   local addr="" i
-  for ((i = 0; i < 60; i++)); do
+  for ((i = 0; i < 120; i++)); do
     addr="$(addr_of "$1")"
     [[ -n "$addr" ]] && { printf '%s\n' "$addr"; return 0; }
     sleep 0.25
@@ -225,51 +250,76 @@ place() {
   return 1
 }
 
-# launch <label> <class-regex> <workspace> <launch-cmd...> — sets WIN_ADDR.
-launch() {
-  local label="$1" class_re="$2" ws="$3"; shift 3
-  local addr
+# spawn <label> <class-regex> <launch-cmd...> — start an app without waiting for it.
+spawn() {
+  local label="$1" class_re="$2"; shift 2
 
-  WIN_ADDR=""
-
-  addr="$(addr_of "$class_re")"
-  if [[ -n "$addr" ]]; then
+  if [[ -n "$(addr_of "$class_re")" ]]; then
     log "skip  $label (already open)"
-  else
-    log "open  $label -> workspace $ws"
-    setsid -f "$@" >/dev/null 2>&1
-    addr="$(wait_for "$class_re")" || { log "WARN  $label window never appeared"; return 1; }
+    return 0
   fi
 
+  log "open  $label"
+  setsid -f "$@" >/dev/null 2>&1
+}
+
+# settle <label> <class-regex> <workspace> — wait for a spawned app, then place it.
+# Sets WIN_ADDR.
+settle() {
+  local label="$1" class_re="$2" ws="$3" addr
+  WIN_ADDR=""
+
+  addr="$(wait_for "$class_re")" || { log "WARN  $label window never appeared"; return 1; }
   place "$addr" "$ws" "$label"
   WIN_ADDR="$addr"
 }
 
-# webapp <label> <workspace> <profile> <url>
-webapp() {
-  local label="$1" ws="$2" profile="$3" url="$4" dir re
-  WIN_ADDR=""
-  dir="$(profile_dir "$profile")" || { log "WARN  skipping $label"; return 1; }
-  re="$(anchored_re "$(webapp_class "$url" "$dir")")"
-  launch "$label" "$re" "$ws" "$WEBAPP" "$url" --profile-directory="$dir"
-}
-
-BROWSER_CLASS='^chromium$'
-SPOTIFY_CLASS='^spotify$'
-
 FOCUS_ADDR="$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')"
 WIN_ADDR=""
 
-webapp 'Dialpad' 2 "$WORK_PROFILE" 'https://dialpad.com/app/'
-DIALPAD_ADDR="$WIN_ADDR"
+work_dir="$(profile_dir "$WORK_PROFILE")" || work_dir=""
+chat_dir="$(profile_dir "$CHAT_PROFILE")" || chat_dir=""
+tasks_dir="$(profile_dir "$TASKS_PROFILE")" || tasks_dir=""
 
-if work_dir="$(profile_dir "$WORK_PROFILE")"; then
-  launch 'Work browser' "$BROWSER_CLASS" 1 \
-    chromium --profile-directory="$work_dir"
+spawn 'Spotify' "$SPOTIFY_CLASS" spotify
+
+if [[ -n "$chat_dir" ]]; then
+  CHAT_RE="$(webapp_re "$CHAT_URL" "$chat_dir")"
+  spawn 'FC Chat' "$CHAT_RE" "$WEBAPP" "$CHAT_URL" --profile-directory="$chat_dir"
 fi
 
-webapp 'FC Gmail' 2 "$WORK_PROFILE" 'https://mail.google.com/mail/u/0/#inbox'
-GMAIL_ADDR="$WIN_ADDR"
+if [[ -n "$tasks_dir" ]]; then
+  TASKS_RE="$(webapp_re "$TASKS_URL" "$tasks_dir")"
+  spawn 'FC Tasks' "$TASKS_RE" "$WEBAPP" "$TASKS_URL" --profile-directory="$tasks_dir"
+fi
+
+if [[ -n "$work_dir" ]]; then
+  DIALPAD_RE="$(webapp_re "$DIALPAD_URL" "$work_dir")"
+  GMAIL_RE="$(webapp_re "$GMAIL_URL" "$work_dir")"
+  LINEAR_RE="$(webapp_re "$LINEAR_URL" "$work_dir")"
+
+  spawn 'Work browser' "$BROWSER_CLASS" chromium --profile-directory="$work_dir"
+  # The Work profile's other three windows are --app invocations against this same
+  # profile, so they wait for its singleton process rather than race it.
+  wait_for "$BROWSER_CLASS" >/dev/null || log "WARN  Work browser window never appeared"
+  spawn 'Dialpad' "$DIALPAD_RE" "$WEBAPP" "$DIALPAD_URL" --profile-directory="$work_dir"
+  spawn 'FC Gmail' "$GMAIL_RE" "$WEBAPP" "$GMAIL_URL" --profile-directory="$work_dir"
+  spawn 'Linear' "$LINEAR_RE" "$WEBAPP" "$LINEAR_URL" --profile-directory="$work_dir"
+else
+  log "WARN  skipping every Work profile app"
+fi
+
+DIALPAD_ADDR=""; GMAIL_ADDR=""; CHAT_ADDR=""; LINEAR_ADDR=""; TASKS_ADDR=""
+
+if [[ -n "$work_dir" ]]; then
+  settle 'Work browser' "$BROWSER_CLASS" 1
+  settle 'Dialpad' "$DIALPAD_RE" 2 && DIALPAD_ADDR="$WIN_ADDR"
+  settle 'FC Gmail' "$GMAIL_RE" 2 && GMAIL_ADDR="$WIN_ADDR"
+  settle 'Linear' "$LINEAR_RE" 3 && LINEAR_ADDR="$WIN_ADDR"
+fi
+[[ -n "$chat_dir" ]] && { settle 'FC Chat' "$CHAT_RE" 3 && CHAT_ADDR="$WIN_ADDR"; }
+[[ -n "$tasks_dir" ]] && { settle 'FC Tasks' "$TASKS_RE" 3 && TASKS_ADDR="$WIN_ADDR"; }
+settle 'Spotify' "$SPOTIFY_CLASS" "$SPOTIFY_WS"
 
 # A newly inserted window splits whichever window Hyprland last considered active
 # on that workspace, so the column order is otherwise luck. Both rows are rebuilt
@@ -279,23 +329,11 @@ if [[ -n "$DIALPAD_ADDR" && -n "$GMAIL_ADDR" ]]; then
   set_width "$DIALPAD_ADDR" "$DIALPAD_FRAC" "$GMAIL_ADDR"
 fi
 
-webapp 'FC Chat' 3 "$CHAT_PROFILE" 'https://console.fleetchaser.com/chats'
-CHAT_ADDR="$WIN_ADDR"
-
-webapp 'Linear' 3 "$WORK_PROFILE" 'https://linear.app/fleetchaser/agent'
-LINEAR_ADDR="$WIN_ADDR"
-
-webapp 'FC Tasks' 3 "$TASKS_PROFILE" 'https://console.fleetchaser.com/tasks'
-TASKS_ADDR="$WIN_ADDR"
-
 if [[ -n "$CHAT_ADDR" && -n "$LINEAR_ADDR" && -n "$TASKS_ADDR" ]]; then
   rebuild_row 3 "$CHAT_ADDR" "$LINEAR_ADDR" "$TASKS_ADDR"
   set_width "$CHAT_ADDR" "$CHAT_FRAC" "$LINEAR_ADDR" "$TASKS_ADDR"
   set_width "$LINEAR_ADDR" "$LINEAR_FRAC" "$TASKS_ADDR"
 fi
-
-launch 'Spotify' "$SPOTIFY_CLASS" 'special:spotify' \
-  spotify
 
 [[ -n "$FOCUS_ADDR" ]] && dispatch "hl.dsp.focus({ window = \"address:$FOCUS_ADDR\" })"
 
