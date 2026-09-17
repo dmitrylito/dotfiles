@@ -5,7 +5,8 @@ description: Bill Fleet Chaser service visits from the Installs/Bill workboard c
 
 # Bill service visits
 
-One invocation, one selection prompt, then apply. Driver: `~/.claude/skills/bill-service-visits/svb.py`
+One invocation, one selection prompt, then apply. Agent-agnostic: lives in `~/.agents/skills/bill-service-visits/`
+(symlinked from `~/.claude/skills` and `~/.codex/skills`). Driver: `~/.agents/skills/bill-service-visits/svb.py`
 (stdlib, run from any cwd, `--help` for flags). Artifacts land in
 `~/.local/state/service-visit-billing/<date>/`; nothing is written to the backend until `apply`.
 
@@ -52,9 +53,10 @@ One invocation, one selection prompt, then apply. Driver: `~/.claude/skills/bill
      installer notes, no task ids. The API prefixes `Service fee for site visit on <date>: `.
 3. `svb.py preview` - dry run of every resolvable item. All rows must be `ready` or
    `already_exists`; fix `error` rows before the prompt.
-4. **Selection prompt** with `AskUserQuestion`, multi-select. Up to 4 questions × 4 options per
-   call, so group tasks 4 per question ("Bill which of these? (1/4)"); more than 16 tasks →
-   a second call. Option label: `#4037 Axtraction → append 10000006` or `→ NEW draft`.
+4. **Selection prompt**, multi-select, one round. Claude Code: `AskUserQuestion`, up to 4
+   questions × 4 options per call, so group tasks 4 per question ("Bill which of these? (1/4)");
+   more than 16 tasks → a second call. Agents without a question tool: print the same numbered
+   list and wait for the reply before doing anything else. Option label: `#4037 Axtraction → append 10000006` or `→ NEW draft`.
    Description: evidence one-liner + warnings (⚠ date mismatch, ⚠ same visit as #4007, ⚠ no
    hardware records). Unselected = skip. Tasks with `already_exists` are informational, not
    options. Add a fourth question only when something needs a decision beyond select/skip
@@ -76,5 +78,6 @@ One invocation, one selection prompt, then apply. Driver: `~/.claude/skills/bill
 - `already_exists` with identical values is safe; a reused key with different values fails
   closed. Never bypass by changing the key.
 - Cloudflare fronts `backend.dlco.us`; the driver sends a User-Agent so urllib isn't 403'd.
-- Supersedes the backend/ops-center project skill `service-visit-billing` for day-to-day runs;
-  that one remains the policy reference (evidence, authorization, export boundaries).
+- Replaces the former backend/ops-center project skill `service-visit-billing` (removed 2026-09-17).
+  Policy it carried: describe only backend-evidenced work, never guess a customer, reuse source
+  keys, no export or Linear writes from this flow.
