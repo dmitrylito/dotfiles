@@ -11,7 +11,8 @@ focused units are the documentation. The repository's own agent/style guide wins
   comments ("# now filter", "# call the helper"), delete them before finishing.
 - Before completing any code task, re-scan the diff for comments; each one must justify
   itself as mistake-prevention or be removed.
-- Keep any necessary comment to one short line; put longer context in the commit/PR.
+- Keep comments concise, using enough lines to explain the constraint clearly.
+  Put extended history and discussion in the commit/PR or an owning document.
 - No ordered/step markers (`# 1. …`, `# now …`) — the structure already shows the flow.
 - Docstrings only for a real public contract or non-obvious boundary, never boilerplate
   that echoes the signature.

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-# Keep Codex's runtime-owned hooks file while enforcing one Moshi hook per event.
+# Preserve runtime-owned hooks and enforce one Moshi handler per managed event.
+# Usage: chezmoi apply ~/.codex/hooks.json; reads existing JSON on stdin.
+# Requires Python 3 and installed Moshi integration commands.
 
 import json
 import sys
 
-HOME = "{{ .chezmoi.homeDir }}"
+USER_HOME = "{{ .chezmoi.homeDir }}"
 # Quotes and the trailing `codex-hook` are load-bearing: this is the exact shape
 # `moshi-hook status` matches, and anything else is reported as stale wiring.
-MOSHI_COMMAND = "'" + HOME + "/.local/bin/moshi-hook-codex-guard' codex-hook"
+MOSHI_COMMAND = "'" + USER_HOME + "/.local/bin/moshi-hook-codex-guard' codex-hook"
 MOSHI_BINARIES = ("moshi-hook-codex-guard", "moshi-codex-hook", "moshi-hook", "moshi")
 EVENTS = ("PermissionRequest", "SessionStart", "Stop", "UserPromptSubmit")
 
@@ -47,14 +49,18 @@ def without_moshi(groups):
 raw = sys.stdin.read()
 try:
     current = json.loads(raw) if raw.strip() else {}
-except ValueError:
-    current = {}
+except ValueError as error:
+    raise SystemExit(f"Invalid Codex hooks JSON; refusing to overwrite: {error}")
 if not isinstance(current, dict):
-    current = {}
+    raise SystemExit("Codex hooks configuration must be an object; refusing to overwrite")
 
 hooks = current.setdefault("hooks", {})
 if not isinstance(hooks, dict):
-    hooks = current["hooks"] = {}
+    raise SystemExit("Codex hooks must be an object; refusing to overwrite")
+
+for event in EVENTS:
+    if event in hooks and not isinstance(hooks[event], list):
+        raise SystemExit(f"Codex {event} hooks must be a list; refusing to overwrite")
 
 for event in EVENTS:
     groups = without_moshi(hooks.get(event))

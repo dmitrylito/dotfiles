@@ -2,64 +2,74 @@
 
 These rules apply across projects. Follow the user's current instructions and the
 repository's more specific architecture, runtime, validation, and authorization
-rules. A tool permission or an old memory is not authorization for a new action.
+rules. Complete necessary, scoped steps of an authorized task without asking again.
+Ask when an action materially expands scope or crosses an explicit authorization
+boundary. Tool permissions and old memories do not independently authorize work.
 
-## Instruction files: AGENTS.md is the only source
+## Instruction files
 
-- Project instructions live in `AGENTS.md` at the repo root (and in subdirectories that
-  need their own). Never write project guidance into `CLAUDE.md`, `GEMINI.md`, or any
-  other tool-specific file.
-- `CLAUDE.md` exists only as a symlink to `AGENTS.md` so Claude Code loads the same text:
-  `ln -s AGENTS.md CLAUDE.md`. If a repo has a real `CLAUDE.md`, fold its content into
-  `AGENTS.md` and replace the file with the symlink; do not keep two copies in sync.
-- Tool-specific mechanics (hooks, permissions, MCP servers, skills) stay in that tool's own
-  config files, not in `AGENTS.md`.
+- Use `AGENTS.md` as the canonical project guide when creating or maintaining
+  instructions. Put scoped guidance in subdirectory `AGENTS.md` files when needed.
+- Tool-specific instruction entry points may link to `AGENTS.md`. Report conflicting
+  legacy guides; consolidate them within an instruction-maintenance task, not as a
+  side effect of unrelated work. Preserve unique guidance during consolidation.
+- Keep executable hooks, permissions, and MCP configuration in the owning tool's
+  config files. Project guides may explain relevant boundaries and link to skills.
 
 ## Current documentation
 
-- Use current official documentation for library, framework, SDK, API, CLI, and
-  cloud-service questions, including familiar tools and routine usage. Do not
-  substitute remembered syntax or behavior for verification.
-- Check the project's installed or pinned version and use matching official docs;
-  current documentation does not mean silently upgrading to the latest version.
-- Retrieve and read the relevant official page. Cite the documentation actually
-  used, and distinguish verified facts from inference or unresolved uncertainty.
-- Context7 or a provider's documentation tool is useful when it supplies relevant
-  official, version-appropriate content. Otherwise use official-site search and
-  fetch the page directly. Tool availability must not become a reason to guess.
-- Reuse documentation already verified in the current task when the version and
-  question have not changed. General language concepts and repository business
-  logic do not require a documentation lookup unless external behavior matters.
+- Verify external behavior against version-appropriate official documentation when
+  correctness, compatibility, or a decision depends on it. Check installed or pinned
+  versions; documentation lookup is not a reason to upgrade dependencies.
+- Read and cite the relevant official page. Use provider documentation tools or
+  Context7 when they supply appropriate official content; otherwise fetch the
+  official page. Distinguish verified facts from inference or uncertainty.
+- Reuse documentation already verified for the same version and question, and
+  established repository commands when applicable. Avoid repeated lookups that
+  cannot affect the decision. General language concepts, repository business logic,
+  and routine use of verified commands do not require another lookup.
 
-## Long-running jobs and usage safety
+## Long-running jobs and efficient monitoring
 
-- Never supervise a long-running process with frequent model-driven waits,
-  status checks, log reads, or polling loops. Never poll just to provide an update.
-- For work expected to run longer than five minutes, let the process own its
-  retries and progress reporting. Launch it once using a durable background
-  mechanism, then return control to the user. Inspect again only when asked or
-  when an event-driven completion notification wakes the session.
-- Before launch, establish a durable job directory outside disposable worktrees
-  and ephemeral scratch storage. Record the command, working directory, relevant
-  commit/ref, start time, and configured retry limits without exposing secrets.
-- Capture stdout/stderr in a durable log. Have the process write a terminal marker
-  containing success or failure, exit code, and finish time on normal termination.
-  Write the marker atomically. A missing marker means incomplete or unknown,
-  never success. A killed process or host failure may prevent marker creation.
-- Give the user the job identifier, log and marker paths, and how to inspect or
-  stop it. Keep credentials and sensitive payloads out of logs and manifests.
-- If active monitoring is explicitly requested and no completion event exists,
-  poll at most once every 15 minutes. Stop autonomous monitoring after 10 model
-  wakeups or a two-percentage-point increase in the visible weekly usage limit,
-  whichever happens first. Leave the underlying job running and report the stop.
-- Before unattended, overnight, or bulk work, record the visible weekly usage
-  baseline and use a fresh or compacted thread when the context is large. If the
-  metric is unavailable, record that fact; do not invent it. The time and wakeup
-  limits still apply. Do not supervise bulk work from a long investigation thread.
-- Monitoring beyond these limits requires an explicit larger usage budget.
-  Authorization to run a job is not authorization for unlimited monitoring.
-- Do not silently lower model quality to save usage, including for delegated work.
-  Prevent repeated context replay first; offer a cheaper model separately.
+- When asked to run and monitor a job, retain responsibility through completion,
+  failure, cancellation, or its configured deadline. A long runtime alone is not a
+  reason to abandon monitoring or ask the user to check back manually.
+- Use a process or existing job runner for routine polling, health checks, log
+  collection, and bounded retries. These checks should not invoke a model. Wake the
+  agent for completion, failure, a sustained stall, or a decision requiring judgment.
+  Deduplicate repeated alerts and coalesce progress; do not replay the conversation
+  merely to discover that nothing changed.
+- Prefer native completion events or a durable watcher with a verified notification
+  path. Before promising automatic follow-up, verify that the current environment
+  can deliver an event to the agent after yielding. A log file, detached process,
+  desktop notification, or sleep loop alone does not establish that capability.
+- If automatic agent notification is unavailable, keep process-level monitoring
+  running and explain the delivery limitation. Use model-driven polling only as an
+  explicit fallback with a task-appropriate interval, deadline, and model-call budget.
+  Do not silently substitute frequent conversational checks for a watcher.
+- At launch, record the check interval, stall threshold, deadline, retry limits,
+  notification destination, and log/output caps. Choose sensible values for the job
+  within the user's scope; do not require confirmation for routine monitoring setup.
+  Bound retries of both the job and notification delivery. A monitoring deadline
+  triggers a report; it does not authorize killing the underlying job.
+- Keep unattended, overnight, and bulk jobs durable outside disposable worktrees or
+  scratch storage. Record the command, working directory, relevant ref, start time,
+  and job identifier without secrets. Capture logs and an atomic terminal marker
+  with outcome, exit code, and finish time. A missing marker means unknown, never
+  success. Detect missing heartbeats or exited processes independently of the marker.
+- Report job, log, status, and stop paths at launch. On a meaningful event, inspect
+  only the changed state and relevant log excerpt, verify the outcome, and continue
+  already-authorized follow-up. Monitoring does not authorize unrelated remediation.
+- Bounded foreground builds and checks may use blocking tool waits or completion
+  events with an explicit timeout. Avoid repeated short waits that return control
+  to the model just to wait again; do useful independent work while tools run.
+- There is no fixed cap on process-level checks or meaningful completion events.
+  Honor explicit user spending limits. Use model-call budgets for polling fallbacks
+  and repeated diagnosis; do not disable a healthy watcher based on a shared weekly
+  usage meter that cannot attribute usage to this job.
+- Keep wakeup context small: job manifest, latest state, and bounded evidence. Use
+  a compact handoff where supported, preserving authorization and project rules.
+  Do not silently lower model quality as a substitute for removing needless calls.
 
 ## Worktrees and runtime verification
 

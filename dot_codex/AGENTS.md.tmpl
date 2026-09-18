@@ -1,3 +1,21 @@
 {{ includeTemplate "agent-rules.md" . }}
 
+## Instruction scope
+
+- Keep universal workflow preferences here. Project guides own architecture,
+  runtime commands, validation, and domain constraints. Read linked references
+  when they are relevant to the task; avoid copying project rules into global settings.
+- Keep required instructions short enough to load completely. Put lengthy reference
+  material in linked documents and state when it is needed.
+
+## Keep conversation history easy to scan
+
+- Preserve the current detail in final answers. Keep intermediate updates brief and
+  meaningful; do not narrate routine commands or repeat the plan.
+- Minimize tool calls and output together: batch independent checks, use targeted
+  searches and small excerpts, reuse verified results, and stop when the question is
+  adequately answered. Avoid full-file dumps, raw JSON, and repeated status output.
+- Capture verbose diagnostics in a log. Report outcomes, relevant failures, and the
+  log path when useful. Preserve exit codes and required documentation and validation.
+
 {{ includeTemplate "agent-code-style.md" . }}
