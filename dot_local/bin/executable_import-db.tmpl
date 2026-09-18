@@ -20,10 +20,11 @@
 LOG_DIR="$HOME/Logs"
 LOG_FILE="$LOG_DIR/import_db.log"
 LOG_KEEP="${IMPORT_DB_LOG_KEEP:-7}"
-
 {{- if eq .chezmoi.hostname "fcoffice" }}
+
 COMPOSE_DIR="$HOME/Projects/fleetchaser/backend/docker"
 {{- else }}
+
 COMPOSE_DIR="$HOME/Projects/backend/docker"
 {{- end }}
 GCS_PATH="gs://fleetchaser-production-sql/fleetchaser-prod-latest.gz"
