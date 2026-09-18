@@ -2,13 +2,14 @@
 #
 # import-db-fast — daytime refresh of the local FleetChaser DB.
 #
-# Runs ~/.local/bin/import-db unchanged, except the poi_locationhistory exclusion
-# constraint `dont_overlap` (the slowest post-data step) is left out of the restore.
+# Runs ~/.local/bin/import-db unchanged, except the two big GiST exclusion constraints
+# (poi_locationhistory dont_overlap, tracker_vehiclestate unique_duration_ranges) are left
+# out: GiST builds are single-threaded and set the floor for the whole index phase.
 # The nightly cron keeps running plain import-db, so the full DB comes back overnight.
 #
 # Usage: import-db-fast [--fg]   # same flags as import-db
 #
 # RESTORE_SKIP_OBJECTS is import-db's own knob; names are dump-header names with
-# non-alphanumerics replaced by _ (poi_locationhistory dont_overlap → below).
-export RESTORE_SKIP_OBJECTS="${RESTORE_SKIP_OBJECTS:-poi_locationhistory_dont_overlap}"
+# non-alphanumerics replaced by _ (space included).
+export RESTORE_SKIP_OBJECTS="${RESTORE_SKIP_OBJECTS:-poi_locationhistory_dont_overlap tracker_vehiclestate_unique_duration_ranges}"
 exec "$HOME/.local/bin/import-db" "$@"
