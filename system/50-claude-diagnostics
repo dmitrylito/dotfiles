@@ -1,0 +1,67 @@
+# Passwordless read-only diagnostics for non-interactive agent sessions.
+#
+# Install:  sudo system/install-claude-sudoers.sh   (validates, then places
+#           this file at /etc/sudoers.d/50-claude-diagnostics, mode 0440)
+#
+# Why this exists: Claude Code sessions cannot answer a password prompt, so any
+# `sudo` call either hangs or is probed with `sudo -n` and silently skipped.
+# Everything below is a READ. Mutating commands are deliberately absent — those
+# should keep asking for a password.
+#
+# RULE FOR FUTURE EDITS: add exact argument lines, never a bare binary and never
+# a trailing wildcard. sudoers matches args as one string, so `cmd *` also
+# matches `cmd --config /tmp/evil` — that is a root shell, not a diagnostic.
+# A bare `/usr/bin/foo` is the same trap: it permits ANY arguments and silently
+# overrides every pinned variant beside it. Write `/usr/bin/foo ""` for no-args.
+
+Cmnd_Alias CLAUDE_KERNEL_LOG = \
+	/usr/bin/dmesg "", \
+	/usr/bin/dmesg -T, \
+	/usr/bin/dmesg -TH, \
+	/usr/bin/dmesg -H, \
+	/usr/bin/dmesg -k, \
+	/usr/bin/dmesg -T -k, \
+	/usr/bin/dmesg -l err\,warn, \
+	/usr/bin/dmesg -T -l err\,warn
+
+Cmnd_Alias CLAUDE_SOCKETS = \
+	/usr/bin/ss -ltnp, \
+	/usr/bin/ss -tlnp, \
+	/usr/bin/ss -lunp, \
+	/usr/bin/ss -tulnp, \
+	/usr/bin/ss -tulpn, \
+	/usr/bin/ss -tunlp, \
+	/usr/bin/ss -tanp, \
+	/usr/bin/ss -anp
+
+Cmnd_Alias CLAUDE_FIREWALL = \
+	/usr/bin/firewall-cmd --state, \
+	/usr/bin/firewall-cmd --list-all, \
+	/usr/bin/firewall-cmd --list-all-zones, \
+	/usr/bin/firewall-cmd --get-active-zones, \
+	/usr/bin/firewall-cmd --get-default-zone, \
+	/usr/bin/nft list ruleset, \
+	/usr/bin/nft list tables, \
+	/usr/bin/iptables -S, \
+	/usr/bin/iptables -L -n, \
+	/usr/bin/iptables -L -n -v
+
+Cmnd_Alias CLAUDE_SSHD = \
+	/usr/bin/sshd -T, \
+	/usr/bin/sshd -t
+
+Cmnd_Alias CLAUDE_HARDWARE = \
+	/usr/bin/lspci -vv, \
+	/usr/bin/lspci -vvnn
+
+# /var/lib/docker is 0710 root:root, so even a size check needs root.
+# --max-depth stays pinned: per-container totals, no arbitrary path traversal.
+Cmnd_Alias CLAUDE_DOCKER_DISK = \
+	/usr/bin/du -sh /var/lib/docker, \
+	/usr/bin/du -h --max-depth=1 /var/lib/docker, \
+	/usr/bin/du -h --max-depth=1 /var/lib/docker/containers, \
+	/usr/bin/du -h --max-depth=1 /var/lib/docker/volumes, \
+	/usr/bin/du -h --max-depth=1 /var/lib/docker/overlay2
+
+dmitrylito ALL=(root) NOPASSWD: CLAUDE_KERNEL_LOG, CLAUDE_SOCKETS, \
+	CLAUDE_FIREWALL, CLAUDE_SSHD, CLAUDE_HARDWARE, CLAUDE_DOCKER_DISK
