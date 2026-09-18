@@ -19,19 +19,13 @@ key = "HOME"
 mode = "toggle"
 
 [audio]
-# List devices with: pactl list sources short
 device = "default"
 
 # Sample rate in Hz (whisper expects 16000)
 sample_rate = 16000
 
-# Hard cap: at this many seconds voxtype closes capture mid-sentence and drops the tail.
-# Thinking pauses count toward it, so the stock 60 s cut real dictation off ~9x/day; the TUI
-# help calls 120-300 s normal. Cost of a high cap under streaming+toggle: a forgotten toggle
-# types room noise at the cursor for this long.
 max_duration_secs = 300
 
-# Pause MPRIS media players during recording
 pause_media = false
 duck_media = false
 duck_media_volume_percent = 70
@@ -40,28 +34,18 @@ duck_media_fade_ms = 150
 [audio.feedback]
 enabled = false
 theme = "default"
-# 0.0-1.0, not percent.
-volume = 0.20000000298023224
+volume = 0.2
 
 [output]
-# Primary output mode: "type" or "clipboard"
 mode = "type"
 fallback_to_clipboard = true
 
-# 0 = fastest possible, increase if characters are dropped
 type_delay_ms = 0
 auto_submit = false
 shift_enter_newlines = false
 
-# No compositor hooks: the voxtype submaps these drive are deliberately gone and
-# are not to be reintroduced. Dictation stops via the Enter bind in hypr/bindings.lua.
-
-# Preferred driver order: prioritize dotool (via persistent dotoold daemon)
-# to avoid Wayland device-churn and focus jitter under streaming mode.
 driver_order = ["dotool", "clipboard"]
 
-# Keep the current small buffer before typing begins. The persistent dotoold
-# daemon avoids device churn; 25 ms still gives the focused client time to settle.
 pre_type_delay_ms = 25
 
 [output.notification]
@@ -84,8 +68,7 @@ enabled = false
 source = "default"
 
 [vad]
-# Enable Voice Activity Detection to filter out empty recordings
-enabled = true
+enabled = false
 backend = "auto"
 threshold = 0.5
 
@@ -103,27 +86,9 @@ language = "auto"
 translate = false
 
 [parakeet]
-# only streaming-capable Parakeet model (int8 is batch-only) 
-# All of the streaming right and left context needs to be divisable by 8
 model = "parakeet-unified-en-0.6b"
-# keep model resident for low latency
 on_demand_loading = false
 streaming = true
 streaming_chunk_secs = 0.16
 streaming_left_context_secs = 8
 streaming_right_context_secs = 1.6
-
-[osd]
-enabled = false
-frontend = "gtk4"
-position = "bottom-center"
-width_px = 400
-height_px = 48
-margin_px = 24
-top_margin = 0.85
-opacity = 0.95
-waveform_window_secs = 3.0
-peak_decay_db_per_sec = 6.0
-waveform_gain = 10.0
-style = "default"
-layout = "compact"
