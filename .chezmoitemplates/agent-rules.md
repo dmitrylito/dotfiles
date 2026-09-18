@@ -6,6 +6,11 @@ rules. Complete necessary, scoped steps of an authorized task without asking aga
 Ask when an action materially expands scope or crosses an explicit authorization
 boundary. Tool permissions and old memories do not independently authorize work.
 
+## Communication and efficient execution
+
+- Update me for meaningful results, sustained stalls/failures, or decisions needing my input; ask only when missing information or authorization blocks safe progress.
+- Keep routine monitoring in a durable process, not repeated model turns. Validate fixtures before expensive runs, reuse completed checks, and use a compact handoff before a long session's context becomes costly.
+
 ## Instruction files
 
 - Use `AGENTS.md` as the canonical project guide when creating or maintaining
