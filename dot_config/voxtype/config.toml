@@ -25,10 +25,6 @@ device = "default"
 # Sample rate in Hz (whisper expects 16000)
 sample_rate = 16000
 
-# Hard cap: at this many seconds voxtype closes capture mid-sentence and drops the tail.
-# Thinking pauses count toward it, so the stock 60 s cut real dictation off ~9x/day; the TUI
-# help calls 120-300 s normal. Cost of a high cap under streaming+toggle: a forgotten toggle
-# types room noise at the cursor for this long.
 max_duration_secs = 300
 
 # Pause MPRIS media players during recording
@@ -40,28 +36,20 @@ duck_media_volume_percent = 70
 enabled = false
 theme = "default"
 # 0.0-1.0, not percent.
-volume = 0.20000000298023224
+volume = 0.2
 
 [output]
 # Primary output mode: "type" or "clipboard"
 mode = "type"
 fallback_to_clipboard = true
 
-# 0 = fastest possible, increase if characters are dropped
-type_delay_ms = 0
+type_delay_ms = 1
 auto_submit = false
 shift_enter_newlines = false
 
-# No compositor hooks: the voxtype submaps these drive are deliberately gone and
-# are not to be reintroduced. Dictation stops via the Enter bind in hypr/bindings.lua.
-
-# Preferred driver order: prioritize dotool (via persistent dotoold daemon)
-# to avoid Wayland device-churn and focus jitter under streaming mode.
 driver_order = ["dotool", "clipboard"]
 
-# Keep the current small buffer before typing begins. The persistent dotoold
-# daemon avoids device churn; 25 ms still gives the focused client time to settle.
-pre_type_delay_ms = 25
+pre_type_delay_ms = 1
 
 [output.notification]
 on_recording_start = false
