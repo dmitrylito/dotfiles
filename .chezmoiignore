@@ -52,7 +52,6 @@ Projects/fleetchaser/
 .config/fleetchaser-mypy.ini
 .local/bin/fc-dmypy
 .local/bin/fc-mypy
-.local/bin/import-db
 .local/bin/work-mode
 .claude/skills/restack-migrations/
 .claude/skills/state-mileage-import/

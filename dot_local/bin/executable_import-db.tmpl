@@ -1,0 +1,312 @@
+#!/bin/bash
+#
+# import-db — refresh the local FleetChaser database from the latest prod dump.
+#
+# Downloads gs://fleetchaser-production-sql/fleetchaser-prod-latest.gz, restores it
+# into the compose `db` service, snapshots the volume, and restarts the stack.
+#
+# Detaches immediately, so it is safe from cron or by hand. Logs to
+# ~/Logs/import_db.log; previous runs rotate to .1 … .N (IMPORT_DB_LOG_KEEP, default 7).
+#
+# Usage:
+#   import-db          # background, prints PID + log path
+#   import-db --fg     # foreground, still logs to file
+#
+# Needs: docker compose, docker-volume-snapshot, ~/gcs-key.json, and gcloud (or gsutil).
+# pigz and pv are optional: falls back to gzip and to no progress lines.
+#
+# Chezmoi-managed (dot_local/bin/executable_import-db.tmpl); only COMPOSE_DIR differs per host.
+
+LOG_DIR="$HOME/Logs"
+LOG_FILE="$LOG_DIR/import_db.log"
+LOG_KEEP="${IMPORT_DB_LOG_KEEP:-7}"
+
+{{- if eq .chezmoi.hostname "fcoffice" }}
+COMPOSE_DIR="$HOME/Projects/fleetchaser/backend/docker"
+{{- else }}
+COMPOSE_DIR="$HOME/Projects/backend/docker"
+{{- end }}
+GCS_PATH="gs://fleetchaser-production-sql/fleetchaser-prod-latest.gz"
+GCS_KEY_PATH="$HOME/gcs-key.json"
+DUMP_FILE="$HOME/fleetchaser-db/fleetchaser-prod-latest.gz"
+SNAPSHOT_FILE="$HOME/Projects/tmp/docker/fleetchaser_db_volume"
+VOLUME_NAME="fleetchaser_db_volume"
+
+DB_SUPERUSER="postgres"
+DB_USER="fleetchaser"
+DB_PASS="s3cr3t"
+DB_NAME="fleetchaser"
+# Roles the prod dump grants to that don't exist locally; created empty so GRANTs succeed.
+RESTORE_EXTRA_ROLES="${RESTORE_EXTRA_ROLES:-fc-readonly cloudsqlsuperuser cloudsqlimportexport}"
+RESTORE_JOBS="${RESTORE_JOBS:-$(nproc 2>/dev/null || echo 4)}"
+# Restore-only server settings: crash-unsafe and memory-hungry, so the db is restarted on
+# the normal compose config in snapshot_and_restart. Index builds are the only parallel phase.
+RESTORE_PG_OVERRIDE="$HOME/.cache/import-db/db-restore.override.yml"
+# Post-data (indexes, constraints, FKs) runs on RESTORE_POSTDATA_JOBS connections at once, so
+# maintenance_work_mem is per connection: keep jobs * mem well under free RAM.
+RESTORE_POSTDATA_JOBS="${RESTORE_POSTDATA_JOBS:-8}"
+RESTORE_SPLIT_DIR="$HOME/.cache/import-db/postdata"
+# Objects to leave out of the local restore, space-separated, named as in the dump header with
+# non-alphanumerics replaced by _ (e.g. poi_locationhistory_dont_overlap).
+RESTORE_SKIP_OBJECTS="${RESTORE_SKIP_OBJECTS:-}"
+RESTORE_PG_FLAGS="${RESTORE_PG_FLAGS:--c shared_buffers=4GB -c maintenance_work_mem=3GB \
+  -c max_worker_processes=48 -c max_parallel_workers=40 -c max_parallel_maintenance_workers=4 \
+  -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
+  -c wal_level=minimal -c max_wal_senders=0 -c autovacuum=off \
+  -c checkpoint_timeout=1h -c max_wal_size=100GB -c wal_buffers=64MB}"
+
+#######################################
+# Detach
+#######################################
+mkdir -p "$LOG_DIR"
+
+# Must run in the parent, before the detached child opens the log for append.
+rotate_logs() {
+  [ -s "$LOG_FILE" ] || return 0
+  rm -f "$LOG_FILE.$LOG_KEEP"
+  local i
+  for ((i = LOG_KEEP - 1; i >= 1; i--)); do
+    [ -f "$LOG_FILE.$i" ] && mv "$LOG_FILE.$i" "$LOG_FILE.$((i + 1))"
+  done
+  mv "$LOG_FILE" "$LOG_FILE.1"
+}
+
+if [ "${1:-}" = "--fg" ]; then
+  shift
+elif [ -z "${IMPORT_DB_DETACHED:-}" ]; then
+  export IMPORT_DB_DETACHED=1
+  rotate_logs
+  setsid "$0" "$@" >>"$LOG_FILE" 2>&1 </dev/null &
+  echo "import-db started in the background (PID $!)."
+  echo "Follow:    tail -f $LOG_FILE"
+  exit 0
+fi
+
+#######################################
+# Logging
+#######################################
+set -Eeuo pipefail
+export PATH="$HOME/google-cloud-sdk/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+log() {
+  local tag="$1"; shift
+  printf '%s [%-8s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$tag" "$*" >&2
+}
+
+fmt_duration() {
+  local s=$1
+  if ((s >= 3600)); then printf '%dh%02dm%02ds' $((s / 3600)) $((s % 3600 / 60)) $((s % 60))
+  elif ((s >= 60)); then printf '%dm%02ds' $((s / 60)) $((s % 60))
+  else printf '%ds' "$s"; fi
+}
+
+STEP_START=0
+step_begin() { STEP_START=$SECONDS; log "$@"; }
+step_done() {
+  local tag="$1"; shift
+  log "$tag" "Done in $(fmt_duration $((SECONDS - STEP_START)))${*:+ ($*)}."
+}
+
+RUN_START=$SECONDS
+trap 'log Error "Line $LINENO failed (exit $?): $BASH_COMMAND"; log Error "Aborted after $(fmt_duration $((SECONDS - RUN_START)))."' ERR
+
+#######################################
+# Steps
+#######################################
+require_tools() {
+  local missing=()
+  for t in docker docker-volume-snapshot; do
+    command -v "$t" >/dev/null 2>&1 || missing+=("$t")
+  done
+  command -v gcloud >/dev/null 2>&1 || command -v gsutil >/dev/null 2>&1 || missing+=("gcloud/gsutil")
+  [ -f "$GCS_KEY_PATH" ] || missing+=("$GCS_KEY_PATH")
+  if ((${#missing[@]})); then
+    log Error "Missing: ${missing[*]}."
+    exit 1
+  fi
+  command -v pigz >/dev/null 2>&1 || log Warn "pigz not found; using single-threaded gzip."
+  command -v pv >/dev/null 2>&1 || log Warn "pv not found; no restore progress lines."
+}
+
+download_dump() {
+  step_begin Download "Downloading $GCS_PATH"
+  mkdir -p "$(dirname "$DUMP_FILE")"
+  rm -f "$DUMP_FILE"
+  # gsutil ignores the key override and demands interactive reauth; gcloud storage honours it.
+  if command -v gcloud >/dev/null 2>&1; then
+    CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$GCS_KEY_PATH" \
+      gcloud storage cp --quiet --no-user-output-enabled "$GCS_PATH" "$DUMP_FILE"
+  else
+    gsutil -q -m cp "$GCS_PATH" "$DUMP_FILE"
+  fi
+  step_done Download "$(du -h "$DUMP_FILE" | cut -f1)"
+}
+
+db_exec() { docker container exec -i "$DB_CONTAINER_ID" "$@"; }
+
+wait_for_db() {
+  local deadline=$((SECONDS + 120))
+  while :; do
+    DB_CONTAINER_ID="$(docker compose ps -q db | tail -1 || true)"
+    if [ -n "$DB_CONTAINER_ID" ] && db_exec psql -U "$DB_SUPERUSER" -d postgres -Atc "SELECT 1" >/dev/null 2>&1; then
+      return 0
+    fi
+    if ((SECONDS >= deadline)); then
+      log Error "The db container was not ready after 120s."
+      return 1
+    fi
+    sleep 2
+  done
+}
+
+write_restore_override() {
+  mkdir -p "$(dirname "$RESTORE_PG_OVERRIDE")"
+  local base_cmd
+  base_cmd="$(docker compose config --format json | python3 -c 'import json,sys,shlex; print(shlex.join(json.load(sys.stdin)["services"]["db"]["command"]))')"
+  cat >"$RESTORE_PG_OVERRIDE" <<YML
+services:
+  db:
+    command: $base_cmd $RESTORE_PG_FLAGS
+YML
+}
+
+start_db_only() {
+  step_begin Stack "Stopping the stack and starting db only (restore-tuned postgres)."
+  cd "$COMPOSE_DIR"
+  docker compose --progress quiet down
+  write_restore_override
+  docker compose --progress quiet -f docker-compose.yml -f "$RESTORE_PG_OVERRIDE" up -d db
+  wait_for_db
+  step_done Stack "container ${DB_CONTAINER_ID:0:12}"
+}
+
+recreate_database() {
+  step_begin Database "Dropping and creating $DB_NAME. Roles: $RESTORE_EXTRA_ROLES."
+  db_exec dropdb -U "$DB_SUPERUSER" --if-exists "$DB_NAME"
+  db_exec createdb -U "$DB_SUPERUSER" -O "$DB_USER" "$DB_NAME"
+  local role
+  for role in $RESTORE_EXTRA_ROLES; do
+    db_exec psql -U "$DB_SUPERUSER" -d postgres -q -v role="$role" >/dev/null <<'SQL'
+SELECT format('CREATE ROLE %I', :'role') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') \gexec
+SQL
+  done
+  step_done Database
+}
+
+log_restore_progress() {
+  local pct
+  while read -r pct; do
+    if [ "$pct" = 100 ]; then
+      log Restore "Dump fully read; psql is finishing the data load."
+    else
+      log Restore "${pct}% read."
+    fi
+  done
+}
+
+read_dump() {
+  if command -v pv >/dev/null 2>&1; then
+    pv -f -n -i 60 "$DUMP_FILE" 2> >(log_restore_progress)
+  else
+    cat "$DUMP_FILE"
+  fi
+}
+
+decompress() {
+  if command -v pigz >/dev/null 2>&1; then pigz -dc -p "$RESTORE_JOBS"; else gzip -dc; fi
+}
+
+# Streams pre-data and COPY to stdout; diverts every post-data object into its own file,
+# prefixed by phase: 1 = indexes and PK/unique constraints, 2 = FKs, 3 = everything after.
+split_post_data() {
+  LC_ALL=C awk -v dir="$RESTORE_SPLIT_DIR" '
+    /^-- Name: .*; Type: / {
+      match($0, /Type: [^;]*/); t = substr($0, RSTART + 6, RLENGTH - 6)
+      if (t == "INDEX" || t == "CONSTRAINT" || t == "FK CONSTRAINT") post = 1
+      if (post) {
+        n++
+        if (t == "INDEX" || t == "CONSTRAINT") ph = 1; else if (t == "FK CONSTRAINT") ph = 2; else ph = 3
+        match($0, /Name: [^;]*/); name = substr($0, RSTART + 6, RLENGTH - 6); gsub(/[^A-Za-z0-9_]/, "_", name)
+        if (cur != "") close(cur)
+        cur = sprintf("%s/%d-%05d-%s.sql", dir, ph, n, name)
+      }
+    }
+    post && cur != "" { if ($0 !~ /^\\(un)?restrict/) print > cur; next }
+    { print }
+  '
+}
+
+drop_skipped_objects() {
+  local name f
+  for name in $RESTORE_SKIP_OBJECTS; do
+    for f in "$RESTORE_SPLIT_DIR"/*-"$name".sql; do
+      [ -e "$f" ] || continue
+      log Restore "Skipping $(basename "$f") (RESTORE_SKIP_OBJECTS)."
+      rm -f "$f"
+    done
+  done
+}
+
+run_split_file() {
+  PGPASSWORD="$DB_PASS" db_exec psql -q -v ON_ERROR_STOP=1 -U "$DB_USER" "$DB_NAME" <"$1" >/dev/null
+}
+
+run_post_data_phase() {
+  local phase="$1" label="$2" jobs="$3"
+  local retry="$RESTORE_SPLIT_DIR/retry-$phase"
+  local files=("$RESTORE_SPLIT_DIR"/"$phase"-*.sql)
+  [ -e "${files[0]}" ] || return 0
+  step_begin Restore "$label: ${#files[@]} statements on $jobs connections."
+  rm -f "$retry"
+  export -f run_split_file db_exec
+  export DB_PASS DB_CONTAINER_ID DB_USER DB_NAME
+  printf '%s\0' "${files[@]}" |
+    xargs -0 -P "$jobs" -I{} bash -c 'run_split_file "$1" 2>/dev/null || echo "$1" >>"$2"' _ {} "$retry"
+  if [ -s "$retry" ]; then
+    log Restore "Retrying $(wc -l <"$retry") statements serially (lock conflicts are expected here)."
+    local f
+    while read -r f; do
+      run_split_file "$f" || log Warn "Failed for good: $(basename "$f")"
+    done <"$retry"
+  fi
+  step_done Restore
+}
+
+restore_dump() {
+  step_begin Restore "Loading schema and data through decompress | psql. Progress every 60s when pv is available."
+  rm -rf "$RESTORE_SPLIT_DIR"
+  mkdir -p "$RESTORE_SPLIT_DIR"
+  read_dump | decompress | split_post_data |
+    PGPASSWORD="$DB_PASS" db_exec psql -q -U "$DB_USER" "$DB_NAME" >/dev/null
+  rm -f "$DUMP_FILE"
+  step_done Restore
+  drop_skipped_objects
+  run_post_data_phase 1 "Indexes and PK/unique constraints" "$RESTORE_POSTDATA_JOBS"
+  run_post_data_phase 2 "Foreign keys" "$RESTORE_POSTDATA_JOBS"
+  run_post_data_phase 3 "Triggers, ACLs and the rest" 1
+  rm -rf "$RESTORE_SPLIT_DIR"
+}
+
+snapshot_and_restart() {
+  step_begin Stack "Stopping db and snapshotting $VOLUME_NAME to $SNAPSHOT_FILE."
+  cd "$COMPOSE_DIR"
+  docker compose --progress quiet down
+  mkdir -p "$(dirname "$SNAPSHOT_FILE")"
+  # stdout is a per-file tar listing (~330k lines); stderr still surfaces failures.
+  docker-volume-snapshot create "$VOLUME_NAME" "$SNAPSHOT_FILE" >/dev/null
+  log Stack "Snapshot is $(du -h "$SNAPSHOT_FILE" | cut -f1). Starting the full stack."
+  docker compose --progress quiet up -d
+  step_done Stack
+}
+
+#######################################
+# Main
+#######################################
+log Start "Refreshing $DB_NAME (jobs=$RESTORE_JOBS, compose=$COMPOSE_DIR)."
+require_tools
+download_dump
+start_db_only
+recreate_database
+restore_dump
+snapshot_and_restart
+log Finish "Finished. Total $(fmt_duration $((SECONDS - RUN_START)))."
