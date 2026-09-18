@@ -1,0 +1,13 @@
+model = "validation-model"
+approval_policy = "on-request"
+
+[tui]
+status_line = ["current-dir"]
+animations = false
+
+[tui.keymap.composer]
+submit = ["enter"]
+queue = ["tab"]
+
+[desktop]
+followUpQueueMode = "queue"

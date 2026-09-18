@@ -5,6 +5,8 @@ profiles. A separate `work` role enables Fleet Chaser tooling without encoding
 work ownership in a hostname. The source of truth is this directory; do not edit
 managed targets in `$HOME` directly.
 
+Agents working on this source repository should read [.claude/AGENTS.md](.claude/AGENTS.md).
+
 ## Bootstrap and safe daily use
 
 ```bash
@@ -74,7 +76,8 @@ prevents reconciliation transactions from being published back as new intent.
   routing.
 - `dot_zshenv.tmpl`, `dot_zshrc.tmpl`, `dot_aliases.tmpl`: shared environment,
   interactive shell, and role-gated aliases.
-- `dot_config/mise/config.toml`: authoritative runtimes and CLI tools.
+- `dot_config/mise/config.toml.tmpl`: authoritative runtimes and CLI tools,
+  including `agy` on all three profiles; server Codex remains native-owned.
 - `dot_config/herdr/`: universal terminal workspace/multiplexer. tmux,
   Tmuxifier, and sesh are intentionally retired.
 - `dot_local/bin/moshi-*`, Moshi hook modifiers, and Linux user units: keep
@@ -82,8 +85,9 @@ prevents reconciliation transactions from being published back as new intent.
   the guards and config. Linux bootstraps the vendor binary, agent hooks,
   encrypted pairing token, and systemd user service during `chezmoi apply`;
   macOS service setup remains Homebrew-owned.
-- `dot_config/nvim/`: LazyVim configuration, including the Sidekick `agy`
-  adapter and one canonical remote clipboard implementation.
+- `dot_config/nvim/`: LazyVim configuration, Sidekick integration, and the
+  Neovim remote clipboard implementation. Shell `ff`/`yf` use the managed
+  `clipboard-copy` helper for local Wayland/macOS and terminal OSC 52 copying.
 - `dot_config/hypr/` and `dot_config/omarchy/`: Omarchy-only desktop behavior.
   The Hyprland entrypoint is derived from Omarchy's installed default by a
   `modify_` script; chezmoi owns only the post-default `hypr.chezmoi` module.
@@ -96,23 +100,30 @@ prevents reconciliation transactions from being published back as new intent.
 
 ## Local binary ownership
 
-`docs/local-bin-audit.md` records every current `~/.local/bin` category, its
-owner, its consumer, and the cleanup decision. New custom scripts should be
+`docs/local-bin-audit.md` records the audited `~/.local/bin` categories, their
+owners, consumers, and subsequent migrations. New custom scripts should be
 added under `dot_local/bin/executable_*`; vendor binaries stay vendor-owned and
 CLI tools should be declared in mise instead of wrapped by ad-hoc scripts.
 
 ## Validation before applying
 
-Render all six profile/role combinations, then preview only the active machine:
+Validate all six profile/role combinations plus four hostname-specific cases,
+then preview only the intended targets on the active machine:
 
 ```bash
 scripts/test-templates.sh
-chezmoi apply --dry-run -v
+chezmoi apply --dry-run -v ~/.aliases ~/.zshrc
 ```
 
 The dry run matters because live target drift can be intentional. A global
 apply should not be used to erase drift that was not part of the current task.
 
-Git history still requires a separate coordinated rewrite to purge old
-Elephant provider binaries. That operation changes commit IDs and requires an
-intentional force-push plus fresh clones; it is not part of normal cleanup.
+The validator uses disposable configuration, a generated age identity, and
+nonsecret fixtures. It runs modifiers, but never deployment hooks. See
+[docs/validation.md](docs/validation.md) for prerequisites, coverage, and the
+optional check against installed Omarchy.
+
+A fresh GitHub mirror audited on 2026-09-18 contained 6.97 MiB of packed objects,
+no Elephant paths, and no blobs over 10 MiB. No remote history rewrite is needed.
+See [docs/git-history-audit.md](docs/git-history-audit.md) for scope and evidence;
+the size of an existing local `.git` directory is not the fresh-clone size.

@@ -25,7 +25,7 @@ large vendor binary; it means its owner and consumer are known.
 
 | Command | Owner and use | Decision |
 |---|---|---|
-| `agy` 1.0.8 | Sidekick Antigravity agent executable; referenced by Neovim | keep; vendor binary |
+| `agy` | Antigravity CLI, now declared in managed Mise config on all profiles | migrated from vendor ownership on 2026-09-18; see below |
 | `herdr` 0.8.2 | primary universal multiplexer and agent workspace | keep; vendor binary |
 | `moshi-hook` 0.2.59 and `moshi` symlink | Moshi gateway/hook client | keep; vendor binary |
 | `pass-cli` 2.2.3 | Proton Pass CLI; secrets/doctor integration | keep; vendor binary |
@@ -51,3 +51,17 @@ large vendor binary; it means its owner and consumer are known.
 
 The DP-2 service was disabled before its files were trashed. These items remain
 recoverable from the desktop Trash until it is emptied.
+
+## Mise ownership update — 2026-09-18
+
+`agy = "latest"` now belongs to `dot_config/mise/config.toml.tmpl`. The temporary
+declaration in root `mise.toml` was removed, including from its deployed
+`~/mise.toml` target. On the audited desktop, Mise resolves `agy` from
+`~/.config/mise/config.toml`; the CLI reports version 1.2.6, while Mise's installed
+artifact directory is named 1.2.5.
+
+The previous `~/.local/bin/agy` 1.0.8 executable was moved to
+`~/.local/state/chezmoi/backups/agy-20260918T101233/agy`, preserving rollback while
+removing PATH shadowing. Other hosts should apply the two Mise targets, run
+`mise install agy`, verify `mise exec agy -- agy --version`, and check for an old
+vendor executable before retiring it. This local migration did not change other hosts.

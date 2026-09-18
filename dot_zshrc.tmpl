@@ -40,8 +40,8 @@ source_if_exists "$XDG_CONFIG_HOME/zsh/completion-setup.zsh"
 plugins=(
   git
   github
-  archlinux
-  tailscale
+{{ if ne (.profile | lower) "mac" }}  archlinux
+{{ end }}  tailscale
   sudo
   docker
   docker-compose

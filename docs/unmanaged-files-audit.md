@@ -31,6 +31,9 @@ Audited on `dlco-prod`, profile `server`, work role disabled.
 - Installed CLIs, caches, databases, histories, project checkouts, and archives:
   application data or independently managed software.
 
-The full profile-render script currently fails on this server because its Omarchy
-render requires `/usr/share/omarchy/config/hypr/hyprland.lua`. Targeted validation
-must not be represented as a successful full Omarchy render.
+At the time of this audit, the full profile-render script failed on this server
+because its Omarchy render required an installed Hyprland entrypoint. As of
+2026-09-18, `scripts/test-templates.sh` uses isolated nonsecret fixtures and no
+longer requires Omarchy or personal decryption keys. This validates rendering
+and syntax, not the server's desktop runtime. Use `--installed-omarchy` on a
+desktop to additionally check its real upstream entrypoint; see [validation.md](validation.md).

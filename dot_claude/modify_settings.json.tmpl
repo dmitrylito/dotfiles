@@ -45,6 +45,7 @@ import json
 import sys
 
 HOME = "{{ .chezmoi.homeDir }}"
+HOME_READ_RULE = f"Reading any file under {HOME} with cat/head/sed/grep/strings, including binaries and log files, and shell introspection such as echo of environment variables"
 MOSHI_COMMAND = "'" + HOME + "/.local/bin/moshi-hook-claude-guard' claude-hook"
 MOSHI_BINARIES = ("moshi-hook", "moshi-hook-claude-guard", "moshi")
 
@@ -80,7 +81,7 @@ BASELINE = {
             "Bash(make deploy:*), bash docker/deploy-build.sh, and docker compose build/up \u2014 Dmitry's own deploy path for his own services; explicitly authorized",
             "Read-only inspection of this host: docker/podman ps|logs|inspect, zfs list|get|status, systemctl status, journalctl",
             "gcloud storage read operations against fleetchaser-production-sql \u2014 this is the nightly import-db refresh pulling prod into local dev, and is routine",
-            "Reading any file under /home/dmitrylito with cat/head/sed/grep/strings, including binaries and log files, and shell introspection such as echo of environment variables",
+            HOME_READ_RULE,
             "Writing scratch and intermediate files under $CLAUDE_JOB_DIR/tmp, /tmp, and the session tool-results directory, including via shell redirection and heredocs",
             "Running python3/node inline via heredoc or -c to parse, filter, or reformat local files",
         ],
@@ -378,6 +379,13 @@ if not isinstance(current, dict):
     current = {}
 
 fill_defaults(current, {k: v for k, v in BASELINE.items() if k != "hooks"})
+auto_mode = current.get("autoMode")
+if isinstance(auto_mode, dict) and isinstance(auto_mode.get("allow"), list):
+    legacy_home_rule = HOME_READ_RULE.replace(f"under {HOME} with", "under /home/dmitrylito with", 1)
+    auto_mode["allow"] = [
+        HOME_READ_RULE if rule == legacy_home_rule else rule
+        for rule in auto_mode["allow"]
+    ]
 current["hooks"] = enforce_moshi_hooks(current.get("hooks"), BASELINE["hooks"])
 enforce_style_hooks(current["hooks"])
 enforce_isolation_hooks(current["hooks"])

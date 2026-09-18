@@ -73,7 +73,7 @@ if command -v fzf >/dev/null; then
     fi
     fzf --preview "$preview" \
       --header 'enter print path · ctrl-y copy path · ctrl-o open · ctrl-e edit' \
-      --bind 'ctrl-y:execute-silent(printf %s {} | wl-copy)+abort' \
+      --bind 'ctrl-y:transform(printf %s {} | "$HOME/.local/bin/clipboard-copy" >/dev/null 2>&1 && printf abort || printf "change-header(Clipboard copy failed)")' \
       --bind 'ctrl-o:execute-silent(xdg-open {} >/dev/null 2>&1 &)+abort' \
       --bind "ctrl-e:execute(${EDITOR:-vi} {})" \
       "$@"
@@ -82,7 +82,7 @@ if command -v fzf >/dev/null; then
   # Copy the picked path to the clipboard and print it.
   yf() {
     local file
-    file=$(ff) && [ -n "$file" ] && printf %s "$file" | wl-copy && printf '%s\n' "$file"
+    file=$(ff) && [ -n "$file" ] && printf %s "$file" | "$HOME/.local/bin/clipboard-copy" && printf '%s\n' "$file"
   }
 
   eff() {

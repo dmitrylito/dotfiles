@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -z ${SSH_TTY:-}${SSH_CONNECTION:-}${HERDR_PANE_ID:-} ]]; then
+  if [[ -n ${WAYLAND_DISPLAY:-} ]] && command -v wl-copy >/dev/null 2>&1; then
+    exec wl-copy
+  elif command -v pbcopy >/dev/null 2>&1; then
+    exec pbcopy
+  fi
+fi
+
+if [[ -z ${TERM:-} || $TERM == dumb ]] || ! { exec 3>/dev/tty; } 2>/dev/null; then
+  printf '%s\n' 'clipboard-copy: no clipboard backend or controlling terminal available' >&2
+  exit 1
+fi
+
+encoded=$(base64 | tr -d '\r\n')
+# fzf captures stdout; OSC 52 must reach the controlling terminal directly.
+printf '\033]52;c;%s\a' "$encoded" >&3
