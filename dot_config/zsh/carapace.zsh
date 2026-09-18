@@ -17,3 +17,7 @@ zstyle ':completion:*' select-prompt '%SScrolling: %p%s'
 zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
 zstyle ':completion:*:git:*' group-order \
   'main commands' 'alias commands' 'external commands'
+
+# Carapace's zsh bridge claims gog but only sees gogcli's broken system _gog
+# (see ~/.zsh/completions/_gog), so hand gog back to Zsh's own completer.
+(( ${+commands[gog]} )) && compdef _gog gog

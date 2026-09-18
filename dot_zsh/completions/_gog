@@ -1,0 +1,9 @@
+#compdef gog
+#
+# gogcli ships /usr/share/zsh/site-functions/_gog as a script (defines _gog then
+# runs compdef) instead of an autoload body, so its first invocation produces no
+# matches. This copy is the function body itself and shadows it via fpath order.
+
+local -a completions
+completions=("${(@f)$(gog __complete --cword "$((CURRENT - 1))" -- "${words[@]}")}")
+_describe 'values' completions
