@@ -34,7 +34,7 @@ duck_media_fade_ms = 150
 [audio.feedback]
 enabled = false
 theme = "default"
-volume = 0.2
+volume = 0.20000000298023224
 
 [output]
 mode = "type"
@@ -92,3 +92,18 @@ streaming = true
 streaming_chunk_secs = 0.16
 streaming_left_context_secs = 8
 streaming_right_context_secs = 1.6
+
+[osd]
+enabled = false
+frontend = "gtk4"
+style = "default"
+layout = "compact"
+position = "bottom-center"
+width_px = 400
+height_px = 48
+margin_px = 24
+top_margin = 0.85
+opacity = 0.95
+waveform_window_secs = 3.0
+peak_decay_db_per_sec = 6.0
+waveform_gain = 10.0
