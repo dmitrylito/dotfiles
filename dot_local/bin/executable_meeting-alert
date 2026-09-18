@@ -55,11 +55,29 @@ def gcalcli_bin():
     return found
 
 
+def known_calendars():
+    out = subprocess.run([gcalcli_bin(), "--nocolor", "list"], capture_output=True, text=True)
+    names = set()
+    for line in out.stdout.splitlines()[2:]:
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2:
+            names.add(parts[1].strip())
+    return names
+
+
 def fetch_events(config):
     calendars = [c.strip() for c in re.split(r"[;\n]", config["CALENDARS"]) if c.strip()]
     if not calendars:
         print("CALENDARS is unset in %s; nothing to schedule." % CONFIG_PATH, file=sys.stderr)
         return []
+
+    # gcalcli exits 0 with no events for a name that matches no calendar, so an
+    # unnoticed typo here means silently no alerts at all.
+    known = known_calendars()
+    unknown = [c for c in calendars if known and c not in known]
+    if unknown:
+        print("unknown calendar(s) in %s: %s (known: %s)"
+              % (CONFIG_PATH, ", ".join(unknown), ", ".join(sorted(known))), file=sys.stderr)
 
     now = datetime.now()
     end = now + timedelta(hours=float(config["HORIZON_HOURS"]))
