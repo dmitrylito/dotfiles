@@ -1,18 +1,19 @@
 hl.config({
-  input = {
-    kb_layout = "us",
-    kb_options = "compose:caps",
-    repeat_rate = 40,
-    repeat_delay = 600,
-    numlock_by_default = true,
-    accel_profile = "flat",
-    follow_mouse = 1,
-    scroll_factor = 1.5,
-    natural_scroll = true,
-    touchpad = {
-      scroll_factor = 0.4,
-    },
-  },
+	input = {
+		kb_layout = "us",
+		kb_options = "compose:caps",
+		repeat_rate = 40,
+		repeat_delay = 600,
+		numlock_by_default = true,
+		accel_profile = "flat",
+		follow_mouse = 1,
+		sensitivity = 0.3,
+		scroll_factor = 1.5,
+		natural_scroll = true,
+		touchpad = {
+			scroll_factor = 0.4,
+		},
+	},
 })
 
 o.window({ class = "(Alacritty|kitty|foot)" }, { scroll_touchpad = 1.5 })
