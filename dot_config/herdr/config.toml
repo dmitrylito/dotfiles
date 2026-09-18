@@ -127,6 +127,7 @@ prompt_new_tab_name = false
 
 # Mouse selection and pane interaction.
 mouse_capture = true
+copy_on_select = true
 
 # Written by herdr's settings UI; keep in sync here or apply stomps it
 agent_panel_sort = "spaces"
