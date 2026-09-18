@@ -102,28 +102,10 @@ language = "auto"
 translate = false
 
 [parakeet]
-# only streaming-capable Parakeet model (int8 is batch-only) 
-# All of the streaming right and left context needs to be divisable by 8
 model = "parakeet-unified-en-0.6b"
-# keep model resident for low latency
 on_demand_loading = false
 streaming = true
 streaming_chunk_secs = 0.16
 streaming_left_context_secs = 8
 streaming_right_context_secs = 1.6
 model_type = "tdt"
-
-[osd]
-enabled = false
-frontend = "gtk4"
-position = "bottom-center"
-width_px = 400
-height_px = 48
-margin_px = 24
-top_margin = 0.85
-opacity = 0.95
-waveform_window_secs = 3.0
-peak_decay_db_per_sec = 6.0
-waveform_gain = 10.0
-style = "default"
-layout = "compact"
