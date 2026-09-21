@@ -9,6 +9,13 @@
 // The popup has two tabs. Notifications is always the one that opens — the tab
 // resets on every open so the bell stays a one-click read of what just came in,
 // and reminders are a deliberate second click.
+//
+// It is a KeyboardPanel rather than the PopupCard the rest of this widget grew
+// up on. A PopupCard is an xdg-popup under a layer surface that never takes
+// keyboard focus, so its text fields only received keys once the pointer left
+// the card and Hyprland's focus grab re-picked a surface to enter. KeyboardPanel
+// primes WlrKeyboardFocus.Exclusive at map time, which is what the first-party
+// panels with inline editors (wifi passphrase, weather) already use.
 
 import QtQuick
 import QtQuick.Layouts
@@ -37,6 +44,12 @@ BarWidget {
     refreshHistory()
     refreshReminders()
   }
+
+  // Landing on Reminders should be typeable straight away. callLater so the
+  // field exists and the layout has settled before focus moves to it.
+  onActiveTabChanged: if (activeTab === "reminders") Qt.callLater(function() {
+    if (root.popupOpen && root.activeTab === "reminders") composeWhen.forceActiveFocus()
+  })
 
   // omarchy hands the omarchy.notifications proxy only to plugins declaring
   // kind "bar" (shell.qml createScopedPluginShell), so a bar-widget has to read
@@ -364,581 +377,594 @@ BarWidget {
     }
   }
 
-  PopupCard {
+  KeyboardPanel {
     id: popup
     anchorItem: button
     bar: root.bar
     owner: root
     open: root.popupOpen
+    focusTarget: keyCatcher
     contentWidth: popup.fittedContentWidth(Style.space(440))
     contentHeight: popup.cappedContentHeight(Style.space(540))
 
-    ColumnLayout {
+    PanelKeyCatcher {
+      id: keyCatcher
       anchors.fill: parent
-      spacing: Style.space(10)
+      // Every key on the Reminders tab belongs to a text field, and the
+      // catcher's hjkl / x / space bindings would eat them.
+      blocked: root.activeTab === "reminders"
+      onCloseRequested: root.close()
 
-      // ----------------------------------------- tabs + DND
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
+      ColumnLayout {
+        anchors.fill: parent
+        spacing: Style.space(10)
 
-        ButtonGroup {
-          options: [
-            { value: "notifications", label: "Notifications" },
-            { value: "reminders", label: remindersModel.count > 0
-                ? "Reminders " + remindersModel.count
-                : "Reminders" }
-          ]
-          value: root.activeTab
-          foreground: root.colForeground
-          accent: root.colAccent
-          fontFamily: root.bar ? root.bar.fontFamily : ""
-          fontSize: Style.font.caption
-          focusable: false
-          onChanged: function(tab) { root.activeTab = tab }
-        }
+        // ----------------------------------------- tabs + DND
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
 
-        Item { Layout.fillWidth: true }
-
-        BorderSurface {
-          id: dndPill
-          visible: root.activeTab === "notifications"
-          Layout.preferredHeight: Math.max(Style.space(24), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
-          Layout.preferredWidth: dndLabel.implicitWidth + dndGlyph.implicitWidth + Style.space(18)
-          radius: Math.min(Style.space(12), root.cardRadius + Style.space(6))
-          color: dndOn ? root.colAccent : root.colSurface
-          borderSpec: Border.flat(dndOn ? root.colAccent : root.colBorder, Style.normalBorderWidth)
-
-          readonly property bool dndOn: root.dnd
-
-          Row {
-            anchors.centerIn: parent
-            spacing: Style.space(4)
-
-            Text {
-              id: dndGlyph
-              text: dndPill.dndOn ? "󰂛" : "󰂚"
-              font.family: root.bar ? root.bar.fontFamily : ""
-              color: dndPill.dndOn ? Color.background : root.colDim
-              font.pixelSize: Style.font.body
-              anchors.verticalCenter: parent.verticalCenter
-            }
-
-            Text {
-              id: dndLabel
-              text: dndPill.dndOn ? "DND on" : "DND off"
-              font.family: root.bar ? root.bar.fontFamily : ""
-              color: dndPill.dndOn ? Color.background : root.colDim
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              anchors.verticalCenter: parent.verticalCenter
-            }
+          ButtonGroup {
+            options: [
+              { value: "notifications", label: "Notifications" },
+              { value: "reminders", label: remindersModel.count > 0
+                  ? "Reminders " + remindersModel.count
+                  : "Reminders" }
+            ]
+            value: root.activeTab
+            foreground: root.colForeground
+            accent: root.colAccent
+            fontFamily: root.bar ? root.bar.fontFamily : ""
+            fontSize: Style.font.caption
+            focusable: false
+            onChanged: function(tab) { root.activeTab = tab }
           }
 
-          MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.toggleDnd()
-          }
-        }
-      }
+          Item { Layout.fillWidth: true }
 
-      // ----------------------------------------- action row
-      RowLayout {
-        Layout.fillWidth: true
-        visible: root.activeTab === "notifications" && historyModel.count > 0
-        spacing: Style.space(8)
+          BorderSurface {
+            id: dndPill
+            visible: root.activeTab === "notifications"
+            Layout.preferredHeight: Math.max(Style.space(24), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
+            Layout.preferredWidth: dndLabel.implicitWidth + dndGlyph.implicitWidth + Style.space(18)
+            radius: Math.min(Style.space(12), root.cardRadius + Style.space(6))
+            color: dndOn ? root.colAccent : root.colSurface
+            borderSpec: Border.flat(dndOn ? root.colAccent : root.colBorder, Style.normalBorderWidth)
 
-        Text {
-          text: historyModel.count === 1 ? "1 recent" : historyModel.count + " recent"
-          font.family: root.bar ? root.bar.fontFamily : ""
-          color: root.colDim
-          font.pixelSize: Style.font.caption
-        }
+            readonly property bool dndOn: root.dnd
 
-        Item { Layout.fillWidth: true }
+            Row {
+              anchors.centerIn: parent
+              spacing: Style.space(4)
 
-        BorderSurface {
-          Layout.preferredWidth: actionLabel.implicitWidth + Style.space(16)
-          Layout.preferredHeight: Math.max(Style.space(22), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
-          radius: Math.min(Style.space(6), root.cardRadius)
-          color: actionArea.containsMouse ? root.colBorder : "transparent"
+              Text {
+                id: dndGlyph
+                text: dndPill.dndOn ? "󰂛" : "󰂚"
+                font.family: root.bar ? root.bar.fontFamily : ""
+                color: dndPill.dndOn ? Color.background : root.colDim
+                font.pixelSize: Style.font.body
+                anchors.verticalCenter: parent.verticalCenter
+              }
 
-          Text {
-            id: actionLabel
-            anchors.centerIn: parent
-            text: "Clear"
-            font.family: root.bar ? root.bar.fontFamily : ""
-            color: root.colForeground
-            font.pixelSize: Style.font.caption
-          }
-
-          MouseArea {
-            id: actionArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.clearAll()
-          }
-        }
-      }
-
-      // ----------------------------------------- notification list
-      ListView {
-        id: listView
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        clip: true
-        spacing: Style.space(8)
-        model: historyModel
-        visible: root.activeTab === "notifications" && count > 0
-
-        delegate: BorderSurface {
-          id: rowCard
-          required property int index
-          required property string fileName
-          required property string app
-          required property string appIcon
-          required property string summary
-          required property string body
-          required property string image
-          required property string glyph
-          required property int urgency
-          required property double timestamp
-
-          readonly property bool hasMedia: image.length > 0 && (
-            image.indexOf("image://icon//") === 0 || image.indexOf("file://") === 0)
-          readonly property string smallIconSource: image.length > 0 ? image : root.notificationIconSource(appIcon)
-          readonly property bool hasIcon: !hasMedia && smallIconSource.length > 0
-          readonly property string sanitizedBody: root.sanitizeBody(body, app, appIcon)
-
-          width: listView.width
-          implicitHeight: rowContent.implicitHeight + Style.spacing.panelGap
-          radius: root.cardRadius
-          color: "transparent"
-          borderSpec: Border.flat(root.colBorder, Style.normalBorderWidth)
-
-          // Declared before rowContent so the row's own close button, a later
-          // sibling, keeps the click.
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.focusHistoryRow(rowCard.index)
-          }
-
-          RowLayout {
-            id: rowContent
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: rowCard.borderLeft + Style.space(12)
-            anchors.rightMargin: rowCard.borderRight + Style.space(12)
-            spacing: Style.space(10)
-
-            Item {
-              id: imageSlot
-              Layout.preferredWidth: Style.space(32)
-              Layout.preferredHeight: Style.space(32)
-              Layout.alignment: Qt.AlignVCenter
-              // Hide on icon load failure so unresolved themed-icon names
-              // don't render Qt's broken-image placeholder.
-              visible: (rowCard.hasIcon || rowCard.hasMedia) && rowIconImage.status !== Image.Error
-
-              Image {
-                id: rowIconImage
-                anchors.fill: parent
-                source: rowCard.hasMedia ? rowCard.image : rowCard.smallIconSource
-                fillMode: rowCard.hasMedia ? Image.PreserveAspectCrop : Image.PreserveAspectFit
-                sourceSize.width: imageSlot.width * Screen.devicePixelRatio
-                sourceSize.height: imageSlot.height * Screen.devicePixelRatio
-                asynchronous: true
-                smooth: true
+              Text {
+                id: dndLabel
+                text: dndPill.dndOn ? "DND on" : "DND off"
+                font.family: root.bar ? root.bar.fontFamily : ""
+                color: dndPill.dndOn ? Color.background : root.colDim
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
               }
             }
 
-            ColumnLayout {
-              Layout.fillWidth: true
-              spacing: Style.space(2)
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.toggleDnd()
+            }
+          }
+        }
 
-              RowLayout {
+        // ----------------------------------------- action row
+        RowLayout {
+          Layout.fillWidth: true
+          visible: root.activeTab === "notifications" && historyModel.count > 0
+          spacing: Style.space(8)
+
+          Text {
+            text: historyModel.count === 1 ? "1 recent" : historyModel.count + " recent"
+            font.family: root.bar ? root.bar.fontFamily : ""
+            color: root.colDim
+            font.pixelSize: Style.font.caption
+          }
+
+          Item { Layout.fillWidth: true }
+
+          BorderSurface {
+            Layout.preferredWidth: actionLabel.implicitWidth + Style.space(16)
+            Layout.preferredHeight: Math.max(Style.space(22), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
+            radius: Math.min(Style.space(6), root.cardRadius)
+            color: actionArea.containsMouse ? root.colBorder : "transparent"
+
+            Text {
+              id: actionLabel
+              anchors.centerIn: parent
+              text: "Clear"
+              font.family: root.bar ? root.bar.fontFamily : ""
+              color: root.colForeground
+              font.pixelSize: Style.font.caption
+            }
+
+            MouseArea {
+              id: actionArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.clearAll()
+            }
+          }
+        }
+
+        // ----------------------------------------- notification list
+        ListView {
+          id: listView
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          clip: true
+          spacing: Style.space(8)
+          model: historyModel
+          visible: root.activeTab === "notifications" && count > 0
+
+          delegate: BorderSurface {
+            id: rowCard
+            required property int index
+            required property string fileName
+            required property string app
+            required property string appIcon
+            required property string summary
+            required property string body
+            required property string image
+            required property string glyph
+            required property int urgency
+            required property double timestamp
+
+            readonly property bool hasMedia: image.length > 0 && (
+              image.indexOf("image://icon//") === 0 || image.indexOf("file://") === 0)
+            readonly property string smallIconSource: image.length > 0 ? image : root.notificationIconSource(appIcon)
+            readonly property bool hasIcon: !hasMedia && smallIconSource.length > 0
+            readonly property string sanitizedBody: root.sanitizeBody(body, app, appIcon)
+
+            width: listView.width
+            implicitHeight: rowContent.implicitHeight + Style.spacing.panelGap
+            radius: root.cardRadius
+            color: "transparent"
+            borderSpec: Border.flat(root.colBorder, Style.normalBorderWidth)
+
+            // Declared before rowContent so the row's own close button, a later
+            // sibling, keeps the click.
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.focusHistoryRow(rowCard.index)
+            }
+
+            RowLayout {
+              id: rowContent
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.leftMargin: rowCard.borderLeft + Style.space(12)
+              anchors.rightMargin: rowCard.borderRight + Style.space(12)
+              spacing: Style.space(10)
+
+              Item {
+                id: imageSlot
+                Layout.preferredWidth: Style.space(32)
+                Layout.preferredHeight: Style.space(32)
+                Layout.alignment: Qt.AlignVCenter
+                // Hide on icon load failure so unresolved themed-icon names
+                // don't render Qt's broken-image placeholder.
+                visible: (rowCard.hasIcon || rowCard.hasMedia) && rowIconImage.status !== Image.Error
+
+                Image {
+                  id: rowIconImage
+                  anchors.fill: parent
+                  source: rowCard.hasMedia ? rowCard.image : rowCard.smallIconSource
+                  fillMode: rowCard.hasMedia ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+                  sourceSize.width: imageSlot.width * Screen.devicePixelRatio
+                  sourceSize.height: imageSlot.height * Screen.devicePixelRatio
+                  asynchronous: true
+                  smooth: true
+                }
+              }
+
+              ColumnLayout {
                 Layout.fillWidth: true
-                spacing: Style.space(6)
+                spacing: Style.space(2)
+
+                RowLayout {
+                  Layout.fillWidth: true
+                  spacing: Style.space(6)
+
+                  Text {
+                    Layout.fillWidth: true
+                    visible: rowCard.summary.length > 0
+                    text: rowCard.summary
+                    font.family: root.bar ? root.bar.fontFamily : ""
+                    color: root.colForeground
+                    font.pixelSize: Style.font.subtitle
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                    elide: Text.ElideRight
+                    maximumLineCount: 1
+                  }
+
+                  Text {
+                    text: NotificationLogic.relativeTime(rowCard.timestamp, popup.open ? Date.now() : 0)
+                    font.family: root.bar ? root.bar.fontFamily : ""
+                    color: root.colDim
+                    font.pixelSize: Style.font.caption
+                  }
+                }
 
                 Text {
                   Layout.fillWidth: true
-                  visible: rowCard.summary.length > 0
-                  text: rowCard.summary
+                  visible: rowCard.sanitizedBody.length > 0
+                  text: rowCard.sanitizedBody
                   font.family: root.bar ? root.bar.fontFamily : ""
+                  textFormat: Text.PlainText
+                  color: root.colDim
+                  font.pixelSize: Style.font.bodySmall
+                  wrapMode: Text.WordWrap
+                  elide: Text.ElideRight
+                  maximumLineCount: 2
+                }
+              }
+
+              Rectangle {
+                Layout.preferredWidth: Style.space(18)
+                Layout.preferredHeight: Style.space(18)
+                Layout.alignment: Qt.AlignVCenter
+                radius: Math.min(4, root.cardRadius)
+                color: rowCloseArea.containsMouse ? root.colBorder : "transparent"
+
+                Text {
+                  anchors.centerIn: parent
+                  text: "✕"
+                  font.family: root.bar ? root.bar.fontFamily : ""
+                  color: root.colDim
+                  font.pixelSize: Style.font.bodySmall
+                }
+
+                MouseArea {
+                  id: rowCloseArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.dismissHistoryRow(rowCard.index)
+                }
+              }
+            }
+          }
+        }
+
+        // ----------------------------------------- notification empty state
+        Item {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          visible: root.activeTab === "notifications" && historyModel.count === 0
+
+          ColumnLayout {
+            anchors.centerIn: parent
+            spacing: Style.space(6)
+
+            Text {
+              Layout.alignment: Qt.AlignHCenter
+              text: "󰂚"
+              font.family: root.bar ? root.bar.fontFamily : ""
+              color: root.colBorder
+              font.pixelSize: Style.font.displayLarge
+            }
+
+            Text {
+              Layout.alignment: Qt.AlignHCenter
+              text: "Nothing recent"
+              font.family: root.bar ? root.bar.fontFamily : ""
+              color: root.colDim
+              font.pixelSize: Style.font.body
+            }
+          }
+        }
+
+        // ----------------------------------------- reminder list
+        ListView {
+          id: reminderList
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          clip: true
+          spacing: Style.space(8)
+          model: remindersModel
+          visible: root.activeTab === "reminders" && count > 0
+
+          delegate: BorderSurface {
+            id: remCard
+            required property int index
+            required property string unit
+            required property string message
+            required property string label
+            required property int minutes
+            required property double at
+
+            readonly property bool editing: root.editingUnit === remCard.unit
+
+            width: reminderList.width
+            implicitHeight: (editing ? editBox.implicitHeight : viewRow.implicitHeight) + Style.spacing.panelGap
+            radius: root.cardRadius
+            color: "transparent"
+            borderSpec: Border.flat(editing ? root.colAccent : root.colBorder, Style.normalBorderWidth)
+
+            // Declared first so the later close / chip children keep their clicks.
+            MouseArea {
+              anchors.fill: parent
+              enabled: !remCard.editing
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.beginEdit(remCard.unit, remCard.at)
+            }
+
+            RowLayout {
+              id: viewRow
+              visible: !remCard.editing
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.leftMargin: remCard.borderLeft + Style.space(12)
+              anchors.rightMargin: remCard.borderRight + Style.space(12)
+              spacing: Style.space(10)
+
+              Text {
+                Layout.alignment: Qt.AlignVCenter
+                text: "󰢌"
+                font.family: root.bar ? root.bar.fontFamily : ""
+                color: root.colDim
+                font.pixelSize: Style.font.subtitle
+              }
+
+              ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Style.space(2)
+
+                Text {
+                  Layout.fillWidth: true
+                  text: remCard.label.length > 0 ? remCard.label : remCard.minutes + "-min reminder"
+                  font.family: root.bar ? root.bar.fontFamily : ""
+                  textFormat: Text.PlainText
                   color: root.colForeground
                   font.pixelSize: Style.font.subtitle
                   font.bold: true
-                  wrapMode: Text.WordWrap
                   elide: Text.ElideRight
                   maximumLineCount: 1
                 }
 
                 Text {
-                  text: NotificationLogic.relativeTime(rowCard.timestamp, popup.open ? Date.now() : 0)
+                  Layout.fillWidth: true
+                  text: "in " + NotificationLogic.remainingLabel(remCard.at, root.nowMs)
+                    + " · " + NotificationLogic.reminderTimeLabel(remCard.at, root.nowMs)
                   font.family: root.bar ? root.bar.fontFamily : ""
                   color: root.colDim
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: Style.font.bodySmall
+                  elide: Text.ElideRight
+                  maximumLineCount: 1
                 }
               }
 
-              Text {
-                Layout.fillWidth: true
-                visible: rowCard.sanitizedBody.length > 0
-                text: rowCard.sanitizedBody
-                font.family: root.bar ? root.bar.fontFamily : ""
-                textFormat: Text.PlainText
-                color: root.colDim
-                font.pixelSize: Style.font.bodySmall
-                wrapMode: Text.WordWrap
-                elide: Text.ElideRight
-                maximumLineCount: 2
+              Rectangle {
+                Layout.preferredWidth: Style.space(18)
+                Layout.preferredHeight: Style.space(18)
+                Layout.alignment: Qt.AlignVCenter
+                radius: Math.min(4, root.cardRadius)
+                color: remCloseArea.containsMouse ? root.colBorder : "transparent"
+
+                Text {
+                  anchors.centerIn: parent
+                  text: "✕"
+                  font.family: root.bar ? root.bar.fontFamily : ""
+                  color: root.colDim
+                  font.pixelSize: Style.font.bodySmall
+                }
+
+                MouseArea {
+                  id: remCloseArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.cancelReminder(remCard.unit)
+                }
               }
-            }
-
-            Rectangle {
-              Layout.preferredWidth: Style.space(18)
-              Layout.preferredHeight: Style.space(18)
-              Layout.alignment: Qt.AlignVCenter
-              radius: Math.min(4, root.cardRadius)
-              color: rowCloseArea.containsMouse ? root.colBorder : "transparent"
-
-              Text {
-                anchors.centerIn: parent
-                text: "✕"
-                font.family: root.bar ? root.bar.fontFamily : ""
-                color: root.colDim
-                font.pixelSize: Style.font.bodySmall
-              }
-
-              MouseArea {
-                id: rowCloseArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.dismissHistoryRow(rowCard.index)
-              }
-            }
-          }
-        }
-      }
-
-      // ----------------------------------------- notification empty state
-      Item {
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        visible: root.activeTab === "notifications" && historyModel.count === 0
-
-        ColumnLayout {
-          anchors.centerIn: parent
-          spacing: Style.space(6)
-
-          Text {
-            Layout.alignment: Qt.AlignHCenter
-            text: "󰂚"
-            font.family: root.bar ? root.bar.fontFamily : ""
-            color: root.colBorder
-            font.pixelSize: Style.font.displayLarge
-          }
-
-          Text {
-            Layout.alignment: Qt.AlignHCenter
-            text: "Nothing recent"
-            font.family: root.bar ? root.bar.fontFamily : ""
-            color: root.colDim
-            font.pixelSize: Style.font.body
-          }
-        }
-      }
-
-      // ----------------------------------------- reminder list
-      ListView {
-        id: reminderList
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        clip: true
-        spacing: Style.space(8)
-        model: remindersModel
-        visible: root.activeTab === "reminders" && count > 0
-
-        delegate: BorderSurface {
-          id: remCard
-          required property int index
-          required property string unit
-          required property string message
-          required property string label
-          required property int minutes
-          required property double at
-
-          readonly property bool editing: root.editingUnit === remCard.unit
-
-          width: reminderList.width
-          implicitHeight: (editing ? editBox.implicitHeight : viewRow.implicitHeight) + Style.spacing.panelGap
-          radius: root.cardRadius
-          color: "transparent"
-          borderSpec: Border.flat(editing ? root.colAccent : root.colBorder, Style.normalBorderWidth)
-
-          // Declared first so the later close / chip children keep their clicks.
-          MouseArea {
-            anchors.fill: parent
-            enabled: !remCard.editing
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.beginEdit(remCard.unit, remCard.at)
-          }
-
-          RowLayout {
-            id: viewRow
-            visible: !remCard.editing
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: remCard.borderLeft + Style.space(12)
-            anchors.rightMargin: remCard.borderRight + Style.space(12)
-            spacing: Style.space(10)
-
-            Text {
-              Layout.alignment: Qt.AlignVCenter
-              text: "󰢌"
-              font.family: root.bar ? root.bar.fontFamily : ""
-              color: root.colDim
-              font.pixelSize: Style.font.subtitle
             }
 
             ColumnLayout {
-              Layout.fillWidth: true
-              spacing: Style.space(2)
+              id: editBox
+              visible: remCard.editing
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.leftMargin: remCard.borderLeft + Style.space(12)
+              anchors.rightMargin: remCard.borderRight + Style.space(12)
+              spacing: Style.space(4)
+
+              // Seeding text imperatively rather than binding it: the field owns
+              // its text once the user types, and a binding would fight that.
+              onVisibleChanged: if (visible) {
+                editField.text = root.editWhen
+                editField.forceActiveFocus()
+                editField.selectAll()
+              }
+
+              RowLayout {
+                Layout.fillWidth: true
+                spacing: Style.space(8)
+
+                TextField {
+                  id: editField
+                  Layout.fillWidth: true
+                  Layout.alignment: Qt.AlignVCenter
+                  placeholderText: "45m or 14:30"
+                  foreground: root.colForeground
+                  accent: root.colAccent
+                  font.pixelSize: Style.font.bodySmall
+                  verticalPadding: Style.spacing.xs
+                  onAccepted: editSave.commit()
+                  Keys.onEscapePressed: root.editingUnit = ""
+                }
+
+                Button {
+                  id: editSave
+                  Layout.alignment: Qt.AlignVCenter
+                  text: "Save"
+                  bordered: true
+                  enabled: NotificationLogic.parseWhen(editField.text, root.nowMs) > 0
+                  opacity: enabled ? 1 : 0.45
+                  foreground: root.colForeground
+                  accent: root.colAccent
+                  fontFamily: root.bar ? root.bar.fontFamily : ""
+                  fontSize: Style.font.caption
+                  verticalPadding: Style.spacing.xs
+
+                  function commit() {
+                    if (!enabled) return
+                    var minutes = NotificationLogic.parseWhen(editField.text, Date.now())
+                    root.rescheduleReminder(remCard.unit, minutes, remCard.message)
+                    root.editingUnit = ""
+                  }
+
+                  onClicked: commit()
+                }
+
+                Button {
+                  Layout.alignment: Qt.AlignVCenter
+                  text: "Cancel"
+                  foreground: root.colForeground
+                  accent: root.colAccent
+                  fontFamily: root.bar ? root.bar.fontFamily : ""
+                  fontSize: Style.font.caption
+                  verticalPadding: Style.spacing.xs
+                  onClicked: root.editingUnit = ""
+                }
+              }
 
               Text {
                 Layout.fillWidth: true
-                text: remCard.label.length > 0 ? remCard.label : remCard.minutes + "-min reminder"
-                font.family: root.bar ? root.bar.fontFamily : ""
-                textFormat: Text.PlainText
-                color: root.colForeground
-                font.pixelSize: Style.font.subtitle
-                font.bold: true
-                elide: Text.ElideRight
-                maximumLineCount: 1
-              }
-
-              Text {
-                Layout.fillWidth: true
-                text: "in " + NotificationLogic.remainingLabel(remCard.at, root.nowMs)
-                  + " · " + NotificationLogic.reminderTimeLabel(remCard.at, root.nowMs)
+                text: NotificationLogic.whenHint(editField.text, root.nowMs)
                 font.family: root.bar ? root.bar.fontFamily : ""
                 color: root.colDim
-                font.pixelSize: Style.font.bodySmall
+                font.pixelSize: Style.font.caption
                 elide: Text.ElideRight
                 maximumLineCount: 1
-              }
-            }
-
-            Rectangle {
-              Layout.preferredWidth: Style.space(18)
-              Layout.preferredHeight: Style.space(18)
-              Layout.alignment: Qt.AlignVCenter
-              radius: Math.min(4, root.cardRadius)
-              color: remCloseArea.containsMouse ? root.colBorder : "transparent"
-
-              Text {
-                anchors.centerIn: parent
-                text: "✕"
-                font.family: root.bar ? root.bar.fontFamily : ""
-                color: root.colDim
-                font.pixelSize: Style.font.bodySmall
-              }
-
-              MouseArea {
-                id: remCloseArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.cancelReminder(remCard.unit)
               }
             }
           }
+        }
+
+        // ----------------------------------------- reminder empty state
+        Item {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          visible: root.activeTab === "reminders" && remindersModel.count === 0
 
           ColumnLayout {
-            id: editBox
-            visible: remCard.editing
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: remCard.borderLeft + Style.space(12)
-            anchors.rightMargin: remCard.borderRight + Style.space(12)
-            spacing: Style.space(4)
+            anchors.centerIn: parent
+            spacing: Style.space(6)
 
-            // Seeding text imperatively rather than binding it: the field owns
-            // its text once the user types, and a binding would fight that.
-            onVisibleChanged: if (visible) {
-              editField.text = root.editWhen
-              editField.forceActiveFocus()
-              editField.selectAll()
-            }
-
-            RowLayout {
-              Layout.fillWidth: true
-              spacing: Style.space(8)
-
-              TextField {
-                id: editField
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignVCenter
-                placeholderText: "45m or 14:30"
-                foreground: root.colForeground
-                accent: root.colAccent
-                font.pixelSize: Style.font.bodySmall
-                verticalPadding: Style.spacing.xs
-                onAccepted: editSave.commit()
-              }
-
-              Button {
-                id: editSave
-                Layout.alignment: Qt.AlignVCenter
-                text: "Save"
-                bordered: true
-                enabled: NotificationLogic.parseWhen(editField.text, root.nowMs) > 0
-                opacity: enabled ? 1 : 0.45
-                foreground: root.colForeground
-                accent: root.colAccent
-                fontFamily: root.bar ? root.bar.fontFamily : ""
-                fontSize: Style.font.caption
-                verticalPadding: Style.spacing.xs
-
-                function commit() {
-                  if (!enabled) return
-                  var minutes = NotificationLogic.parseWhen(editField.text, Date.now())
-                  root.rescheduleReminder(remCard.unit, minutes, remCard.message)
-                  root.editingUnit = ""
-                }
-
-                onClicked: commit()
-              }
-
-              Button {
-                Layout.alignment: Qt.AlignVCenter
-                text: "Cancel"
-                foreground: root.colForeground
-                accent: root.colAccent
-                fontFamily: root.bar ? root.bar.fontFamily : ""
-                fontSize: Style.font.caption
-                verticalPadding: Style.spacing.xs
-                onClicked: root.editingUnit = ""
-              }
+            Text {
+              Layout.alignment: Qt.AlignHCenter
+              text: "󰢌"
+              font.family: root.bar ? root.bar.fontFamily : ""
+              color: root.colBorder
+              font.pixelSize: Style.font.displayLarge
             }
 
             Text {
-              Layout.fillWidth: true
-              text: NotificationLogic.whenHint(editField.text, root.nowMs)
+              Layout.alignment: Qt.AlignHCenter
+              text: "No reminders set"
               font.family: root.bar ? root.bar.fontFamily : ""
               color: root.colDim
-              font.pixelSize: Style.font.caption
-              elide: Text.ElideRight
-              maximumLineCount: 1
+              font.pixelSize: Style.font.body
             }
           }
         }
-      }
 
-      // ----------------------------------------- reminder empty state
-      Item {
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        visible: root.activeTab === "reminders" && remindersModel.count === 0
-
+        // ----------------------------------------- reminder compose row
         ColumnLayout {
-          anchors.centerIn: parent
-          spacing: Style.space(6)
+          visible: root.activeTab === "reminders"
+          Layout.fillWidth: true
+          spacing: Style.space(4)
 
-          Text {
-            Layout.alignment: Qt.AlignHCenter
-            text: "󰢌"
-            font.family: root.bar ? root.bar.fontFamily : ""
-            color: root.colBorder
-            font.pixelSize: Style.font.displayLarge
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(8)
+
+            TextField {
+              id: composeWhen
+              Layout.preferredWidth: Style.space(96)
+              Layout.alignment: Qt.AlignVCenter
+              placeholderText: "45m or 14:30"
+              foreground: root.colForeground
+              accent: root.colAccent
+              font.pixelSize: Style.font.bodySmall
+              verticalPadding: Style.spacing.xs
+              onAccepted: composeSet.commit()
+              Keys.onEscapePressed: root.close()
+            }
+
+            TextField {
+              id: composeMessage
+              Layout.fillWidth: true
+              Layout.alignment: Qt.AlignVCenter
+              placeholderText: "Remind me to…"
+              foreground: root.colForeground
+              accent: root.colAccent
+              font.pixelSize: Style.font.bodySmall
+              verticalPadding: Style.spacing.xs
+              onAccepted: composeSet.commit()
+              Keys.onEscapePressed: root.close()
+            }
+
+            Button {
+              id: composeSet
+              Layout.alignment: Qt.AlignVCenter
+              text: "Set"
+              bordered: true
+              enabled: NotificationLogic.parseWhen(composeWhen.text, root.nowMs) > 0
+              opacity: enabled ? 1 : 0.45
+              foreground: root.colForeground
+              accent: root.colAccent
+              fontFamily: root.bar ? root.bar.fontFamily : ""
+              fontSize: Style.font.caption
+              verticalPadding: Style.spacing.xs
+
+              function commit() {
+                if (!enabled) return
+                var minutes = NotificationLogic.parseWhen(composeWhen.text, Date.now())
+                if (!root.createReminder(minutes, composeMessage.text)) return
+                composeWhen.text = ""
+                composeMessage.text = ""
+                composeWhen.forceActiveFocus()
+              }
+
+              onClicked: commit()
+            }
           }
 
           Text {
-            Layout.alignment: Qt.AlignHCenter
-            text: "No reminders set"
+            Layout.fillWidth: true
+            text: NotificationLogic.whenHint(composeWhen.text, root.nowMs)
             font.family: root.bar ? root.bar.fontFamily : ""
             color: root.colDim
-            font.pixelSize: Style.font.body
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+            maximumLineCount: 1
           }
-        }
-      }
-
-      // ----------------------------------------- reminder compose row
-      ColumnLayout {
-        visible: root.activeTab === "reminders"
-        Layout.fillWidth: true
-        spacing: Style.space(4)
-
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(8)
-
-          TextField {
-            id: composeWhen
-            Layout.preferredWidth: Style.space(96)
-            Layout.alignment: Qt.AlignVCenter
-            placeholderText: "45m or 14:30"
-            foreground: root.colForeground
-            accent: root.colAccent
-            font.pixelSize: Style.font.bodySmall
-            verticalPadding: Style.spacing.xs
-            onAccepted: composeSet.commit()
-          }
-
-          TextField {
-            id: composeMessage
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignVCenter
-            placeholderText: "Remind me to…"
-            foreground: root.colForeground
-            accent: root.colAccent
-            font.pixelSize: Style.font.bodySmall
-            verticalPadding: Style.spacing.xs
-            onAccepted: composeSet.commit()
-          }
-
-          Button {
-            id: composeSet
-            Layout.alignment: Qt.AlignVCenter
-            text: "Set"
-            bordered: true
-            enabled: NotificationLogic.parseWhen(composeWhen.text, root.nowMs) > 0
-            opacity: enabled ? 1 : 0.45
-            foreground: root.colForeground
-            accent: root.colAccent
-            fontFamily: root.bar ? root.bar.fontFamily : ""
-            fontSize: Style.font.caption
-            verticalPadding: Style.spacing.xs
-
-            function commit() {
-              if (!enabled) return
-              var minutes = NotificationLogic.parseWhen(composeWhen.text, Date.now())
-              if (!root.createReminder(minutes, composeMessage.text)) return
-              composeWhen.text = ""
-              composeMessage.text = ""
-              composeWhen.forceActiveFocus()
-            }
-
-            onClicked: commit()
-          }
-        }
-
-        Text {
-          Layout.fillWidth: true
-          text: NotificationLogic.whenHint(composeWhen.text, root.nowMs)
-          font.family: root.bar ? root.bar.fontFamily : ""
-          color: root.colDim
-          font.pixelSize: Style.font.caption
-          elide: Text.ElideRight
-          maximumLineCount: 1
         }
       }
     }
