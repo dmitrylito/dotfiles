@@ -1,8 +1,8 @@
 hl.config({
 	general = {
-		gaps_in = 4,
-		gaps_out = 8,
-		border_size = 3,
+		gaps_in = 2,
+		gaps_out = 4,
+		border_size = 6,
 		layout = "dwindle",
 		allow_tearing = true,
 		snap = {
@@ -11,7 +11,7 @@ hl.config({
 		},
 	},
 	decoration = {
-		rounding = 10,
+		rounding = 6,
 		active_opacity = 1.0,
 		inactive_opacity = 1.0,
 	},
