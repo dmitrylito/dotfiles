@@ -6,15 +6,15 @@ hl.config({
 		repeat_delay = 600,
 		numlock_by_default = true,
 		follow_mouse = 1,
+ 		scroll_factor = 1.5,
 {{- if eq .chezmoi.hostname "omarchy" }}
 		-- Gaming box: a different mouse, and aiming needs unaccelerated 1:1 motion.
 		accel_profile = "flat",
 		sensitivity = 0.4,
-		scroll_factor = 1.5,
+ 		natural_scroll = true,
 {{- else if eq .chezmoi.hostname "fcoffice" }}
 		accel_profile = "adaptive",
 		sensitivity = 0.3,
-		scroll_factor = 1.3,
 {{- else }}
 		accel_profile = "adaptive",
 		sensitivity = 0.4,
