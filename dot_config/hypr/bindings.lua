@@ -112,20 +112,35 @@ hl.bind(
 -- monitors that rule can still contain the previous monitor's bottom gap when
 -- SUPER+S runs, so refit it synchronously against the monitor receiving the
 -- keypress before revealing the scratchpad.
+local qconsole_share = 0.5 -- fraction of the usable height the console covers
+local qconsole_box = 2 -- panel width as a multiple of its height; math.huge = full width
+
 local function qconsole_refit()
 	local monitor = hl.get_active_monitor()
 	if not monitor or not monitor.scale or monitor.scale <= 0 then
 		return
 	end
 
+	-- Monitor width/height are physical pixels in the panel's own orientation;
+	-- gaps and reserved are logical, so the scale comes out first.
+	local width, height = monitor.width, monitor.height
+	if monitor.transform % 2 == 1 then
+		width, height = height, width
+	end
+
 	local reserved = monitor.reserved
-	local usable = monitor.height / monitor.scale - reserved.top - reserved.bottom
-	local bottom = math.max(0, math.floor(usable * 0.5))
+	height = height / monitor.scale - reserved.top - reserved.bottom
+	width = width / monitor.scale - reserved.left - reserved.right
+
+	local tall = math.floor(height * qconsole_share)
+	local wide = math.min(width, tall * qconsole_box)
+	local side = math.max(0, math.floor((width - wide) / 2))
+	local bottom = math.max(0, math.floor(height - tall))
 
 	hl.workspace_rule({
 		workspace = "special:scratchpad",
 		gaps_in = 0,
-		gaps_out = { top = 0, right = 0, bottom = bottom, left = 0 },
+		gaps_out = { top = 0, right = side, bottom = bottom, left = side },
 		no_border = true,
 		on_created_empty = "[workspace special:scratchpad silent] omarchy-agent",
 	})
