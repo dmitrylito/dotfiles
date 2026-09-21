@@ -7,7 +7,7 @@ hl.config({
 		numlock_by_default = true,
 		accel_profile = "flat",
 		follow_mouse = 1,
-		sensitivity = 0.3,
+		sensitivity = 0.4,
 		scroll_factor = 1.5,
 		natural_scroll = false,
 		touchpad = {
