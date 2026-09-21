@@ -8,7 +8,12 @@ It adds:
 - a list of recent notifications with relative timestamps;
 - per-notification dismissal and a Clear action;
 - a Do Not Disturb toggle (right-click the bell, or the pill in the popup);
+- a Reminders tab that lists, creates, reschedules and cancels the timers
+  behind `omarchy reminder`;
 - an IPC toggle for keybinds: `omarchy-shell notification-center toggle`.
+
+The popup always opens on the Notifications tab; Reminders is one click away
+and never steals the default view.
 
 The notification daemon, toast popups, history storage, DND state, and the
 standard DND indicator remain part of Omarchy itself. This plugin only provides

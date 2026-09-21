@@ -1,8 +1,14 @@
-// Bell bar widget: recent-notification list + DND toggle for the Omarchy 4
-// notifications service. History lives on disk (one JSON file per entry under
-// the service's historyDir); live toasts come from service.popupModel.
-// Left-click (or `omarchy-shell notification-center toggle`) opens the list,
+// Bell bar widget: recent-notification list, reminder management, and a DND
+// toggle for the Omarchy 4 notifications service. Notification history lives on
+// disk (one JSON file per entry under the service's historyDir); live toasts
+// come from service.popupModel; reminders come from `omarchy reminder`, which
+// backs each one with a transient systemd user timer.
+// Left-click (or `omarchy-shell notification-center toggle`) opens the popup,
 // right-click toggles Do Not Disturb.
+//
+// The popup has two tabs. Notifications is always the one that opens — the tab
+// resets on every open so the bell stays a one-click read of what just came in,
+// and reminders are a deliberate second click.
 
 import QtQuick
 import QtQuick.Layouts
@@ -20,7 +26,17 @@ BarWidget {
   function close() { popupOpen = false }
   function toggle() { popupOpen = !popupOpen }
 
-  onPopupOpenChanged: if (popupOpen) refreshHistory()
+  property string activeTab: "notifications"
+
+  onPopupOpenChanged: {
+    if (!popupOpen) {
+      editingUnit = ""
+      return
+    }
+    activeTab = "notifications"
+    refreshHistory()
+    refreshReminders()
+  }
 
   // omarchy hands the omarchy.notifications proxy only to plugins declaring
   // kind "bar" (shell.qml createScopedPluginShell), so a bar-widget has to read
@@ -129,6 +145,93 @@ BarWidget {
     historyModel.clear()
   }
 
+  // ---------------------------------------------------------------- reminders
+  //
+  // `omarchy reminder` owns the model: each reminder is a transient systemd
+  // user timer (omarchy-reminder-<minutes>m-<epoch>.timer) plus an optional
+  // message file under $XDG_RUNTIME_DIR/omarchy-reminders. There is no API to
+  // move a timer's fire time, so rescheduling is stop-then-recreate — the unit
+  // name changes, which is why rows are keyed by unit and edit state is dropped
+  // whenever the list reloads.
+
+  ListModel { id: remindersModel }
+
+  // Unit of the row currently being rescheduled, "" when none.
+  property string editingUnit: ""
+  property string editWhen: ""
+
+  // Countdown clock for the reminder rows. Only ticks while they are on screen.
+  property double nowMs: Date.now()
+
+  property var reminderQueue: []
+
+  function refreshReminders() {
+    if (remindersProc.running) return
+    remindersProc.running = true
+  }
+
+  function loadReminders(raw) {
+    var rows = NotificationLogic.parseReminders(raw)
+    remindersModel.clear()
+    for (var i = 0; i < rows.length; i++) remindersModel.append(rows[i])
+    nowMs = Date.now()
+    if (editingUnit.length > 0 && !hasReminder(editingUnit)) editingUnit = ""
+  }
+
+  function hasReminder(unit) {
+    for (var i = 0; i < remindersModel.count; i++)
+      if (remindersModel.get(i).unit === unit) return true
+    return false
+  }
+
+  function queueReminderAction(command) {
+    reminderQueue.push(command)
+    runNextReminderAction()
+  }
+
+  function runNextReminderAction() {
+    if (reminderProc.running || reminderQueue.length === 0) return
+    reminderProc.command = reminderQueue.shift()
+    reminderProc.running = true
+  }
+
+  // Mirrors omarchy-reminder's own clear path: stop both units the transient
+  // timer created, drop the message file, then nudge the bar indicator, which
+  // has no other way to learn the timer went away.
+  function cancelReminder(unit) {
+    if (!unit) return
+    queueReminderAction(["bash", "-c",
+      "dir=\"${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders\"\n" +
+      "systemctl --user stop \"$1.timer\" \"$1.service\" >/dev/null 2>&1 || true\n" +
+      "rm -f \"$dir/$1.message\"\n" +
+      "omarchy-shell -q omarchy.indicators refresh >/dev/null 2>&1 || true",
+      "--", unit])
+  }
+
+  function createReminder(minutes, message) {
+    var valid = NotificationLogic.validMinutes(minutes)
+    if (valid === 0) return false
+    var text = String(message || "").trim()
+    queueReminderAction(text.length > 0
+      ? ["omarchy-reminder", String(valid), text]
+      : ["omarchy-reminder", String(valid)])
+    return true
+  }
+
+  function rescheduleReminder(unit, minutes, message) {
+    var valid = NotificationLogic.validMinutes(minutes)
+    if (valid === 0) return false
+    cancelReminder(unit)
+    return createReminder(valid, message)
+  }
+
+  // Seeded with the clock time the reminder currently fires at, since that is
+  // the fact being changed; a duration ("20m") is still accepted in its place.
+  function beginEdit(unit, at) {
+    editWhen = NotificationLogic.clockString(at)
+    editingUnit = unit
+  }
+
   // No signal from the service reaches a bar-widget, so poll the two pieces of
   // its state we need: one file per on-screen toast, and the DND setting.
   Timer {
@@ -198,6 +301,47 @@ BarWidget {
     onExited: root.runNextRemove()
   }
 
+  Process {
+    id: remindersProc
+    running: false
+    command: ["omarchy-reminder", "show", "--json"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.loadReminders(text)
+    }
+  }
+
+  // Reminder mutations run one at a time so a reschedule's stop always lands
+  // before its recreate. The list is only re-read once the queue drains.
+  Process {
+    id: reminderProc
+    running: false
+    onExited: {
+      if (root.reminderQueue.length > 0) root.runNextReminderAction()
+      else root.refreshReminders()
+    }
+  }
+
+  Timer {
+    interval: 1000
+    repeat: true
+    running: root.popupOpen && root.activeTab === "reminders"
+    onTriggered: {
+      root.nowMs = Date.now()
+      // Rows are sorted by fire time, so the first one is the only one that can
+      // have just fired and left the timer list.
+      if (remindersModel.count > 0 && remindersModel.get(0).at * 1000 <= root.nowMs)
+        root.refreshReminders()
+    }
+  }
+
+  Timer {
+    interval: 20000
+    repeat: true
+    running: root.popupOpen && root.activeTab === "reminders"
+    onTriggered: root.refreshReminders()
+  }
+
   IpcHandler {
     target: "notification-center"
     function toggle(): string { root.toggle(); return root.popupOpen ? "open" : "closed" }
@@ -233,23 +377,32 @@ BarWidget {
       anchors.fill: parent
       spacing: Style.space(10)
 
-      // ----------------------------------------- header
+      // ----------------------------------------- tabs + DND
       RowLayout {
         Layout.fillWidth: true
         spacing: Style.space(8)
 
-        Text {
-          text: "Notifications"
-          font.family: root.bar ? root.bar.fontFamily : ""
-          color: root.colForeground
-          font.pixelSize: Style.font.title
-          font.bold: true
+        ButtonGroup {
+          options: [
+            { value: "notifications", label: "Notifications" },
+            { value: "reminders", label: remindersModel.count > 0
+                ? "Reminders " + remindersModel.count
+                : "Reminders" }
+          ]
+          value: root.activeTab
+          foreground: root.colForeground
+          accent: root.colAccent
+          fontFamily: root.bar ? root.bar.fontFamily : ""
+          fontSize: Style.font.caption
+          focusable: false
+          onChanged: function(tab) { root.activeTab = tab }
         }
 
         Item { Layout.fillWidth: true }
 
         BorderSurface {
           id: dndPill
+          visible: root.activeTab === "notifications"
           Layout.preferredHeight: Math.max(Style.space(24), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
           Layout.preferredWidth: dndLabel.implicitWidth + dndGlyph.implicitWidth + Style.space(18)
           radius: Math.min(Style.space(12), root.cardRadius + Style.space(6))
@@ -294,7 +447,7 @@ BarWidget {
       // ----------------------------------------- action row
       RowLayout {
         Layout.fillWidth: true
-        visible: historyModel.count > 0
+        visible: root.activeTab === "notifications" && historyModel.count > 0
         spacing: Style.space(8)
 
         Text {
@@ -331,7 +484,7 @@ BarWidget {
         }
       }
 
-      // ----------------------------------------- list
+      // ----------------------------------------- notification list
       ListView {
         id: listView
         Layout.fillWidth: true
@@ -339,7 +492,7 @@ BarWidget {
         clip: true
         spacing: Style.space(8)
         model: historyModel
-        visible: count > 0
+        visible: root.activeTab === "notifications" && count > 0
 
         delegate: BorderSurface {
           id: rowCard
@@ -474,11 +627,11 @@ BarWidget {
         }
       }
 
-      // ----------------------------------------- empty state
+      // ----------------------------------------- notification empty state
       Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        visible: historyModel.count === 0
+        visible: root.activeTab === "notifications" && historyModel.count === 0
 
         ColumnLayout {
           anchors.centerIn: parent
@@ -499,6 +652,293 @@ BarWidget {
             color: root.colDim
             font.pixelSize: Style.font.body
           }
+        }
+      }
+
+      // ----------------------------------------- reminder list
+      ListView {
+        id: reminderList
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        clip: true
+        spacing: Style.space(8)
+        model: remindersModel
+        visible: root.activeTab === "reminders" && count > 0
+
+        delegate: BorderSurface {
+          id: remCard
+          required property int index
+          required property string unit
+          required property string message
+          required property string label
+          required property int minutes
+          required property double at
+
+          readonly property bool editing: root.editingUnit === remCard.unit
+
+          width: reminderList.width
+          implicitHeight: (editing ? editBox.implicitHeight : viewRow.implicitHeight) + Style.spacing.panelGap
+          radius: root.cardRadius
+          color: "transparent"
+          borderSpec: Border.flat(editing ? root.colAccent : root.colBorder, Style.normalBorderWidth)
+
+          // Declared first so the later close / chip children keep their clicks.
+          MouseArea {
+            anchors.fill: parent
+            enabled: !remCard.editing
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.beginEdit(remCard.unit, remCard.at)
+          }
+
+          RowLayout {
+            id: viewRow
+            visible: !remCard.editing
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: remCard.borderLeft + Style.space(12)
+            anchors.rightMargin: remCard.borderRight + Style.space(12)
+            spacing: Style.space(10)
+
+            Text {
+              Layout.alignment: Qt.AlignVCenter
+              text: "󰢌"
+              font.family: root.bar ? root.bar.fontFamily : ""
+              color: root.colDim
+              font.pixelSize: Style.font.subtitle
+            }
+
+            ColumnLayout {
+              Layout.fillWidth: true
+              spacing: Style.space(2)
+
+              Text {
+                Layout.fillWidth: true
+                text: remCard.label.length > 0 ? remCard.label : remCard.minutes + "-min reminder"
+                font.family: root.bar ? root.bar.fontFamily : ""
+                textFormat: Text.PlainText
+                color: root.colForeground
+                font.pixelSize: Style.font.subtitle
+                font.bold: true
+                elide: Text.ElideRight
+                maximumLineCount: 1
+              }
+
+              Text {
+                Layout.fillWidth: true
+                text: "in " + NotificationLogic.remainingLabel(remCard.at, root.nowMs)
+                  + " · " + NotificationLogic.reminderTimeLabel(remCard.at, root.nowMs)
+                font.family: root.bar ? root.bar.fontFamily : ""
+                color: root.colDim
+                font.pixelSize: Style.font.bodySmall
+                elide: Text.ElideRight
+                maximumLineCount: 1
+              }
+            }
+
+            Rectangle {
+              Layout.preferredWidth: Style.space(18)
+              Layout.preferredHeight: Style.space(18)
+              Layout.alignment: Qt.AlignVCenter
+              radius: Math.min(4, root.cardRadius)
+              color: remCloseArea.containsMouse ? root.colBorder : "transparent"
+
+              Text {
+                anchors.centerIn: parent
+                text: "✕"
+                font.family: root.bar ? root.bar.fontFamily : ""
+                color: root.colDim
+                font.pixelSize: Style.font.bodySmall
+              }
+
+              MouseArea {
+                id: remCloseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.cancelReminder(remCard.unit)
+              }
+            }
+          }
+
+          ColumnLayout {
+            id: editBox
+            visible: remCard.editing
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: remCard.borderLeft + Style.space(12)
+            anchors.rightMargin: remCard.borderRight + Style.space(12)
+            spacing: Style.space(4)
+
+            // Seeding text imperatively rather than binding it: the field owns
+            // its text once the user types, and a binding would fight that.
+            onVisibleChanged: if (visible) {
+              editField.text = root.editWhen
+              editField.forceActiveFocus()
+              editField.selectAll()
+            }
+
+            RowLayout {
+              Layout.fillWidth: true
+              spacing: Style.space(8)
+
+              TextField {
+                id: editField
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                placeholderText: "45m or 14:30"
+                foreground: root.colForeground
+                accent: root.colAccent
+                font.pixelSize: Style.font.bodySmall
+                verticalPadding: Style.spacing.xs
+                onAccepted: editSave.commit()
+              }
+
+              Button {
+                id: editSave
+                Layout.alignment: Qt.AlignVCenter
+                text: "Save"
+                bordered: true
+                enabled: NotificationLogic.parseWhen(editField.text, root.nowMs) > 0
+                opacity: enabled ? 1 : 0.45
+                foreground: root.colForeground
+                accent: root.colAccent
+                fontFamily: root.bar ? root.bar.fontFamily : ""
+                fontSize: Style.font.caption
+                verticalPadding: Style.spacing.xs
+
+                function commit() {
+                  if (!enabled) return
+                  var minutes = NotificationLogic.parseWhen(editField.text, Date.now())
+                  root.rescheduleReminder(remCard.unit, minutes, remCard.message)
+                  root.editingUnit = ""
+                }
+
+                onClicked: commit()
+              }
+
+              Button {
+                Layout.alignment: Qt.AlignVCenter
+                text: "Cancel"
+                foreground: root.colForeground
+                accent: root.colAccent
+                fontFamily: root.bar ? root.bar.fontFamily : ""
+                fontSize: Style.font.caption
+                verticalPadding: Style.spacing.xs
+                onClicked: root.editingUnit = ""
+              }
+            }
+
+            Text {
+              Layout.fillWidth: true
+              text: NotificationLogic.whenHint(editField.text, root.nowMs)
+              font.family: root.bar ? root.bar.fontFamily : ""
+              color: root.colDim
+              font.pixelSize: Style.font.caption
+              elide: Text.ElideRight
+              maximumLineCount: 1
+            }
+          }
+        }
+      }
+
+      // ----------------------------------------- reminder empty state
+      Item {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        visible: root.activeTab === "reminders" && remindersModel.count === 0
+
+        ColumnLayout {
+          anchors.centerIn: parent
+          spacing: Style.space(6)
+
+          Text {
+            Layout.alignment: Qt.AlignHCenter
+            text: "󰢌"
+            font.family: root.bar ? root.bar.fontFamily : ""
+            color: root.colBorder
+            font.pixelSize: Style.font.displayLarge
+          }
+
+          Text {
+            Layout.alignment: Qt.AlignHCenter
+            text: "No reminders set"
+            font.family: root.bar ? root.bar.fontFamily : ""
+            color: root.colDim
+            font.pixelSize: Style.font.body
+          }
+        }
+      }
+
+      // ----------------------------------------- reminder compose row
+      ColumnLayout {
+        visible: root.activeTab === "reminders"
+        Layout.fillWidth: true
+        spacing: Style.space(4)
+
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
+
+          TextField {
+            id: composeWhen
+            Layout.preferredWidth: Style.space(96)
+            Layout.alignment: Qt.AlignVCenter
+            placeholderText: "45m or 14:30"
+            foreground: root.colForeground
+            accent: root.colAccent
+            font.pixelSize: Style.font.bodySmall
+            verticalPadding: Style.spacing.xs
+            onAccepted: composeSet.commit()
+          }
+
+          TextField {
+            id: composeMessage
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter
+            placeholderText: "Remind me to…"
+            foreground: root.colForeground
+            accent: root.colAccent
+            font.pixelSize: Style.font.bodySmall
+            verticalPadding: Style.spacing.xs
+            onAccepted: composeSet.commit()
+          }
+
+          Button {
+            id: composeSet
+            Layout.alignment: Qt.AlignVCenter
+            text: "Set"
+            bordered: true
+            enabled: NotificationLogic.parseWhen(composeWhen.text, root.nowMs) > 0
+            opacity: enabled ? 1 : 0.45
+            foreground: root.colForeground
+            accent: root.colAccent
+            fontFamily: root.bar ? root.bar.fontFamily : ""
+            fontSize: Style.font.caption
+            verticalPadding: Style.spacing.xs
+
+            function commit() {
+              if (!enabled) return
+              var minutes = NotificationLogic.parseWhen(composeWhen.text, Date.now())
+              if (!root.createReminder(minutes, composeMessage.text)) return
+              composeWhen.text = ""
+              composeMessage.text = ""
+              composeWhen.forceActiveFocus()
+            }
+
+            onClicked: commit()
+          }
+        }
+
+        Text {
+          Layout.fillWidth: true
+          text: NotificationLogic.whenHint(composeWhen.text, root.nowMs)
+          font.family: root.bar ? root.bar.fontFamily : ""
+          color: root.colDim
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+          maximumLineCount: 1
         }
       }
     }
