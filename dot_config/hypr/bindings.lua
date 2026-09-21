@@ -104,6 +104,13 @@ hl.bind(
 	{ description = "Toggle window pop-out (Bash fallback)" }
 )
 
+local pseudopanel = require("hypr.pseudopanel")
+
+hl.unbind("SUPER + P") -- Omarchy default: Pseudo window
+hl.bind("SUPER + P", pseudopanel.toggle, {
+	description = "Toggle pseudo panel (centered 16:10, tiles when a window joins)",
+})
+
 -- ---------------------------------------------------------------------------
 -- Scratchpads
 -- ---------------------------------------------------------------------------

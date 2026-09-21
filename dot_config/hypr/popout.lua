@@ -228,6 +228,18 @@ local function popout_apply_sizes(state)
 	end
 end
 
+local function popout_panel_size(monitor)
+	local width = monitor.width / monitor.scale
+	local height = monitor.height / monitor.scale
+	local pop_width = width * 0.80
+	local pop_height = pop_width / 1.6
+	if pop_height > height * 0.82 then
+		pop_height = height * 0.82
+		pop_width = pop_height * 1.6
+	end
+	return math.floor(pop_width), math.floor(pop_height)
+end
+
 local function popout_float(window)
 	local monitor = hl.get_active_monitor()
 	if monitor == nil then
@@ -254,19 +266,12 @@ local function popout_float(window)
 	popout_state[window.address] = state
 	popout_save(window.address, state)
 
-	local width = monitor.width / monitor.scale
-	local height = monitor.height / monitor.scale
-	local pop_width = width * 0.80
-	local pop_height = pop_width / 1.6
-	if pop_height > height * 0.82 then
-		pop_height = height * 0.82
-		pop_width = pop_height * 1.6
-	end
+	local pop_width, pop_height = popout_panel_size(monitor)
 
 	hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
 	hl.dispatch(hl.dsp.window.resize({
-		x = math.floor(pop_width),
-		y = math.floor(pop_height),
+		x = pop_width,
+		y = pop_height,
 		relative = false,
 	}))
 	hl.dispatch(hl.dsp.window.center())
@@ -338,4 +343,4 @@ local function popout_toggle()
 	popout_restore(window, state)
 end
 
-return { toggle = popout_toggle }
+return { toggle = popout_toggle, panel_size = popout_panel_size }
