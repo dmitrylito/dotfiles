@@ -164,12 +164,6 @@ function whenHint(text, nowMs) {
   return "fires " + reminderTimeLabel(at, nowMs) + " · in " + remainingLabel(at, nowMs)
 }
 
-// Rounded up so a reminder with 20s left still edits as 1 minute rather than 0,
-// which validMinutes would reject.
-function minutesUntil(at, nowMs) {
-  return Math.max(1, Math.ceil((Number(at || 0) - nowMs / 1000) / 60))
-}
-
 function remainingLabel(at, nowMs) {
   var seconds = Math.round(Number(at || 0) - nowMs / 1000)
   if (seconds <= 0) return "due"
