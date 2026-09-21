@@ -77,13 +77,18 @@
     },
     {
       "id": "dmitrylito.meeting-alert"
+    },
+    {
+      "id": "dmitrylito.reminders"
     }
   ],
   "version": 1,
   "disabledPlugins": [
-    "omarchy.notifications"
+    "omarchy.notifications",
+    "omarchy.reminders"
   ],
   "cloneSourceRestores": [
-    "dmitrylito.notifications"
+    "dmitrylito.notifications",
+    "dmitrylito.reminders"
   ]
 }
