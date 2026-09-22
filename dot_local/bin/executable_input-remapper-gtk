@@ -5,4 +5,11 @@
 # (earlier in PATH than /usr/bin). mise's interpreter only has its own site-packages on
 # sys.path, so the packaged `inputremapper` module in /usr/lib/python3.14/site-packages
 # is invisible and the command dies with ModuleNotFoundError. Pin the system interpreter.
-exec /usr/bin/python3 /usr/bin/input-remapper-gtk "$@"
+#
+# /usr/bin goes first in PATH because the GUI shells out to
+# `pkexec input-remapper-control` (gui/reader_service.py, daemon.py). Resolved through
+# ~/.local/bin, that path does not match the exec.path annotation in
+# /usr/share/polkit-1/actions/input-remapper.policy, so polkit falls back to the generic
+# org.freedesktop.policykit.exec action and the reader service fails to start. pkexec
+# sanitizes PATH for the root child, so the packaged script finds /usr/bin/python3 itself.
+exec env PATH="/usr/bin:$PATH" /usr/bin/python3 /usr/bin/input-remapper-gtk "$@"
