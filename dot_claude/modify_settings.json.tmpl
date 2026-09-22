@@ -88,7 +88,6 @@ BASELINE = {
         "soft_deny": ["$defaults"],
     },
     "awaySummaryEnabled": False,
-    "cleanupPeriodDays": 3,
     "editorMode": "vim",
     "effortLevel": "high",
     "enabledPlugins": {
@@ -222,6 +221,10 @@ DISABLED_PLUGINS = (
 )
 
 ENFORCED_SCALARS = {
+    # Transcript retention. Enforced, not a default: every established box already wrote the
+    # key, so a BASELINE change never reaches them and /resume silently keeps losing history
+    # at the old cutoff.
+    "cleanupPeriodDays": 15,
     # Terse ships in dot_claude/output-styles and carries Proactive's execution guidance in
     # its own text, so switching away from the built-in style loses nothing.
     "outputStyle": "Terse",
