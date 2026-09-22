@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full-screen alert at the start of work-calendar meetings.
+"""Full-screen alert shortly before work-calendar meetings start.
 
   meeting-alert sync              schedule transient timers for upcoming meetings
   meeting-alert list              show what is scheduled
@@ -26,6 +26,7 @@ CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) /
 CONFIG_DEFAULTS = {
     "CALENDARS": "",
     "LEAD_SECONDS": "0",
+    "JOIN_PROFILE": "",
     "HORIZON_HOURS": "12",
     "AUTO_DISMISS_SECONDS": "120",
     "SNOOZE_MINUTES": "5",
@@ -142,6 +143,7 @@ def payload_for(event, config):
         "link": event["link"],
         "autoDismissSeconds": int(config["AUTO_DISMISS_SECONDS"]),
         "snoozeMinutes": int(config["SNOOZE_MINUTES"]),
+        "joinProfile": config["JOIN_PROFILE"],
     }, ensure_ascii=False)
 
 
@@ -220,6 +222,7 @@ def main():
             "link": "",
             "autoDismissSeconds": 20,
             "snoozeMinutes": int(config["SNOOZE_MINUTES"]),
+            "joinProfile": config["JOIN_PROFILE"],
         }))
 
 

@@ -6,7 +6,7 @@ import qs.Ui
 
 // Full-screen alert for a starting meeting. Summoned by the `meeting-alert`
 // CLI: omarchy-shell shell summon dmitrylito.meeting-alert '<payload json>'
-// Payload: {title, time, calendar, link, autoDismissSeconds, snoozeMinutes}
+// Payload: {title, time, calendar, link, autoDismissSeconds, snoozeMinutes, joinProfile}
 Item {
   id: root
 
@@ -21,6 +21,7 @@ Item {
   property string link: ""
   property int autoDismissSeconds: 120
   property int snoozeMinutes: 5
+  property string joinProfile: ""
 
   property color background: Color.menu.background
   property color foreground: Color.menu.text
@@ -38,6 +39,7 @@ Item {
     root.link = String(payload.link || "")
     if (payload.autoDismissSeconds !== undefined) root.autoDismissSeconds = Number(payload.autoDismissSeconds)
     if (payload.snoozeMinutes !== undefined) root.snoozeMinutes = Number(payload.snoozeMinutes)
+    root.joinProfile = String(payload.joinProfile || "")
 
     root.opened = true
     autoDismiss.restart()
@@ -56,7 +58,13 @@ Item {
   }
 
   function join() {
-    if (root.link) Quickshell.execDetached(["xdg-open", root.link])
+    if (root.link) {
+      if (root.joinProfile)
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/chromium-profile-launch",
+                                 root.joinProfile, "browser", root.link])
+      else
+        Quickshell.execDetached(["xdg-open", root.link])
+    }
     root.dismiss()
   }
 
