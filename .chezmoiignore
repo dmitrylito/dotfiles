@@ -80,6 +80,11 @@ Projects/fleetchaser/
 .local/bin/voxtype
 {{ end }}
 
+{{ if and (eq $profile "omarchy") (eq .chezmoi.hostname "fcoffice") }}
+# fcoffice uses stock lock-screen DPMS only; ignoring the wants link leaves the guard disabled.
+.config/systemd/user/graphical-session.target.wants/omarchy-lock-dpms-guard.service
+{{ end }}
+
 {{ if ne $profile "mac"}}
 .config/aerospace/
 .config/sketchybar/
