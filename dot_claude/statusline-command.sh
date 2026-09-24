@@ -20,7 +20,8 @@ cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
 [ -n "$cwd" ] && cwd="${cwd##*/}"
 
 # Format a resets_at value (unix epoch or ISO 8601) with the given date format;
-# prints nothing if the timestamp can't be parsed.
+# prints nothing if the timestamp can't be parsed. GNU date takes -d; macOS BSD date
+# has no -d, so fall back to an epoch (jq parses ISO) formatted with date -r.
 fmt_reset() {
   local ts=$1 fmt=$2 out
   case "$ts" in
@@ -28,6 +29,12 @@ fmt_reset() {
     *[!0-9]*)   out=$(date -d "$ts" "$fmt" 2>/dev/null) ;;
     *)          out=$(date -d "@$ts" "$fmt" 2>/dev/null) ;;
   esac
+  if [ -z "$out" ]; then
+    case "$ts" in
+      *[!0-9]*) ts=$(jq -rn --arg t "$ts" '$t | sub("\\.[0-9]+"; "") | fromdateiso8601' 2>/dev/null) ;;
+    esac
+    [ -n "$ts" ] && out=$(date -r "$ts" "$fmt" 2>/dev/null)
+  fi
   [ -n "$out" ] && printf '%s' "${out# }"
 }
 
