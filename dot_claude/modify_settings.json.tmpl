@@ -217,6 +217,23 @@ DISABLED_PLUGINS = (
     "huggingface-skills@claude-plugins-official",
     "linear@claude-plugins-official",
     "sentry@claude-plugins-official",
+{{- else if eq (.profile | lower) "mac" }}
+    "claude-code-setup@claude-plugins-official",
+    "claude-md-management@claude-plugins-official",
+    "code-simplifier@claude-plugins-official",
+    "commit-commands@claude-plugins-official",
+    "frontend-design@claude-plugins-official",
+    "huggingface-skills@claude-plugins-official",
+    "linear@claude-plugins-official",
+    "sentry@claude-plugins-official",
+    # ~/lsp-marketplace does not exist on the mac, so these never load.
+    "djlsp-plugin@lsp-marketplace",
+    "typescript-plugin@lsp-marketplace",
+    # Synced from the claude.ai account; zero use. anthropic-skills@inline stays on.
+    "sales@synced",
+    "operations@synced",
+    "productivity@synced",
+    "cowork-plugin-management@synced",
 {{- end }}
 )
 

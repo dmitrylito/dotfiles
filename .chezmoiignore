@@ -28,6 +28,7 @@ system/
 {{ end }}
 
 {{ if ne $profile "omarchy" }}
+.claude/rules/hyprland.md
 .config/hypr/
 .config/voxtype/
 .config/omarchy/

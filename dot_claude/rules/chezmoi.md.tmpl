@@ -4,12 +4,7 @@ Host `{{ .chezmoi.hostname }}` ({{ .profile | lower }} profile). Source of truth
 target (`~/.zshrc`, `~/.config/**`, `~/.claude/**`, …) is silently wiped on the next
 `chezmoi apply`.
 
-- Edit the source, not the target: `ce <file>` (`chezmoi edit --apply`), or edit under
-  `~/.local/share/chezmoi/` then `chezmoi apply`.
-- Bring a new/untracked file under management with `chezmoi add <path>`.
 - Run `chezmoi status` before editing to see drift, and after to confirm.
-- `~/.bashrc` is the exception — not managed, safe to edit directly.
-- Before modifying any file NOT under chezmoi/git, copy it to `<file>.bak.<timestamp>` first.
 - `chezmoi apply` and `chezmoi edit` auto-commit AND push to GitHub; plain file edits (Edit,
   Write, `sed`) do NOT — they leave the source dirty.
 - Always commit AND push source changes you make, on `master`, without asking — including from
@@ -26,5 +21,3 @@ target (`~/.zshrc`, `~/.config/**`, `~/.claude/**`, …) is silently wiped on th
   which otherwise makes a session call EnterWorktree when another live session shares the repo.
   A worktree copy is not what `chezmoi apply` reads, so concurrent sessions here edit the same
   source — check `git status` before you start.
-- The source is multi-profile: when editing `.tmpl` source, preserve the
-  `{{ "{{ if eq .profile … }}" }}` branches — this box is the `{{ .profile | lower }}` profile.

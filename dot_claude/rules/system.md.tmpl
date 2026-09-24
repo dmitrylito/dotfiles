@@ -8,7 +8,6 @@
   Neovim via bob. NEVER install node tooling or editors via {{ if eq (.profile | lower) "mac" }}homebrew — homebrew's{{ else }}pacman — pacman's{{ end }}
   node/npm/pnpm/bun/neovim/vim were deliberately removed. (claude-code is a native
   install, not the {{ if eq (.profile | lower) "mac" }}homebrew{{ else }}pacman{{ end }} package.)
-- Run `mise trust <dir>` after creating a new folder/worktree that carries env config.
 {{ if eq (.profile | lower) "mac" -}}
 - Packages are tracked under `packages/mac/`; reconciliation is an explicit reviewed command.
 {{- else -}}
