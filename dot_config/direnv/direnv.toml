@@ -1,0 +1,7 @@
+# log_format = "-" is broken in 2.37.1 (prints a Go format error); the filter silences instead.
+[global]
+log_filter = "^$"
+hide_env_diff = true
+
+[whitelist]
+prefix = ["~/"]
