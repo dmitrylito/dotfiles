@@ -295,6 +295,10 @@ run = 'layout floating'
 if.app-id = 'com.apple.print.PrinterProxy' # Printer utility
 run = 'layout floating'
 
+[[on-window-detected]]
+if.app-id = 'com.apple.dt.Xcode' # Xcode
+run = 'layout floating'
+
 # User specific routing:
 # 1. Chrome to always be on workspace 1
 [[on-window-detected]]
