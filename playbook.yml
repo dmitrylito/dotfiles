@@ -474,6 +474,7 @@
       when:
         - p == 'server'
         - ansible_check_mode
+        - not (server_bootstrap | default(false) | bool)
 
     - name: Remove undeclared server packages and canonicalize install reasons
       ansible.builtin.command:
@@ -489,6 +490,7 @@
       when:
         - p == 'server'
         - not ansible_check_mode
+        - not (server_bootstrap | default(false) | bool)
 
     # Intersected with the installed set first: `state: absent` against an
     # already-clean list still pays the module's full ~350ms inventory build to
@@ -590,7 +592,9 @@
     # SECTION 7: SERVER PACKAGE PUBLICATION AND CONVERGENCE
     # =========================================================================
     - name: Configure automatic server package synchronization
-      when: p == 'server'
+      when:
+        - p == 'server'
+        - not (server_bootstrap | default(false) | bool)
       block:
         - name: Ensure the local libexec directory exists
           ansible.builtin.file:

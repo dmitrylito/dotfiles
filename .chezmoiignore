@@ -109,6 +109,11 @@ docker-appdata/
 .config/systemd/user/chezmoi-package-capture.timer
 {{ end }}
 
+{{ if eq $profile "server" }}
+# The native installer owns this pointer; the mise shim breaks fresh servers.
+.codex/packages/standalone/current
+{{ end }}
+
 {{ if or (ne $profile "server") (ne .chezmoi.hostname "dlco-prod") }}
 # Production deployment is owned by dlco-prod, not every Linux host.
 .config/cer-production/

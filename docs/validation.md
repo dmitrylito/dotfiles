@@ -48,3 +48,13 @@ separately with `chezmoi apply --dry-run --verbose <intended-targets>`.
 References: [Chezmoi dump](https://www.chezmoi.io/reference/commands/dump/),
 [built-in age-keygen](https://www.chezmoi.io/reference/commands/age-keygen/),
 and [template execution](https://www.chezmoi.io/reference/commands/execute-template/).
+
+## Fresh-server bootstrap
+
+Run `python3 scripts/test-server-bootstrap.py` to exercise the real chezmoi
+`init --apply` lifecycle in disposable homes with generated age keys and mocked
+package managers, vendor downloads, authentication, and systemd. It checks
+keyless startup, deferred secret application, dry-run isolation, failure handling,
+completion markers, and idempotent reinitialization. Requires chezmoi, Git,
+Python 3.11+, and Linux PTYs. It does not validate actual Arch package installation
+or boot/network service behavior; those still require a fresh-server run.

@@ -26,3 +26,13 @@ useBuiltinAge = true
 [merge]
     command = "nvim"
     args = ["-d"]
+
+{{ if eq ($profile | lower) "server" }}
+[env]
+    XDG_RUNTIME_DIR = "/run/user/{{ .chezmoi.uid }}"
+    DBUS_SESSION_BUS_ADDRESS = "unix:path=/run/user/{{ .chezmoi.uid }}/bus"
+
+[hooks.read-source-state.pre]
+    command = "bash"
+    args = [{{ joinPath .chezmoi.sourceDir "scripts/bootstrap-server.sh" | quote }}, "prepare"]
+{{ end }}

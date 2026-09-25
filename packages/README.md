@@ -5,6 +5,12 @@ machine's actionable inputs change. A no-op apply does not rerun Ansible. Run
 `scripts/reconcile-packages.sh` explicitly for an audit; on Linux, use `--check`
 first when package state has changed substantially.
 
+Fresh server initialization uses `scripts/bootstrap-server.sh` before encrypted
+files are read. It passes `server_bootstrap=true` to install the declared packages
+while deferring package pruning and synchronization setup. The normal full apply
+then runs reconciliation with its existing defaults. See the root README for the
+single-command setup flow.
+
 ## Ownership
 
 - `omarchy/<hostname>/added-pacman.txt`: native packages intentionally added on
