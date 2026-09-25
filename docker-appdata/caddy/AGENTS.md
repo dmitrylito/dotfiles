@@ -21,7 +21,15 @@ Deploy to one node (repeat per node; do them one at a time so the VIP always has
     chezmoi apply ~/docker-appdata/caddy ~/.config/secrets/caddy.env
     cd ~/docker-appdata/caddy && docker compose up -d --build
     docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
-    docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile   # after Caddyfile edits
+
+After a `Caddyfile` edit, recreate only Caddy and validate it:
+
+    chezmoi apply ~/docker-appdata/caddy/Caddyfile
+    cd ~/docker-appdata/caddy && docker compose up -d --no-deps --force-recreate caddy
+    docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
+
+Chezmoi replaces the rendered file atomically. Docker's single-file bind mount keeps pointing
+at the old inode until the Caddy container is recreated; `caddy reload` alone reads the old file.
 
 Check a node directly, bypassing the VIP:
 
