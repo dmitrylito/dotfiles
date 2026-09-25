@@ -1,17 +1,19 @@
 {{- /* Backend addresses. Flip these as the LAN IP migration lands (see AGENTS.md). */ -}}
-{{- $dlco1 := "192.168.0.11" -}}
+{{- $dlco1 := "192.168.0.2" -}}
 {{- /* dlco-1's media.pod publishes only on 192.168.0.2 until it is rebound. */ -}}
 {{- $dlco1pod := "192.168.0.2" -}}
-{{- $dlco2 := "192.168.0.12" -}}
+{{- $dlco2 := "192.168.0.3" -}}
 {{- $dlco4 := "192.168.0.5" -}}
 {{- $omada := "192.168.0.5" -}}
 {
 	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	auto_https disable_redirects
 }
 
 # Wildcard sites keep issuance at two certificates per node; per-host site blocks across three
 # nodes would exceed Let's Encrypt's 50-certificates-per-domain-per-week limit.
 *.dlco.us {
+	header X-Served-By {host}
 	@audiobooks host audiobooks.dlco.us
 	handle @audiobooks {
 		reverse_proxy {{ $dlco1pod }}:13378
@@ -43,6 +45,11 @@
 	}
 	@calibre host calibre.dlco.us
 	handle @calibre {
+		@kobo path /kobo*
+		reverse_proxy @kobo {{ $dlco1pod }}:8084 {
+			header_up X-Scheme https
+			header_up X-Forwarded-Host {host}
+		}
 		reverse_proxy {{ $dlco1pod }}:8084 {
 			header_up X-Scheme https
 		}
@@ -109,6 +116,7 @@
 }
 
 *.init.dlco.us {
+	header X-Served-By {host}
 	@adguard host adguard.init.dlco.us
 	handle @adguard {
 		reverse_proxy {{ $dlco4 }}:80
@@ -140,4 +148,62 @@
 	handle {
 		abort
 	}
+}
+
+http://dlco.us {
+	respond 404
+}
+
+http://*.dlco.us {
+	@audiobooks host audiobooks.dlco.us
+	handle @audiobooks {
+		reverse_proxy {{ $dlco1pod }}:13378
+	}
+	@audioshelf host audioshelf.dlco.us
+	handle @audioshelf {
+		reverse_proxy {{ $dlco1 }}:8788
+	}
+	@books host books.dlco.us
+	handle @books {
+		reverse_proxy {{ $dlco1pod }}:8085
+	}
+	@bookshelf host bookshelf.dlco.us
+	handle @bookshelf {
+		reverse_proxy {{ $dlco1 }}:8787
+	}
+	@lidarr host lidarr.dlco.us
+	handle @lidarr {
+		reverse_proxy {{ $dlco1 }}:8686
+	}
+	@liveevents host liveevents.dlco.us
+	handle @liveevents {
+		reverse_proxy {{ $dlco1 }}:8080
+	}
+	@plex host plex.dlco.us
+	handle @plex {
+		reverse_proxy {{ $dlco1pod }}:32400
+	}
+	@prowlarr host prowlarr.dlco.us
+	handle @prowlarr {
+		reverse_proxy {{ $dlco1pod }}:9696
+	}
+	@radarr host radarr.dlco.us
+	handle @radarr {
+		reverse_proxy {{ $dlco1pod }}:7878
+	}
+	@sonarr host sonarr.dlco.us
+	handle @sonarr {
+		reverse_proxy {{ $dlco1pod }}:8989
+	}
+	@vsl host vsl.dlco.us
+	handle @vsl {
+		reverse_proxy {{ $dlco2 }}:18100
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}
+
+http://*.init.dlco.us {
+	redir https://{host}{uri} permanent
 }
