@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import termios
+import time
 
 SOURCE = Path(__file__).resolve().parent.parent
 CHEZMOI = shutil.which("chezmoi")
@@ -22,9 +23,7 @@ args = sys.argv[1:]
 with open(os.environ['BOOTSTRAP_CALLS'], 'a') as log:
     log.write(json.dumps([name, *args]) + '\n')
 if name == 'sudo':
-    if args[:3] == ['tailscale', 'file', 'get']:
-        shutil.copyfile(os.environ['BOOTSTRAP_KEY'], pathlib.Path(args[3]) / 'key.txt')
-    elif args[0] in ('install', 'rm'):
+    if args[0] in ('install', 'rm'):
         os.execv('/usr/bin/' + args[0], args)
     elif args[:2] == ['tailscale', 'up'] and os.environ.get('FAIL_LOGIN'):
         sys.exit(9)
@@ -112,8 +111,18 @@ def run_case(name, overrides=None, preview=False, wrong_key=False, installed_too
             with tempfile.TemporaryFile() as output:
                 proc = subprocess.Popen(command, env=env, stdin=slave, stdout=output, stderr=output, preexec_fn=controlling_tty)
                 os.close(slave)
-                os.write(master, b"\n")
                 try:
+                    deadline = time.monotonic() + 30
+                    while proc.poll() is None:
+                        if b"Press Enter after sending the key:" in os.pread(output.fileno(), 1024 * 1024, 0):
+                            inbox = home / ".local/state/chezmoi/server-bootstrap/inbox"
+                            if not env.get("MISSING_KEY"):
+                                shutil.copyfile(env["BOOTSTRAP_KEY"], inbox / "key.txt")
+                            os.write(master, b"\n")
+                            break
+                        if time.monotonic() >= deadline:
+                            raise subprocess.TimeoutExpired(command, 30)
+                        time.sleep(0.01)
                     code = proc.wait(timeout=30)
                 except subprocess.TimeoutExpired:
                     proc.kill()
@@ -140,7 +149,11 @@ def run_case(name, overrides=None, preview=False, wrong_key=False, installed_too
             assert (state / "complete").exists()
             assert (home / ".config/chezmoi/key.txt").stat().st_mode & 0o777 == 0o600
             assert ["sudo", "systemctl", "enable", "--now", "sshd.service", "tailscaled.service"] in calls
-            assert next(i for i, call in enumerate(calls) if call[0] == "reconcile") < next(i for i, call in enumerate(calls) if call[:4] == ["sudo", "tailscale", "file", "get"])
+            assert ["sudo", "tailscale", "up", "--ssh", "--timeout=15m"] in calls
+            assert "rsync --protect-args --chmod=F600 -e ssh" in transcript
+            assert "@100.64.0.42:" in transcript
+            assert not any(call[:3] == ["sudo", "tailscale", "file"] for call in calls)
+            assert "rsync" in next(call for call in calls if call[:2] == ["sudo", "pacman"])
             if installed_tools:
                 assert not any(call[0] in ("curl", "bob") for call in calls), calls
                 assert all(tool.read_text() == "#!/bin/sh\necho existing-version\n" for tool in existing_tools)
@@ -161,3 +174,5 @@ run_case("wrong age key stops before apply", wrong_key=True)
 run_case("failed final service check never marks complete", {"FAIL_SERVICE": "1"})
 
 run_case("existing native tools are preserved without running installers", installed_tools=True)
+
+run_case("missing rsync transfer stops before apply", {"MISSING_KEY": "1"})

@@ -22,16 +22,17 @@ Chezmoi uses its built-in Git implementation when Git is absent.
 
 The server bootstrap continues through these stages automatically:
 
-1. Install Git, Ansible, Python/uv, OpenSSH, Tailscale, and bootstrap dependencies.
+1. Install Git, Ansible, Python/uv, OpenSSH, Tailscale, rsync, and bootstrap dependencies.
 2. Enable and start `sshd` and `tailscaled`, and enable the systemd user manager
-   after logout. Open Tailscale's printed login URL to add the machine to your network.
+   after logout. Run `tailscale up --ssh` as part of setup to enable Tailscale SSH;
+   open its printed login URL to add the machine to your network.
 3. Install the shared server packages, Oh My Zsh, shell plugins, mise tools,
    Neovim through Bob, Herdr, and native Codex. Existing native Herdr/Codex
    binaries are retained.
 4. Guide GitHub browser authentication for background Git synchronization and
    configure a missing commit identity from the authenticated GitHub account.
-5. Print the exact Taildrop command to run on DLCO-1 to send the age key. Press
-   Enter after sending it; bootstrap receives it, installs it privately, and
+5. Print the exact rsync command to run on DLCO-1 to send the age key. Press
+   Enter after sending it; bootstrap installs it privately, and
    verifies decryption. No SSH-key exchange is needed.
 6. Continue the same chezmoi invocation to apply your managed shell, editor,
    agent settings, private configuration, and deployment hooks. Then select Zsh
@@ -42,19 +43,25 @@ Claude/Codex account login remains an application-level first-use action.
 
 ### Encryption-key transfer
 
-The bootstrap prints this command with the new server's actual Tailscale IP.
-Run it on **DLCO-1** when prompted:
+The bootstrap creates a private inbox and prints a ready-to-run rsync command
+with the new server's actual login user, Tailscale IP, and inbox path. Run that
+command on **DLCO-1**, then press Enter on the new server. For example:
 
 ```bash
-sudo tailscale file cp ~/.config/chezmoi/key.txt NEW_SERVER:
+rsync --protect-args --chmod=F600 -e ssh -- ~/.config/chezmoi/key.txt USER@TAILSCALE_IP:/home/USER/.local/state/chezmoi/server-bootstrap/inbox/key.txt
 ```
 
-Taildrop requires Send Files enabled in the tailnet and both devices owned by
-**the same Tailscale user**, without tags. If Taildrop is unavailable, transfer
-the existing identity to `~/.config/chezmoi/key.txt` on the new server by another
-secure method before pressing Enter. Starting `sshd` does not itself grant access;
-normal SSH still needs a permitted password/key, or use Tailscale SSH with an
-allowing policy. The bootstrap does not copy DLCO-1's SSH host keys or machine identity.
+Rsync connects to the new server's Tailscale IP using the standard SSH client;
+Tailscale SSH handles authentication. Both machines can be tagged. The tailnet
+must permit port 22 traffic and have an SSH `accept` rule allowing DLCO-1's tag
+to the destination tag and requested login user; tagged-source SSH rules cannot
+use `check` mode. Enabling Tailscale SSH does not create those policy rules.
+No Taildrop or SSH-key exchange is needed. Rsync must be installed on the sending
+machine as well; bootstrap installs it on the receiver.
+
+An alternative is to transfer the key directly to `~/.config/chezmoi/key.txt`
+before pressing Enter. The bootstrap does not copy DLCO-1's SSH host keys or
+machine identity.
 
 A newly generated age key cannot decrypt this repository. Keep the existing
 identity outside Git; never paste it into logs or chat. An existing key is not
@@ -100,7 +107,7 @@ account.
 Bootstrap uses the official [chezmoi init](https://www.chezmoi.io/reference/commands/init/)
 and [hooks](https://www.chezmoi.io/reference/configuration-file/hooks/) interfaces,
 [Tailscale Linux setup](https://tailscale.com/docs/install/linux),
-[Taildrop](https://tailscale.com/docs/features/taildrop),
+[Tailscale SSH](https://tailscale.com/docs/features/tailscale-ssh),
 [mise install](https://mise.jdx.dev/cli/install.html), and the vendor
 [Herdr](https://herdr.dev/install.sh) and
 [Codex](https://learn.chatgpt.com/docs/codex/cli) installers.

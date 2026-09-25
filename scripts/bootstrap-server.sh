@@ -61,11 +61,11 @@ if [[ -f $state_dir/prepared ]]; then
 fi
 
 printf '\nInstalling bootstrap dependencies and enabling SSH/Tailscale...\n'
-sudo pacman -Syu --needed --noconfirm git openssh curl jq python python-uv ansible tailscale dbus
+sudo pacman -Syu --needed --noconfirm git openssh curl jq python python-uv ansible tailscale dbus rsync
 sudo systemctl enable --now sshd.service tailscaled.service
 sudo loginctl enable-linger "$(id -un)"
 sudo systemctl start "user@$(id -u).service"
-sudo tailscale up --timeout=15m
+sudo tailscale up --ssh --timeout=15m
 tailscale status
 
 if [[ ! -f $state_dir/packages-installed ]]; then
@@ -110,13 +110,12 @@ fi
 if [[ ! -s $key_file ]]; then
   mkdir -p "$state_dir/inbox"
   printf '\nTooling and networking are ready. Send the existing age key from DLCO-1:\n'
-  printf '  sudo tailscale file cp ~/.config/chezmoi/key.txt %s:\n' "$(tailscale ip -4)"
-  printf 'Taildrop needs Send Files enabled and both devices owned by the same user, without tags.\n'
+  printf '  rsync --protect-args --chmod=F600 -e ssh -- ~/.config/chezmoi/key.txt %q\n' "$(id -un)@$(tailscale ip -4):$state_dir/inbox/key.txt"
+  printf 'Your tailnet policy must allow SSH from DLCO-1 to this tagged machine as %s.\n' "$(id -un)"
   printf 'You can also transfer the key to %s through an existing SSH login.\n' "$key_file"
   read -r -p 'Press Enter after sending the key: ' </dev/tty
   if [[ ! -s $key_file ]]; then
-    sudo tailscale file get "$state_dir/inbox"
-    [[ -s $state_dir/inbox/key.txt ]] || { printf 'No key.txt received; rerun chezmoi init --apply after sending it.\n' >&2; exit 1; }
+    [[ -s $state_dir/inbox/key.txt ]] || { printf 'No key.txt received; rerun chezmoi init --apply after transferring it with rsync.\n' >&2; exit 1; }
     install -d -m 700 "$(dirname "$key_file")"
     sudo install -o "$(id -u)" -g "$(id -g)" -m 600 "$state_dir/inbox/key.txt" "$key_file"
     sudo rm -- "$state_dir/inbox/key.txt"
