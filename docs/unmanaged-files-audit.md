@@ -8,7 +8,7 @@ Audited on `dlco-prod`, profile `server`, work role disabled.
   `deploy.env`, and placeholder application/database environment examples.
 - Updated the managed CER service and legacy launcher from their live contents
   to preserve the current deployment configuration.
-- Restricted all CER configuration, scripts, service, and timer to `dlco-prod`
+- Restricted all CER configuration, scripts, service, and timer to `DLCO-2`
   with the server profile. No service restart or deployment was performed.
 - `.ssh/config`, which includes the already-managed `config.d` snippets.
 - `GEMINI.md` was subsequently removed at the user's request; Gemini is no longer used.

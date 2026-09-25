@@ -92,7 +92,7 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
     tools = tomllib.loads(state[".config/mise/config.toml"]["contents"])["tools"]
     assert tools["agy"] == "latest" and ("codex" in tools) == (profile != "server"), label
     assert (".config/hypr/hyprland.lua" in state) == (profile == "omarchy"), label
-    assert (".config/systemd/user/cer-production-watch.service" in state) == (profile == "server" and hostname == "dlco-prod"), f"{label}: production service routing"
+    assert (".config/systemd/user/cer-production-watch.service" in state) == (profile == "server" and hostname == "DLCO-2"), f"{label}: production service routing"
     assert ("ROCR_VISIBLE_DEVICES=0" in state[".zshenv"]["contents"]) == (profile == "omarchy" and hostname == "fcoffice"), label
     settings = json.loads(state[".claude/settings.json"]["contents"])
     assert any(f"under {home} with" in rule for rule in settings["autoMode"]["allow"]), label
@@ -143,7 +143,7 @@ def main():
         upstream = Path(env["OMARCHY_PATH"]) / "config/hypr/hyprland.lua"
         upstream.parent.mkdir(parents=True)
         shutil.copyfile(FIXTURES / "hyprland.lua", upstream)
-        for profile, hostname in (("omarchy", "validation-host"), ("server", "validation-host"), ("mac", "validation-host"), ("omarchy", "fcoffice"), ("server", "dlco-prod")):
+        for profile, hostname in (("omarchy", "validation-host"), ("server", "validation-host"), ("mac", "validation-host"), ("omarchy", "fcoffice"), ("server", "DLCO-2")):
             for work in (False, True):
                 validate_case(profile, work, hostname, staged, scratch, env, age)
         if args.installed_omarchy:
