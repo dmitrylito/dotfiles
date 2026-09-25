@@ -30,7 +30,7 @@ The server bootstrap continues through these stages automatically:
    binaries are retained.
 4. Guide GitHub browser authentication for background Git synchronization and
    configure a missing commit identity from the authenticated GitHub account.
-5. Print the exact Taildrop command to run on dlco to send the age key. Press
+5. Print the exact Taildrop command to run on DLCO-1 to send the age key. Press
    Enter after sending it; bootstrap receives it, installs it privately, and
    verifies decryption. No SSH-key exchange is needed.
 6. Continue the same chezmoi invocation to apply your managed shell, editor,
@@ -43,7 +43,7 @@ Claude/Codex account login remains an application-level first-use action.
 ### Encryption-key transfer
 
 The bootstrap prints this command with the new server's actual Tailscale IP.
-Run it on **dlco** when prompted:
+Run it on **DLCO-1** when prompted:
 
 ```bash
 sudo tailscale file cp ~/.config/chezmoi/key.txt NEW_SERVER:
@@ -54,7 +54,7 @@ Taildrop requires Send Files enabled in the tailnet and both devices owned by
 the existing identity to `~/.config/chezmoi/key.txt` on the new server by another
 secure method before pressing Enter. Starting `sshd` does not itself grant access;
 normal SSH still needs a permitted password/key, or use Tailscale SSH with an
-allowing policy. The bootstrap does not copy dlco's SSH host keys or machine identity.
+allowing policy. The bootstrap does not copy DLCO-1's SSH host keys or machine identity.
 
 A newly generated age key cannot decrypt this repository. Keep the existing
 identity outside Git; never paste it into logs or chat. An existing key is not
@@ -88,13 +88,13 @@ completed bootstrap skips provisioning. Ordinary status/diff commands and init
 dry runs never provision through the bootstrap hook.
 
 The `server` profile shares [OS package declarations](packages/README.md) with
-dlco, including the ZFS/NVIDIA stack. Bootstrap postpones undeclared-package
+DLCO-1, including the ZFS/NVIDIA stack. Bootstrap postpones undeclared-package
 pruning and package publication/convergence until the full apply. The full apply
 activates those shared policies; this is not a minimal generic Arch profile.
 The ZFS module requires booting `linux-lts`; select that in the machine's
 bootloader before a planned reboot. Disk layouts, bootloader entries, network
 identity, application data, and hostname-gated production services are not cloned
-from dlco. Existing dotfiles should be backed up before enrolling an established
+from DLCO-1. Existing dotfiles should be backed up before enrolling an established
 account.
 
 Bootstrap uses the official [chezmoi init](https://www.chezmoi.io/reference/commands/init/)

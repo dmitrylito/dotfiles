@@ -109,7 +109,7 @@ fi
 
 if [[ ! -s $key_file ]]; then
   mkdir -p "$state_dir/inbox"
-  printf '\nTooling and networking are ready. Send the existing age key from dlco:\n'
+  printf '\nTooling and networking are ready. Send the existing age key from DLCO-1:\n'
   printf '  sudo tailscale file cp ~/.config/chezmoi/key.txt %s:\n' "$(tailscale ip -4)"
   printf 'Taildrop needs Send Files enabled and both devices owned by the same user, without tags.\n'
   printf 'You can also transfer the key to %s through an existing SSH login.\n' "$key_file"

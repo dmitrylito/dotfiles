@@ -137,7 +137,7 @@ agent_panel_sort = "spaces"
 [ui.toast.clipboard]
 enabled = false
 
-# Agent done/request chimes off — the dlco remote session was dinging on every
+# Agent done/request chimes off — the DLCO-1 remote session was dinging on every
 # Claude turn-end with no visible notification (see herdr-agent-sounds memory)
 [ui.sound]
 enabled = false

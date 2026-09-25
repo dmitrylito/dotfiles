@@ -39,7 +39,7 @@ list_hosts() {
   {
     # Keep the existing target available even before it has been added to SSH
     # config, then discover aliases and previously contacted hostnames locally.
-    printf '%s\n' dlco
+    printf '%s\n' dlco-1
     awk '$1 == "Host" { for (i = 2; i <= NF; i++) if ($i !~ /[*?!]/) print $i }' "$config_file" 2>/dev/null
     cut -d ' ' -f 1 "$known_hosts_file" 2>/dev/null \
       | tr ',' '\n' \
