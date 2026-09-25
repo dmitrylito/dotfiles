@@ -41,6 +41,7 @@ go
 imagemagick
 intel-ucode
 jq
+kmscon
 lazydocker
 lazygit
 libvips
@@ -78,7 +79,9 @@ smartmontools
 starship
 sudo
 tailscale
+terminus-font
 time
+ttf-jetbrains-mono-nerd
 udisks2
 udisks2-lvm2
 wget
