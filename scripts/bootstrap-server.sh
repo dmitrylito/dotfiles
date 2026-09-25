@@ -44,12 +44,28 @@ cz() {
     --source "$source_dir" "$@"
 }
 
+select_step() {
+  local choice
+  while true; do
+    printf '\n%s — [Enter] run / [s] skip / [q] quit: ' "$1" >&2
+    IFS= read -r -s -n 1 choice </dev/tty
+    printf '\n' >&2
+    case "$choice" in
+      '') return 0 ;;
+      s|S) printf 'Skipped: %s\n' "$1"; return 1 ;;
+      q|Q) printf 'Setup paused. Resume with chezmoi init --apply.\n'; exit 1 ;;
+    esac
+  done
+}
+
 if [[ $mode == finish ]]; then
-  sudo chsh -s /usr/bin/zsh "$(id -un)"
+  if select_step "Set Zsh as your login shell"; then
+    sudo chsh -s /usr/bin/zsh "$(id -un)"
+  fi
   systemctl is-active --quiet sshd.service tailscaled.service chezmoi-server-package-converge.timer
   systemctl --user is-active --quiet chezmoi-package-capture.timer moshi-hook.service
   printf 'complete\n' > "$state_dir/complete"
-  printf '\nServer setup complete. Log out and back in for Zsh and the cz alias.\n'
+  printf '\nServer setup complete. Start a new Zsh session to load your aliases.\n'
   printf 'Sign in to Claude/Codex when first using them; boot linux-lts for the ZFS module.\n'
   exit 0
 fi
@@ -60,20 +76,23 @@ if [[ -f $state_dir/prepared ]]; then
   exit 0
 fi
 
-printf '\nInstalling bootstrap dependencies and enabling SSH/Tailscale...\n'
-sudo pacman -Syu --needed --noconfirm git openssh curl jq python python-uv ansible tailscale dbus rsync
-sudo systemctl enable --now sshd.service tailscaled.service
-sudo loginctl enable-linger "$(id -un)"
-sudo systemctl start "user@$(id -u).service"
-sudo tailscale up --ssh --timeout=15m
-tailscale status
+if select_step "Install bootstrap dependencies"; then
+  sudo pacman -Syu --needed --noconfirm git openssh curl jq python python-uv ansible tailscale dbus rsync
+fi
+if select_step "Enable SSH and Tailscale networking"; then
+  sudo systemctl enable --now sshd.service tailscaled.service
+  sudo loginctl enable-linger "$(id -un)"
+  sudo systemctl start "user@$(id -u).service"
+  sudo tailscale up --ssh --timeout=15m
+  tailscale status
+fi
 
-if [[ ! -f $state_dir/packages-installed ]]; then
+if [[ ! -f $state_dir/packages-installed ]] && select_step "Preinstall declared server packages"; then
   "$source_dir/scripts/reconcile-packages.sh" --extra-vars '{"server_bootstrap":true}'
   printf 'installed\n' > "$state_dir/packages-installed"
 fi
 
-if [[ ! -f $state_dir/tools-installed ]]; then
+if [[ ! -f $state_dir/tools-installed ]] && select_step "Install mise tools, Neovim, Herdr, and Codex"; then
   mkdir -p "$state_dir/tools"
   cz execute-template < "$source_dir/dot_config/mise/config.toml.tmpl" > "$state_dir/tools/mise.toml"
   mise -C "$state_dir/tools" trust "$state_dir/tools/mise.toml"
@@ -95,32 +114,26 @@ if [[ ! -f $state_dir/tools-installed ]]; then
   printf 'installed\n' > "$state_dir/tools-installed"
 fi
 
-printf '\nConfiguring GitHub access for automatic dotfile/package synchronization...\n'
-if ! mise -C "$state_dir/tools" exec -- gh auth status --hostname github.com >/dev/null 2>&1; then
-  mise -C "$state_dir/tools" exec -- gh auth login --hostname github.com --git-protocol https --web
-fi
-mise -C "$state_dir/tools" exec -- gh auth setup-git --hostname github.com
-if ! git -C "$source_dir" config user.name >/dev/null; then
-  git -C "$source_dir" config user.name "$(mise -C "$state_dir/tools" exec -- gh api user --jq '.name // .login')"
-fi
-if ! git -C "$source_dir" config user.email >/dev/null; then
-  git -C "$source_dir" config user.email "$(mise -C "$state_dir/tools" exec -- gh api user --jq '"\(.id)+\(.login)@users.noreply.github.com"')"
-fi
-
-if [[ ! -s $key_file ]]; then
+if [[ ! -s $key_file ]] && select_step "Pull the age key from another machine"; then
   mkdir -p "$state_dir/inbox"
-  printf '\nTooling and networking are ready. Send the existing age key from DLCO-1:\n'
-  printf '  rsync --protect-args --chmod=F600 -e ssh -- ~/.config/chezmoi/key.txt %q\n' "$(id -un)@$(tailscale ip -4):$state_dir/inbox/key.txt"
-  printf 'Your tailnet policy must allow SSH from DLCO-1 to this tagged machine as %s.\n' "$(id -un)"
-  printf 'You can also transfer the key to %s through an existing SSH login.\n' "$key_file"
-  read -r -p 'Press Enter after sending the key: ' </dev/tty
-  if [[ ! -s $key_file ]]; then
-    [[ -s $state_dir/inbox/key.txt ]] || { printf 'No key.txt received; rerun chezmoi init --apply after transferring it with rsync.\n' >&2; exit 1; }
-    install -d -m 700 "$(dirname "$key_file")"
-    sudo install -o "$(id -u)" -g "$(id -g)" -m 600 "$state_dir/inbox/key.txt" "$key_file"
-    sudo rm -- "$state_dir/inbox/key.txt"
-  fi
+  read -r -p 'Key source SSH login [dmitrylito@DLCO-1]: ' key_source </dev/tty
+  key_source=${key_source:-dmitrylito@DLCO-1}
+  rsync --protect-args --perms --chmod=F600 -e ssh -- \
+    "$key_source:.config/chezmoi/key.txt" "$state_dir/inbox/key.txt"
+  [[ -s $state_dir/inbox/key.txt ]] || { printf 'The transfer did not provide key.txt.\n' >&2; exit 1; }
+  install -d -m 700 "$(dirname "$key_file")"
+  install -m 600 "$state_dir/inbox/key.txt" "$key_file"
+  rm -- "$state_dir/inbox/key.txt"
+fi
+if [[ ! -s $key_file ]]; then
+  printf 'No age key is installed. Tool setup is preserved; encrypted configuration is paused.\n' >&2
+  printf 'Resume with chezmoi init --apply when ready to transfer the key.\n' >&2
+  exit 1
 fi
 cz decrypt "$source_dir/scripts/codex-config-baseline.toml.age" >/dev/null
+if ! select_step "Apply managed configuration and the normal package policy"; then
+  printf 'Configuration apply paused. Resume with chezmoi init --apply.\n'
+  exit 1
+fi
 printf 'prepared\n' > "$state_dir/prepared"
 printf '\nEncryption verified. Continuing with your managed configuration and services...\n'

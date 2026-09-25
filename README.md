@@ -20,48 +20,50 @@ Basic internet connectivity and working sudo access are the starting prerequisit
 You do not need Ansible, Git, a running SSH daemon, or the age key beforehand.
 Chezmoi uses its built-in Git implementation when Git is absent.
 
-The server bootstrap continues through these stages automatically:
+Each stage offers **Enter** to run, **s** to skip, or **q** to pause setup. The
+keys take effect at the stage prompt; they do not interrupt a running installer.
+Completed package/tool stages are skipped automatically when resuming.
 
 1. Install Git, Ansible, Python/uv, OpenSSH, Tailscale, rsync, and bootstrap dependencies.
-2. Enable and start `sshd` and `tailscaled`, and enable the systemd user manager
-   after logout. Run `tailscale up --ssh` as part of setup to enable Tailscale SSH;
-   open its printed login URL to add the machine to your network.
-3. Install the shared server packages, Oh My Zsh, shell plugins, mise tools,
-   Neovim through Bob, Herdr, and native Codex. Existing native Herdr/Codex
-   binaries are retained.
-4. Guide GitHub browser authentication for background Git synchronization and
-   configure a missing commit identity from the authenticated GitHub account.
-5. Print the exact rsync command to run on DLCO-1 to send the age key. Press
-   Enter after sending it; bootstrap installs it privately, and
-   verifies decryption. No SSH-key exchange is needed.
-6. Continue the same chezmoi invocation to apply your managed shell, editor,
-   agent settings, private configuration, and deployment hooks. Then select Zsh
-   as your login shell and verify SSH, Tailscale, Moshi, and package-sync timers.
+2. Enable `sshd`, Tailscale SSH (`tailscale up --ssh`), and the persistent systemd
+   user manager. Open Tailscale's login URL if authentication is needed.
+3. Preinstall shared server packages and install mise tools, Neovim, Herdr, and
+   native Codex. These are separate stages you can skip when already set up.
+4. Pull the age key **from the new server** using rsync. The source prompt defaults
+   to `dmitrylito@DLCO-1`; enter another `user@hostname` or `user@TAILSCALE_IP` if needed.
+5. Apply the managed configuration and normal package policy, then optionally
+   select Zsh as your login shell and verify the services.
 
-Log out and back in afterward; `cz` is then available as an alias for `chezmoi`.
+Bootstrap does not run GitHub login, change Git credentials, or set your commit
+identity. Existing SSH keys and Git configuration remain yours. Configure GitHub
+write access later when convenient if you want automatic package publication;
+the public repository can be cloned without signing in.
+
+Skipping a stage assumes its prerequisites are already available. Skipping the
+preinstall stage does not disable the normal package policy in the separately
+prompted full apply. If you skip the key transfer without an existing key, setup
+pauses before encrypted files are applied and preserves completed tool stages.
+
+Log out and back in after selecting Zsh; `cz` is then an alias for `chezmoi`.
 Claude/Codex account login remains an application-level first-use action.
 
 ### Encryption-key transfer
 
-The bootstrap creates a private inbox and prints a ready-to-run rsync command
-with the new server's actual login user, Tailscale IP, and inbox path. Run that
-command on **DLCO-1**, then press Enter on the new server. For example:
+The bootstrap runs this on the **new server**, using the source you choose:
 
 ```bash
-rsync --protect-args --chmod=F600 -e ssh -- ~/.config/chezmoi/key.txt USER@TAILSCALE_IP:/home/USER/.local/state/chezmoi/server-bootstrap/inbox/key.txt
+rsync --protect-args --perms --chmod=F600 -e ssh -- dmitrylito@DLCO-1:.config/chezmoi/key.txt LOCAL_PRIVATE_INBOX/key.txt
 ```
 
-Rsync connects to the new server's Tailscale IP using the standard SSH client;
-Tailscale SSH handles authentication. Both machines can be tagged. The tailnet
-must permit port 22 traffic and have an SSH `accept` rule allowing DLCO-1's tag
-to the destination tag and requested login user; tagged-source SSH rules cannot
-use `check` mode. Enabling Tailscale SSH does not create those policy rules.
-No Taildrop or SSH-key exchange is needed. Rsync must be installed on the sending
-machine as well; bootstrap installs it on the receiver.
+It supplies the actual local inbox path, installs the received key privately, and
+verifies decryption before applying configuration. You do not need to operate
+a second terminal on DLCO-1. An existing local age key skips the transfer.
 
-An alternative is to transfer the key directly to `~/.config/chezmoi/key.txt`
-before pressing Enter. The bootstrap does not copy DLCO-1's SSH host keys or
-machine identity.
+The source machine must have rsync and Tailscale SSH enabled. For tagged machines,
+the tailnet must permit port 22 traffic and have an SSH `accept` rule from the
+**new server's tag to DLCO-1's tag**, allowing the requested source login user.
+Tagged-source SSH rules cannot use `check` mode. Bootstrap enables Tailscale SSH
+on the new server but does not change tailnet policy or the source machine.
 
 A newly generated age key cannot decrypt this repository. Keep the existing
 identity outside Git; never paste it into logs or chat. An existing key is not
@@ -89,7 +91,7 @@ chezmoi init --apply
 
 Completed package/tool stages are recorded under
 `~/.local/state/chezmoi/server-bootstrap/` (or `$XDG_STATE_HOME/chezmoi/server-bootstrap/`).
-A `prepared` marker means the pre-apply stages succeeded; `complete` is written
+A `prepared` marker means the key was verified and full apply was selected; `complete` is written
 only after the full apply reaches its final service checks. Reinitializing a
 completed bootstrap skips provisioning. Ordinary status/diff commands and init
 dry runs never provision through the bootstrap hook.

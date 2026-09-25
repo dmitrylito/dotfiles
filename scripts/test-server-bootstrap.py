@@ -30,9 +30,10 @@ if name == 'sudo':
 elif name == 'tailscale':
     if args == ['ip', '-4']:
         print('100.64.0.42')
-elif name == 'mise':
-    if 'api' in args:
-        print('123+bootstrap@users.noreply.github.com' if '@users' in args[-1] else 'Bootstrap User')
+elif name == 'rsync':
+    if os.environ.get('MISSING_KEY'):
+        sys.exit(23)
+    shutil.copyfile(os.environ['BOOTSTRAP_KEY'], args[-1])
 elif name == 'curl':
     tool = 'herdr' if any('herdr.dev' in arg for arg in args) else 'codex'
     target = pathlib.Path(args[args.index('-o') + 1])
@@ -47,7 +48,7 @@ elif name == 'id':
 '''
 
 
-def run_case(name, overrides=None, preview=False, wrong_key=False, installed_tools=False):
+def run_case(name, overrides=None, preview=False, wrong_key=False, installed_tools=False, skip_step=None, quit_step=False):
     with tempfile.TemporaryDirectory(prefix="chezmoi-bootstrap-test-") as temp:
         root = Path(temp)
         home, source, bins = (root / part for part in ("home", "source", "bin"))
@@ -79,7 +80,7 @@ def run_case(name, overrides=None, preview=False, wrong_key=False, installed_too
         reconcile = source / "scripts/reconcile-packages.sh"
         reconcile.write_text('#!/bin/sh\nprintf \'["reconcile", "%s"]\\n\' "$1" >> "$BOOTSTRAP_CALLS"\n')
         reconcile.chmod(0o700)
-        for command in ("sudo", "pacman", "tailscale", "systemctl", "mise", "curl", "id", "bob"):
+        for command in ("sudo", "pacman", "tailscale", "systemctl", "mise", "curl", "id", "bob", "rsync"):
             path = bins / command
             path.write_text(MOCK)
             path.chmod(0o700)
@@ -113,13 +114,20 @@ def run_case(name, overrides=None, preview=False, wrong_key=False, installed_too
                 os.close(slave)
                 try:
                     deadline = time.monotonic() + 30
+                    answered = 0
+                    source_answered = False
+                    prompt = b"[Enter] run / [s] skip / [q] quit: "
                     while proc.poll() is None:
-                        if b"Press Enter after sending the key:" in os.pread(output.fileno(), 1024 * 1024, 0):
-                            inbox = home / ".local/state/chezmoi/server-bootstrap/inbox"
-                            if not env.get("MISSING_KEY"):
-                                shutil.copyfile(env["BOOTSTRAP_KEY"], inbox / "key.txt")
+                        captured = os.pread(output.fileno(), 1024 * 1024, 0)
+                        count = captured.count(prompt)
+                        if count > answered:
+                            current = captured.rsplit(prompt, 1)[0].split(b"\n")[-1].decode()
+                            answer = b"q" if quit_step else b"s" if skip_step and skip_step in current else b"\n"
+                            os.write(master, answer)
+                            answered = count
+                        if not source_answered and b"Key source SSH login [dmitrylito@DLCO-1]: " in captured:
                             os.write(master, b"\n")
-                            break
+                            source_answered = True
                         if time.monotonic() >= deadline:
                             raise subprocess.TimeoutExpired(command, 30)
                         time.sleep(0.01)
@@ -138,7 +146,7 @@ def run_case(name, overrides=None, preview=False, wrong_key=False, installed_too
         if preview:
             assert not calls, calls
             assert not state.exists()
-        elif overrides or wrong_key:
+        elif overrides or wrong_key or quit_step or skip_step in ("Pull the age key", "Apply managed configuration"):
             assert code != 0, transcript
             assert not (state / "complete").exists()
             if not (overrides or {}).get("FAIL_SERVICE"):
@@ -150,8 +158,12 @@ def run_case(name, overrides=None, preview=False, wrong_key=False, installed_too
             assert (home / ".config/chezmoi/key.txt").stat().st_mode & 0o777 == 0o600
             assert ["sudo", "systemctl", "enable", "--now", "sshd.service", "tailscaled.service"] in calls
             assert ["sudo", "tailscale", "up", "--ssh", "--timeout=15m"] in calls
-            assert "rsync --protect-args --chmod=F600 -e ssh" in transcript
-            assert "@100.64.0.42:" in transcript
+            transfer = next(call for call in calls if call[0] == "rsync")
+            assert transfer[-2] == "dmitrylito@DLCO-1:.config/chezmoi/key.txt"
+            assert "--perms" in transfer and "--chmod=F600" in transfer
+            assert not any("gh" in call for call in calls)
+            if skip_step == "Install mise tools":
+                assert not any(call[0] in ("mise", "curl", "bob") for call in calls)
             assert not any(call[:3] == ["sudo", "tailscale", "file"] for call in calls)
             assert "rsync" in next(call for call in calls if call[:2] == ["sudo", "pacman"])
             if installed_tools:
@@ -176,3 +188,9 @@ run_case("failed final service check never marks complete", {"FAIL_SERVICE": "1"
 run_case("existing native tools are preserved without running installers", installed_tools=True)
 
 run_case("missing rsync transfer stops before apply", {"MISSING_KEY": "1"})
+
+run_case("tool installation can be skipped", installed_tools=True, skip_step="Install mise tools")
+run_case("skipping a missing key pauses encrypted apply", skip_step="Pull the age key")
+run_case("q pauses without provisioning", quit_step=True)
+
+run_case("full apply can be skipped without writing encrypted targets", skip_step="Apply managed configuration")
