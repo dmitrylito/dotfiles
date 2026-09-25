@@ -19,7 +19,7 @@ FIXTURES = SOURCE / "scripts/fixtures"
 ENCRYPTED_FIXTURES = {
     "docker-appdata/homepage/encrypted_private_services.yaml.age": "[]\n",
     ".secrets.yaml.age": "".join(
-        f"{group}:\n  VALIDATION_ONLY: '1'\n" for group in ("shared", "omada-mcp", "gluetun")
+        f"{group}:\n  VALIDATION_ONLY: '1'\n" for group in ("shared", "omada-mcp", "gluetun", "npm")
     ),
     "scripts/moshi-pairing-token.age": "validation-only-token\n",
     "scripts/codex-config-baseline.toml.age": (FIXTURES / "codex-config.toml").read_text(),
