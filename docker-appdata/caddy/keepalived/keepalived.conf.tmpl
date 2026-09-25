@@ -1,0 +1,43 @@
+{{- $nodes := dict
+    "DLCO-1" (dict "iface" "lan0" "ip" "192.168.0.11" "priority" 100)
+    "DLCO-2" (dict "iface" "enp7s0" "ip" "192.168.0.12" "priority" 150)
+    "DLCO-3" (dict "iface" "eno1" "ip" "192.168.0.13" "priority" 50) -}}
+{{- $self := index $nodes .chezmoi.hostname -}}
+global_defs {
+    router_id {{ .chezmoi.hostname }}
+    enable_script_security
+    script_user root
+}
+
+# Any HTTP answer from Caddy counts as healthy; curl exits non-zero only when nothing answers.
+vrrp_script chk_caddy {
+    script "/usr/bin/curl -s -o /dev/null --max-time 2 http://127.0.0.1:80/"
+    interval 2
+    fall 2
+    rise 2
+}
+
+vrrp_instance proxy_vip {
+    # All nodes start as BACKUP with nopreempt, so a recovered higher-priority node does not
+    # pull the VIP back and reset connections that are working fine on the current holder.
+    state BACKUP
+    nopreempt
+    interface {{ $self.iface }}
+    virtual_router_id 53
+    priority {{ $self.priority }}
+    advert_int 1
+    unicast_src_ip {{ $self.ip }}
+    unicast_peer {
+{{- range $name, $node := $nodes }}
+{{- if ne $name $.chezmoi.hostname }}
+        {{ $node.ip }}
+{{- end }}
+{{- end }}
+    }
+    virtual_ipaddress {
+        192.168.0.3/24 dev {{ $self.iface }}
+    }
+    track_script {
+        chk_caddy
+    }
+}

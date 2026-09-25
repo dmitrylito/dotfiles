@@ -1,0 +1,49 @@
+name: caddy
+
+services:
+  caddy:
+    build: .
+    image: local/caddy-cloudflare:2.11.4
+    restart: unless-stopped
+    env_file: {{ joinPath .chezmoi.homeDir ".config/secrets/caddy.env" }}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Owns the 192.168.0.3 VIP. Host networking and NET_ADMIN let it add the address to the
+  # host's LAN interface; firewalld must accept VRRP (IP protocol 112) between the nodes.
+  keepalived:
+    build: ./keepalived
+    image: local/keepalived:alpine3.24
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+    volumes:
+      - ./keepalived/keepalived.conf:/etc/keepalived/keepalived.conf:ro
+    depends_on:
+      - caddy
+
+  # Every node runs it so the public A records keep updating when any one node is down.
+  cloudflare-ddns:
+    image: favonia/cloudflare-ddns:latest
+    restart: unless-stopped
+    network_mode: host
+    env_file: {{ joinPath .chezmoi.homeDir ".config/secrets/caddy.env" }}
+    environment:
+      - DOMAINS=dlco.us, *.dlco.us, minecraft.dlco.us, *.staging.dlco.us
+      - PROXIED=!is(minecraft.dlco.us)
+      - UPDATE_CRON=@every 5m
+      - IP6_PROVIDER=none
+      - DETECTION_TIMEOUT=15s
+
+volumes:
+  caddy_data:
+  caddy_config:

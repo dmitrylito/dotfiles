@@ -1,0 +1,143 @@
+{{- /* Backend addresses. Flip these as the LAN IP migration lands (see AGENTS.md). */ -}}
+{{- $dlco1 := "192.168.0.11" -}}
+{{- /* dlco-1's media.pod publishes only on 192.168.0.2 until it is rebound. */ -}}
+{{- $dlco1pod := "192.168.0.2" -}}
+{{- $dlco2 := "192.168.0.12" -}}
+{{- $dlco4 := "192.168.0.5" -}}
+{{- $omada := "192.168.0.5" -}}
+{
+	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
+
+# Wildcard sites keep issuance at two certificates per node; per-host site blocks across three
+# nodes would exceed Let's Encrypt's 50-certificates-per-domain-per-week limit.
+*.dlco.us {
+	@audiobooks host audiobooks.dlco.us
+	handle @audiobooks {
+		reverse_proxy {{ $dlco1pod }}:13378
+	}
+	@audioshelf host audioshelf.dlco.us
+	handle @audioshelf {
+		reverse_proxy {{ $dlco1 }}:8788
+	}
+	@backend host backend.dlco.us
+	handle @backend {
+		handle /billingapp/* {
+			reverse_proxy 192.168.1.32:8501
+		}
+		handle {
+			reverse_proxy {{ $dlco1 }}:8000
+		}
+	}
+	@billing host billing.dlco.us
+	handle @billing {
+		reverse_proxy {{ $dlco1 }}:8501
+	}
+	@books host books.dlco.us
+	handle @books {
+		reverse_proxy {{ $dlco1pod }}:8085
+	}
+	@bookshelf host bookshelf.dlco.us
+	handle @bookshelf {
+		reverse_proxy {{ $dlco1 }}:8787
+	}
+	@calibre host calibre.dlco.us
+	handle @calibre {
+		reverse_proxy {{ $dlco1pod }}:8084 {
+			header_up X-Scheme https
+		}
+	}
+	@cer host cer.dlco.us
+	handle @cer {
+		reverse_proxy {{ $dlco2 }}:18000
+	}
+	@cer-staging host cer-staging.dlco.us
+	handle @cer-staging {
+		reverse_proxy {{ $dlco1 }}:18001
+	}
+	@chat host chat.dlco.us
+	handle @chat {
+		reverse_proxy {{ $dlco1 }}:8083
+	}
+	@console host console.dlco.us
+	handle @console {
+		reverse_proxy {{ $dlco1 }}:4200
+	}
+	@fcbot host dialpad.dlco.us fcbot.dlco.us ops.dlco.us
+	handle @fcbot {
+		reverse_proxy {{ $dlco1 }}:8050
+	}
+	@lidarr host lidarr.dlco.us
+	handle @lidarr {
+		reverse_proxy {{ $dlco1 }}:8686
+	}
+	@liveevents host liveevents.dlco.us
+	handle @liveevents {
+		reverse_proxy {{ $dlco1 }}:8080
+	}
+	@plex host plex.dlco.us
+	handle @plex {
+		reverse_proxy {{ $dlco1pod }}:32400
+	}
+	@prowlarr host prowlarr.dlco.us
+	handle @prowlarr {
+		reverse_proxy {{ $dlco1pod }}:9696
+	}
+	@radarr host radarr.dlco.us
+	handle @radarr {
+		reverse_proxy {{ $dlco1pod }}:7878
+	}
+	@seerr host seerr.dlco.us
+	handle @seerr {
+		reverse_proxy {{ $dlco1pod }}:5055
+	}
+	@sonarr host sonarr.dlco.us
+	handle @sonarr {
+		reverse_proxy {{ $dlco1pod }}:8989
+	}
+	@streaming host streaming.dlco.us
+	handle @streaming {
+		reverse_proxy {{ $dlco1pod }}:3000
+	}
+	@vsl host vsl.dlco.us
+	handle @vsl {
+		reverse_proxy {{ $dlco2 }}:18100
+	}
+	handle {
+		abort
+	}
+}
+
+*.init.dlco.us {
+	@adguard host adguard.init.dlco.us
+	handle @adguard {
+		reverse_proxy {{ $dlco4 }}:80
+	}
+	@cockpit host cockpit.init.dlco.us
+	handle @cockpit {
+		reverse_proxy https://{{ $dlco1 }}:9090 {
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+	}
+	@kuma host kuma.init.dlco.us
+	handle @kuma {
+		reverse_proxy {{ $dlco4 }}:3001
+	}
+	@omada host omada.init.dlco.us
+	handle @omada {
+		reverse_proxy https://{{ $omada }}:8043 {
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+	}
+	@torrent host torrent.init.dlco.us
+	handle @torrent {
+		reverse_proxy {{ $dlco1 }}:8181
+	}
+	handle {
+		abort
+	}
+}

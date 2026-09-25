@@ -123,3 +123,12 @@ docker-appdata/
 .config/systemd/user/cer-production-watch.service
 .config/systemd/user/cer-production-watch.timer
 {{ end }}
+
+{{ if ne $profile "server" }}
+.config/secrets/caddy.env
+{{ end }}
+
+# The Caddy + keepalived reverse-proxy stack runs only on the three VIP nodes.
+{{ if not (has .chezmoi.hostname (list "DLCO-1" "DLCO-2" "DLCO-3")) }}
+docker-appdata/caddy/
+{{ end }}
