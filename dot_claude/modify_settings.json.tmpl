@@ -17,6 +17,9 @@
 #     setting changed inside Claude Code sticks, and a new BASELINE key still propagates.
 #     "model" relies on this deliberately — it is seed-only, so switching between opus and
 #     fable is never tracked or reverted. Do not move it into the enforced set.
+#   - enabledPlugins is SEED-ONLY as a whole (SEED_ONLY): once the live file has the dict,
+#     BASELINE never recurses into it. Otherwise a plugin removed live (/plugin uninstall
+#     deletes its key) came back as true on the next apply and Claude Code reinstalled it.
 #   - permissions.allow is ENFORCED as a union: every BASELINE rule is re-added if missing,
 #     and rules added live (via /permissions) are kept. It has to be enforced rather than a
 #     default because it is a LIST that already exists on every established machine, so
@@ -255,8 +258,13 @@ def clone(value):
     return json.loads(json.dumps(value))
 
 
+SEED_ONLY = ("enabledPlugins",)
+
+
 def fill_defaults(live, defaults):
     for key, value in defaults.items():
+        if key in SEED_ONLY and key in live:
+            continue
         if isinstance(value, dict) and isinstance(live.get(key), dict):
             fill_defaults(live[key], value)
         elif key not in live:

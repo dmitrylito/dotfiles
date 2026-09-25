@@ -18,7 +18,6 @@ SOURCE = Path(__file__).resolve().parent.parent
 FIXTURES = SOURCE / "scripts/fixtures"
 ENCRYPTED_FIXTURES = {
     "docker-appdata/homepage/encrypted_private_services.yaml.age": "[]\n",
-    "dot_config/opencode/encrypted_opencode.json": "{}\n",
     "dot_config/private_secrets/encrypted_private_shared.env.age": "VALIDATION_ONLY=1\n",
     "dot_config/containers/systemd/private_secrets/encrypted_private_gluetun.env.age": "VALIDATION_ONLY=1\n",
     "scripts/moshi-pairing-token.age": "validation-only-token\n",

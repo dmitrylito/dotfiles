@@ -1,0 +1,10 @@
+{{ includeTemplate "agent-rules.md" . | replace "Use provider documentation tools or\n  Context7 when they supply appropriate official content; otherwise fetch the\n  official page." "Fetch the relevant official page directly." }}
+
+## OpenCode preferences
+
+- Do not use Context7. Fetch official documentation directly when verification is needed.
+- Keep intermediate updates brief and meaningful. Preserve useful detail in final answers.
+- Batch independent checks, reuse verified results, and avoid raw JSON or full-file dumps.
+- Keep project architecture, commands, and domain rules in the project's AGENTS.md.
+
+{{ includeTemplate "agent-code-style.md" . }}

@@ -1,0 +1,22 @@
+# Start Codex remote access at boot: systemctl --user enable --now codex-remote.service.
+# Requires the standalone Codex installation, authenticated account, and user lingering.
+[Unit]
+Description=Start the managed Codex daemon with Remote Control
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{ .chezmoi.homeDir }}
+Environment=PATH={{ .chezmoi.homeDir }}/.local/share/mise/shims:{{ .chezmoi.homeDir }}/.local/bin:/usr/local/bin:/usr/bin
+ExecStart={{ .chezmoi.homeDir }}/.codex/packages/standalone/current/bin/codex app-server daemon start
+ExecStart={{ .chezmoi.homeDir }}/.codex/packages/standalone/current/bin/codex app-server daemon enable-remote-control
+TimeoutStartSec=60
+Restart=on-failure
+RestartSec=15
+# Codex owns daemon restarts; stopping this boot unit must not kill active chats.
+KillMode=process
+
+[Install]
+WantedBy=default.target

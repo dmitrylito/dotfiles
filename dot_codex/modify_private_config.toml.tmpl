@@ -87,11 +87,21 @@ def synchronize_settings(live, baseline):
         target[path[-1]] = copy.deepcopy(source[path[-1]])
 
 
+def remove_unsupported_settings(config):
+    config.pop("ui", None)
+    config.get("mcp_servers", {}).get("github", {}).pop("type", None)
+    config.get("projects", {}).get("/home/dmitrylito/Projects/backend", {}).pop(
+        "web_search", None
+    )
+
+
 live_text = strip_retired_servers(sys.stdin.read())
 baseline_text = strip_retired_servers(read_baseline())
 
 if not live_text.strip():
-    sys.stdout.write(baseline_text)
+    baseline = tomlkit.parse(baseline_text)
+    remove_unsupported_settings(baseline)
+    sys.stdout.write(tomlkit.dumps(baseline))
     raise SystemExit(0)
 
 try:
@@ -104,4 +114,5 @@ except Exception as error:
 fill_defaults(live, baseline)
 synchronize_settings(live, baseline)
 remove_retired_servers(live)
+remove_unsupported_settings(live)
 sys.stdout.write(tomlkit.dumps(live))
