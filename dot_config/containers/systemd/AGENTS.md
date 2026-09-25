@@ -89,7 +89,7 @@ demand: `systemctl --user start minecraft.service`.
   `/dev/shm` (RAM). ZFS volume mounts use `:Z` (private relabel) for config and
   `:z` (shared relabel) for media paths shared across the *arr stack.
 - **Secrets do not live inline.** `gluetun.container` loads its WireGuard key from
-  `~/.config/containers/systemd/secrets/gluetun.env`. Chezmoi stores that file with
-  age encryption and deploys it with mode `0600`.
+  `~/.config/containers/systemd/secrets/gluetun.env`, rendered (mode `0600`) from the
+  `gluetun` group of the central `.secrets.yaml.age`; change it with `secrets-edit`.
 - Every media container has an application-level Podman health check. Validate the
   whole stack with `podman ps --format '{{.Names}} {{.Status}}'` after changes.

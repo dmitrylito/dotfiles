@@ -18,8 +18,9 @@ SOURCE = Path(__file__).resolve().parent.parent
 FIXTURES = SOURCE / "scripts/fixtures"
 ENCRYPTED_FIXTURES = {
     "docker-appdata/homepage/encrypted_private_services.yaml.age": "[]\n",
-    "dot_config/private_secrets/encrypted_private_shared.env.age": "VALIDATION_ONLY=1\n",
-    "dot_config/containers/systemd/private_secrets/encrypted_private_gluetun.env.age": "VALIDATION_ONLY=1\n",
+    ".secrets.yaml.age": "".join(
+        f"{group}:\n  VALIDATION_ONLY: '1'\n" for group in ("shared", "omada-mcp", "gluetun")
+    ),
     "scripts/moshi-pairing-token.age": "validation-only-token\n",
     "scripts/codex-config-baseline.toml.age": (FIXTURES / "codex-config.toml").read_text(),
 }
