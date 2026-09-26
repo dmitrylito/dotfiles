@@ -115,8 +115,8 @@ docker-appdata/
 .codex/packages/standalone/current
 {{ end }}
 
-{{ if or (ne $profile "server") (ne .chezmoi.hostname "DLCO-2") }}
-# Production deployment is owned by DLCO-2, not every Linux host.
+{{ if or (ne $profile "server") (ne .chezmoi.hostname "DLCO-3") }}
+# Production deployment is owned by DLCO-3, not every Linux host.
 .config/cer-production/
 .local/libexec/cer-production/
 .local/bin/cer-production-watch

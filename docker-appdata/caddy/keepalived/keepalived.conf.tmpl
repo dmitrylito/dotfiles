@@ -1,7 +1,7 @@
 {{- $nodes := dict
     "DLCO-1" (dict "iface" "lan0" "ip" "192.168.0.11" "priority" 100)
-    "DLCO-2" (dict "iface" "enp7s0" "ip" "192.168.0.12" "priority" 150)
-    "DLCO-3" (dict "iface" "eno1" "ip" "192.168.0.13" "priority" 50) -}}
+    "DLCO-2" (dict "iface" "enp7s0" "ip" "192.168.0.12" "priority" 50)
+    "DLCO-3" (dict "iface" "eno1" "ip" "192.168.0.13" "priority" 150) -}}
 {{- $self := index $nodes .chezmoi.hostname -}}
 global_defs {
     router_id {{ .chezmoi.hostname }}
@@ -18,10 +18,8 @@ vrrp_script chk_caddy {
 }
 
 vrrp_instance proxy_vip {
-    # All nodes start as BACKUP with nopreempt, so a recovered higher-priority node does not
-    # pull the VIP back and reset connections that are working fine on the current holder.
     state BACKUP
-    nopreempt
+    preempt_delay 10
     interface {{ $self.iface }}
     virtual_router_id 53
     priority {{ $self.priority }}

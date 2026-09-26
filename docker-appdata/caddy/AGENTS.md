@@ -5,6 +5,18 @@ identically on all three servers. keepalived moves the LAN VIP `192.168.0.3` (th
 80/443 forward target) to a healthy node, so any one box can go down. This replaced Nginx
 Proxy Manager on DLCO-2.
 
+## Nodes
+
+| Host | LAN IP | Interface | VIP priority |
+|---|---|---|---|
+| DLCO-1 | `192.168.0.11` | `lan0` | 100 |
+| DLCO-2 | `192.168.0.12` | `enp7s0` | 50 |
+| DLCO-3 | `192.168.0.13` | `eno1` | 150 |
+
+`192.168.0.3` is the floating VIP. DLCO-3 has the highest priority and reclaims
+it after recovery with a 10-second preemption delay. The `$dlco2` backend
+variable in `Caddyfile.tmpl` points to DLCO-2's fixed `.12` address.
+
 - Source of truth is chezmoi: `docker-appdata/caddy/` in `~/.local/share/chezmoi`. Never edit
   the deployed copy in `~/docker-appdata/caddy/`.
 - Add or change a site in `Caddyfile.tmpl` as a `@name host …` + `handle` pair inside the
@@ -33,6 +45,6 @@ at the old inode until the Caddy container is recreated; `caddy reload` alone re
 
 Check a node directly, bypassing the VIP:
 
-    curl -sI --resolve radarr.dlco.us:443:192.168.0.11 https://radarr.dlco.us/
+    curl -sI --resolve radarr.dlco.us:443:192.168.0.13 https://radarr.dlco.us/
 
 `ip -4 addr show | grep 192.168.0.3` shows which node holds the VIP.

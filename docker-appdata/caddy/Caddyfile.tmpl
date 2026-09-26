@@ -1,8 +1,8 @@
 {{- /* Backend addresses. Flip these as the LAN IP migration lands (see AGENTS.md). */ -}}
-{{- $dlco1 := "192.168.0.2" -}}
-{{- /* dlco-1's media.pod publishes only on 192.168.0.2 until it is rebound. */ -}}
-{{- $dlco1pod := "192.168.0.2" -}}
-{{- $dlco2 := "192.168.0.3" -}}
+{{- $dlco1 := "192.168.0.11" -}}
+{{- $dlco1pod := "192.168.0.11" -}}
+{{- $dlco3 := "192.168.0.13" -}}
+{{- $dlco2 := "192.168.0.12" -}}
 {{- $dlco4 := "192.168.0.5" -}}
 {{- $omada := "192.168.0.5" -}}
 {
@@ -16,7 +16,16 @@
 	header X-Served-By {host}
 	@audiobooks host audiobooks.dlco.us
 	handle @audiobooks {
-		reverse_proxy {{ $dlco1pod }}:13378
+{{ if eq .chezmoi.hostname "DLCO-3" }}
+		reverse_proxy {{ $dlco3 }}:13378
+{{ else }}
+		reverse_proxy https://{{ $dlco3 }} {
+			header_up Host {host}
+			transport http {
+				tls_server_name audiobooks.dlco.us
+			}
+		}
+{{ end }}
 	}
 	@audioshelf host audioshelf.dlco.us
 	handle @audioshelf {
@@ -37,7 +46,16 @@
 	}
 	@books host books.dlco.us
 	handle @books {
-		reverse_proxy {{ $dlco1pod }}:8085
+{{ if eq .chezmoi.hostname "DLCO-3" }}
+		reverse_proxy {{ $dlco3 }}:8085
+{{ else }}
+		reverse_proxy https://{{ $dlco3 }} {
+			header_up Host {host}
+			transport http {
+				tls_server_name books.dlco.us
+			}
+		}
+{{ end }}
 	}
 	@bookshelf host bookshelf.dlco.us
 	handle @bookshelf {
@@ -45,14 +63,23 @@
 	}
 	@calibre host calibre.dlco.us
 	handle @calibre {
+{{ if eq .chezmoi.hostname "DLCO-3" }}
 		@kobo path /kobo*
-		reverse_proxy @kobo {{ $dlco1pod }}:8084 {
+		reverse_proxy @kobo {{ $dlco3 }}:8084 {
 			header_up X-Scheme https
 			header_up X-Forwarded-Host {host}
 		}
-		reverse_proxy {{ $dlco1pod }}:8084 {
+		reverse_proxy {{ $dlco3 }}:8084 {
 			header_up X-Scheme https
 		}
+{{ else }}
+		reverse_proxy https://{{ $dlco3 }} {
+			header_up Host {host}
+			transport http {
+				tls_server_name calibre.dlco.us
+			}
+		}
+{{ end }}
 	}
 	@cer host cer.dlco.us
 	handle @cer {
@@ -88,7 +115,16 @@
 	}
 	@prowlarr host prowlarr.dlco.us
 	handle @prowlarr {
-		reverse_proxy {{ $dlco1pod }}:9696
+{{ if eq .chezmoi.hostname "DLCO-3" }}
+		reverse_proxy {{ $dlco3 }}:9696
+{{ else }}
+		reverse_proxy https://{{ $dlco3 }} {
+			header_up Host {host}
+			transport http {
+				tls_server_name prowlarr.dlco.us
+			}
+		}
+{{ end }}
 	}
 	@radarr host radarr.dlco.us
 	handle @radarr {
@@ -96,7 +132,16 @@
 	}
 	@seerr host seerr.dlco.us
 	handle @seerr {
-		reverse_proxy {{ $dlco1pod }}:5055
+{{ if eq .chezmoi.hostname "DLCO-3" }}
+		reverse_proxy {{ $dlco3 }}:5055
+{{ else }}
+		reverse_proxy https://{{ $dlco3 }} {
+			header_up Host {host}
+			transport http {
+				tls_server_name seerr.dlco.us
+			}
+		}
+{{ end }}
 	}
 	@sonarr host sonarr.dlco.us
 	handle @sonarr {
@@ -104,7 +149,16 @@
 	}
 	@streaming host streaming.dlco.us
 	handle @streaming {
-		reverse_proxy {{ $dlco1pod }}:3000
+{{ if eq .chezmoi.hostname "DLCO-3" }}
+		reverse_proxy {{ $dlco3 }}:3000
+{{ else }}
+		reverse_proxy https://{{ $dlco3 }} {
+			header_up Host {host}
+			transport http {
+				tls_server_name streaming.dlco.us
+			}
+		}
+{{ end }}
 	}
 	@vsl host vsl.dlco.us
 	handle @vsl {
@@ -123,11 +177,34 @@
 	}
 	@cockpit host cockpit.init.dlco.us
 	handle @cockpit {
+		redir https://dlco1.init.dlco.us{uri} permanent
+	}
+	@dlco1 host dlco1.init.dlco.us
+	handle @dlco1 {
 		reverse_proxy https://{{ $dlco1 }}:9090 {
+			header_up Host {host}
 			transport http {
 				tls_insecure_skip_verify
 			}
 		}
+	}
+	@dlco3 host dlco3.init.dlco.us
+	handle @dlco3 {
+{{ if eq .chezmoi.hostname "DLCO-3" }}
+		reverse_proxy https://{{ $dlco3 }}:9090 {
+			header_up Host {host}
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+{{ else }}
+		reverse_proxy https://{{ $dlco3 }} {
+			header_up Host {host}
+			transport http {
+				tls_server_name dlco3.init.dlco.us
+			}
+		}
+{{ end }}
 	}
 	@kuma host kuma.init.dlco.us
 	handle @kuma {
