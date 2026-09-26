@@ -155,53 +155,7 @@ http://dlco.us {
 }
 
 http://*.dlco.us {
-	@audiobooks host audiobooks.dlco.us
-	handle @audiobooks {
-		reverse_proxy {{ $dlco1pod }}:13378
-	}
-	@audioshelf host audioshelf.dlco.us
-	handle @audioshelf {
-		reverse_proxy {{ $dlco1 }}:8788
-	}
-	@books host books.dlco.us
-	handle @books {
-		reverse_proxy {{ $dlco1pod }}:8085
-	}
-	@bookshelf host bookshelf.dlco.us
-	handle @bookshelf {
-		reverse_proxy {{ $dlco1 }}:8787
-	}
-	@lidarr host lidarr.dlco.us
-	handle @lidarr {
-		reverse_proxy {{ $dlco1 }}:8686
-	}
-	@liveevents host liveevents.dlco.us
-	handle @liveevents {
-		reverse_proxy {{ $dlco1 }}:8080
-	}
-	@plex host plex.dlco.us
-	handle @plex {
-		reverse_proxy {{ $dlco1pod }}:32400
-	}
-	@prowlarr host prowlarr.dlco.us
-	handle @prowlarr {
-		reverse_proxy {{ $dlco1pod }}:9696
-	}
-	@radarr host radarr.dlco.us
-	handle @radarr {
-		reverse_proxy {{ $dlco1pod }}:7878
-	}
-	@sonarr host sonarr.dlco.us
-	handle @sonarr {
-		reverse_proxy {{ $dlco1pod }}:8989
-	}
-	@vsl host vsl.dlco.us
-	handle @vsl {
-		reverse_proxy {{ $dlco2 }}:18100
-	}
-	handle {
-		redir https://{host}{uri} permanent
-	}
+	redir https://{host}{uri} permanent
 }
 
 http://*.init.dlco.us {
