@@ -17,6 +17,7 @@ Proxy Manager on DLCO-2.
 it after recovery with a 10-second preemption delay. The `$dlco2` backend
 variable in `Caddyfile.tmpl` points to DLCO-2's fixed `.12` address.
 CER production runs on DLCO-3 at `192.168.0.13:18000`.
+VSL Supabase runs on DLCO-3 at `192.168.0.13:18100`.
 
 - Source of truth is chezmoi: `docker-appdata/caddy/` in `~/.local/share/chezmoi`. Never edit
   the deployed copy in `~/docker-appdata/caddy/`.
