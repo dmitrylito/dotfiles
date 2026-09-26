@@ -4,6 +4,7 @@ approval_policy = "on-request"
 [tui]
 status_line = ["current-dir"]
 animations = false
+alternate_screen = "never"
 
 [tui.keymap.composer]
 submit = ["enter"]
