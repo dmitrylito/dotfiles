@@ -106,6 +106,7 @@ docker-appdata/
 .config/systemd/user/claude-rc.service
 .config/systemd/user/claude-rc@.service
 .config/systemd/user/codex-remote.service
+.config/secrets/github-mcp.env
 .config/systemd/user/chezmoi-package-capture.service
 .config/systemd/user/chezmoi-package-capture.timer
 {{ end }}

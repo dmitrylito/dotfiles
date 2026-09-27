@@ -10,6 +10,7 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory={{ .chezmoi.homeDir }}
 Environment=PATH={{ .chezmoi.homeDir }}/.local/share/mise/shims:{{ .chezmoi.homeDir }}/.local/bin:/usr/local/bin:/usr/bin
+EnvironmentFile=%h/.config/secrets/github-mcp.env
 ExecStart={{ .chezmoi.homeDir }}/.codex/packages/standalone/current/bin/codex app-server daemon start
 ExecStart={{ .chezmoi.homeDir }}/.codex/packages/standalone/current/bin/codex app-server daemon enable-remote-control
 TimeoutStartSec=60

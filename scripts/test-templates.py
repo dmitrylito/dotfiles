@@ -19,7 +19,9 @@ FIXTURES = SOURCE / "scripts/fixtures"
 ENCRYPTED_FIXTURES = {
     "docker-appdata/homepage/encrypted_private_services.yaml.age": "[]\n",
     ".secrets.yaml.age": "".join(
-        f"{group}:\n  VALIDATION_ONLY: '1'\n" for group in ("shared", "omada-mcp", "gluetun", "caddy")
+        f"{group}:\n  VALIDATION_ONLY: '1'\n"
+        + ("  GITHUB_PERSONAL_ACCESS_TOKEN: validation-only-token\n" if group == "shared" else "")
+        for group in ("shared", "omada-mcp", "gluetun", "caddy")
     ),
     "scripts/moshi-pairing-token.age": "validation-only-token\n",
     "scripts/codex-config-baseline.toml.age": (FIXTURES / "codex-config.toml").read_text(),
@@ -93,6 +95,9 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
     assert tools["agy"] == "latest" and ("codex" in tools) == (profile != "server"), label
     assert (".config/hypr/hyprland.lua" in state) == (profile == "omarchy"), label
     assert (".config/systemd/user/cer-production-watch.service" in state) == (profile == "server" and hostname == "DLCO-3"), f"{label}: production service routing"
+    assert (".config/secrets/github-mcp.env" in state) == (profile == "server"), label
+    if profile == "server":
+        assert state[".config/secrets/github-mcp.env"]["contents"].strip() == "GITHUB_PERSONAL_ACCESS_TOKEN=validation-only-token", label
     assert ("ROCR_VISIBLE_DEVICES=0" in state[".zshenv"]["contents"]) == (profile == "omarchy" and hostname == "fcoffice"), label
     settings = json.loads(state[".claude/settings.json"]["contents"])
     assert any(f"under {home} with" in rule for rule in settings["autoMode"]["allow"]), label
