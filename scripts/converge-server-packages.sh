@@ -41,12 +41,17 @@ fi
 runuser -u "$login_user" -- git -C "$source_dir" pull --ff-only --quiet
 
 desired_hash=$(
-  sha256sum \
-    "$source_dir/packages/server/pacman.txt" \
-    "$source_dir/packages/server/aur.txt" \
-    "$source_dir/playbook.yml" \
-    "$source_dir/scripts/reconcile-server-package-set.sh" |
-    sha256sum | cut -d' ' -f1
+  {
+    sha256sum \
+      "$source_dir/packages/server/pacman.txt" \
+      "$source_dir/packages/server/aur.txt" \
+      "$source_dir/playbook.yml" \
+      "$source_dir/scripts/reconcile-server-package-set.sh"
+    for filename in added-pacman.txt added-aur.txt excluded-pacman.txt; do
+      host_file="$source_dir/packages/server/hosts/$(hostname -s)/$filename"
+      if [[ -f $host_file ]]; then sha256sum "$host_file"; fi
+    done
+  } | sha256sum | cut -d' ' -f1
 )
 
 if [[ -r $applied_file ]] && [[ $(<"$applied_file") == "$desired_hash" ]]; then

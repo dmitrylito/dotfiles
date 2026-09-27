@@ -8,6 +8,9 @@ set -euo pipefail
 CHEZMOI_DIR="$HOME/.local/share/chezmoi"
 PACMAN_LIST="$CHEZMOI_DIR/packages/server/pacman.txt"
 AUR_LIST="$CHEZMOI_DIR/packages/server/aur.txt"
+ADDED_LIST="$CHEZMOI_DIR/packages/server/hosts/$(hostname -s)/added-pacman.txt"
+ADDED_AUR_LIST="$CHEZMOI_DIR/packages/server/hosts/$(hostname -s)/added-aur.txt"
+EXCLUDED_LIST="$CHEZMOI_DIR/packages/server/hosts/$(hostname -s)/excluded-pacman.txt"
 
 if ! command -v pacman >/dev/null 2>&1; then
     echo "❌ pacman not found — this script must run on the Arch server." >&2
@@ -39,16 +42,32 @@ ZFS_EXCLUDE='^(zfs-linux(-lts)?|zfs-utils|zfs-dkms)$'
 # makes the playbook's `yay -S` abort the whole run with "No AUR package found".
 DEBUG_EXCLUDE='\-debug$'
 
+retained_shared=()
+if [[ -f $EXCLUDED_LIST ]]; then
+    mapfile -t retained_shared < <(
+        comm -12 \
+            <(sed -E '/^[[:space:]]*(#|$)/d' "$PACMAN_LIST" | sort -u) \
+            <(sed -E '/^[[:space:]]*(#|$)/d' "$EXCLUDED_LIST" | sort -u)
+    )
+fi
+
 {
     echo "# Explicitly installed native packages (auto-generated, do not edit by hand)"
     echo "# Regenerate with: scripts/update_server_package_lists.sh"
-    pacman -Qenq | grep -vE "$ZFS_EXCLUDE" | sort
+    {
+        comm -23 \
+            <(pacman -Qenq | grep -vE "$ZFS_EXCLUDE" | sort -u) \
+            <(if [[ -f $ADDED_LIST ]]; then sed -E '/^[[:space:]]*(#|$)/d' "$ADDED_LIST"; fi | sort -u)
+        printf '%s\n' "${retained_shared[@]}"
+    } | sed '/^$/d' | sort -u
 } > "$PACMAN_LIST"
 
 {
     echo "# Explicitly installed AUR/foreign packages (auto-generated, do not edit by hand)"
     echo "# Regenerate with: scripts/update_server_package_lists.sh"
-    pacman -Qemq | grep -vE "$ZFS_EXCLUDE" | grep -vE "$DEBUG_EXCLUDE" | sort
+    comm -23 \
+        <(pacman -Qemq | grep -vE "$ZFS_EXCLUDE" | grep -vE "$DEBUG_EXCLUDE" | sort -u) \
+        <(if [[ -f $ADDED_AUR_LIST ]]; then sed -E '/^[[:space:]]*(#|$)/d' "$ADDED_AUR_LIST"; fi | sort -u)
 } > "$AUR_LIST"
 
 echo "======================================"

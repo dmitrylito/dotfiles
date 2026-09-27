@@ -23,6 +23,12 @@ single-command setup flow.
   installed automatically.
 - `server/{pacman,aur}.txt`: canonical explicit package set shared by all
   server-profile Arch machines.
+- `server/hosts/<hostname>/added-pacman.txt`: native packages kept only on
+  that server; capture excludes them from the shared list.
+- `server/hosts/<hostname>/added-aur.txt`: AUR packages kept only on that
+  server; capture excludes them from the shared list.
+- `server/hosts/<hostname>/excluded-pacman.txt`: shared native packages not
+  installed on that server; capture retains them in the shared list.
 - `mac/{brew,casks,taps}.txt`: desired Homebrew set.
 
 The old `untracked.regex` files are unnecessary. Omarchy does not prune by

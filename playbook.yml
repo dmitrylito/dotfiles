@@ -68,6 +68,9 @@
     # (regenerate with scripts/update_server_package_lists.sh on the server)
     server_pacman_file: "{{ chezmoi_source_dir }}/packages/server/pacman.txt"
     server_aur_file: "{{ chezmoi_source_dir }}/packages/server/aur.txt"
+    server_added_file: "{{ chezmoi_source_dir }}/packages/server/hosts/{{ st.host }}/added-pacman.txt"
+    server_added_aur_file: "{{ chezmoi_source_dir }}/packages/server/hosts/{{ st.host }}/added-aur.txt"
+    server_excluded_file: "{{ chezmoi_source_dir }}/packages/server/hosts/{{ st.host }}/excluded-pacman.txt"
 
     # archzfs unofficial binary repo (server ZFS — see SECTION 3).
     # Current signing key after the 2024 maintainer change; the old
@@ -156,8 +159,11 @@
         # A machine that has never run the generator has no host directory yet.
         # Fall back to the common baseline; removals are always explicit below.
         listed: "{{ p == 'server' or (p == 'omarchy' and st.host_lists) }}"
-        want_native: "{{ (common_linux_packages + ((lookup('file', server_pacman_file if p == 'server' else pacman_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if listed else [])) | unique }}"
-        want_aur: "{{ (lookup('file', server_aur_file if p == 'server' else aur_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if listed else [] }}"
+        server_added: "{{ (lookup('file', server_added_file, errors='ignore').splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
+        server_added_aur: "{{ (lookup('file', server_added_aur_file, errors='ignore').splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
+        server_excluded: "{{ (lookup('file', server_excluded_file, errors='ignore').splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
+        want_native: "{{ ((common_linux_packages + ((lookup('file', server_pacman_file if p == 'server' else pacman_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if listed else []) + server_added) | unique) | difference(server_excluded) }}"
+        want_aur: "{{ ((lookup('file', server_aur_file if p == 'server' else aur_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if listed else []) + server_added_aur }}"
         unwanted: "{{ (lookup('file', removed_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if (p == 'omarchy' and listed) else [] }}"
       ansible.builtin.set_fact:
         installed_packages: "{{ have }}"
@@ -468,6 +474,9 @@
           - --check
           - "{{ server_pacman_file }}"
           - "{{ server_aur_file }}"
+          - "{{ server_excluded_file }}"
+          - "{{ server_added_file }}"
+          - "{{ server_added_aur_file }}"
       register: server_package_preview
       changed_when: "'already canonical' not in server_package_preview.stdout"
       check_mode: false
@@ -482,6 +491,9 @@
           - "{{ chezmoi_source_dir }}/scripts/reconcile-server-package-set.sh"
           - "{{ server_pacman_file }}"
           - "{{ server_aur_file }}"
+          - "{{ server_excluded_file }}"
+          - "{{ server_added_file }}"
+          - "{{ server_added_aur_file }}"
       register: server_package_reconcile
       changed_when: >-
         'Removing undeclared' in server_package_reconcile.stdout or

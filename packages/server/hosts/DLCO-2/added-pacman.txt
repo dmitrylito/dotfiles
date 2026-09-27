@@ -1,0 +1,5 @@
+cockpit-machines
+edk2-ovmf
+libvirt
+qemu-base
+virt-install

@@ -21,6 +21,11 @@ set -euo pipefail
 {{- else if eq (.profile | lower) "server" }}
 # packages/server/pacman.txt: {{ include "packages/server/pacman.txt" | sha256sum }}
 # packages/server/aur.txt: {{ include "packages/server/aur.txt" | sha256sum }}
+{{- range list "added-pacman.txt" "added-aur.txt" "excluded-pacman.txt" }}
+{{- range (glob (joinPath $.chezmoi.sourceDir "packages/server/hosts" $.chezmoi.hostname .)) }}
+# packages/server/hosts/{{ $.chezmoi.hostname }}/{{ base . }}: {{ include . | sha256sum }}
+{{- end }}
+{{- end }}
 {{- else if eq (.profile | lower) "mac" }}
 # packages/mac/brew.txt: {{ include "packages/mac/brew.txt" | sha256sum }}
 # packages/mac/casks.txt: {{ include "packages/mac/casks.txt" | sha256sum }}

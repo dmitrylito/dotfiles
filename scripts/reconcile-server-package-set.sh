@@ -10,22 +10,35 @@ if [[ ${1:-} == --check ]]; then
   shift
 fi
 
-if [[ $# -ne 2 ]]; then
-  printf 'usage: %s [--check] PACMAN_LIST AUR_LIST\n' "${0##*/}" >&2
+if [[ $# -lt 2 || $# -gt 5 ]]; then
+  printf 'usage: %s [--check] PACMAN_LIST AUR_LIST [EXCLUDED_PACMAN_LIST] [ADDED_PACMAN_LIST] [ADDED_AUR_LIST]\n' "${0##*/}" >&2
   exit 2
 fi
 
 pacman_list=$1
 aur_list=$2
+excluded_list=${3:-}
+added_list=${4:-}
+added_aur_list=${5:-}
 desired_file=$(mktemp "${TMPDIR:-/tmp}/server-packages.XXXXXXXX")
 trap 'rm -f -- "$desired_file"' EXIT
 
 {
   sed -E '/^[[:space:]]*(#|$)/d' "$pacman_list"
   sed -E '/^[[:space:]]*(#|$)/d' "$aur_list"
+  if [[ -n $added_list && -f $added_list ]]; then
+    sed -E '/^[[:space:]]*(#|$)/d' "$added_list"
+  fi
+  if [[ -n $added_aur_list && -f $added_aur_list ]]; then
+    sed -E '/^[[:space:]]*(#|$)/d' "$added_aur_list"
+  fi
   # Provisioned separately by the playbook, but intentionally explicit.
   printf '%s\n' zfs-linux-lts zfs-utils
-} | sort -u >"$desired_file"
+} | sort -u | comm -23 - <(
+  if [[ -n $excluded_list && -f $excluded_list ]]; then
+    sed -E '/^[[:space:]]*(#|$)/d' "$excluded_list"
+  fi | sort -u
+) >"$desired_file"
 
 list_prunable() {
   comm -23 <(pacman -Qettq | sort -u) "$desired_file"
