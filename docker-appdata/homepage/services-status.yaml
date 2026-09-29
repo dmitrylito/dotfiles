@@ -11,6 +11,7 @@
           slug: homelab
           fields: [up, down, uptime, incident]
 
+- Status Page:
     - Status Page:
         id: status-page
         icon: mdi-monitor-dashboard

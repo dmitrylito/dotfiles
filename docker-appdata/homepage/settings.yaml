@@ -22,7 +22,7 @@ quicklaunch:
 layout:
   Status:
     style: row
-    columns: 2
+    columns: 4
     icon: mdi-heart-pulse
   Stacks:
     style: row
@@ -48,3 +48,7 @@ layout:
     style: row
     columns: 3
     icon: mdi-tune-variant
+  Status Page:
+    style: row
+    columns: 1
+    icon: mdi-monitor-dashboard

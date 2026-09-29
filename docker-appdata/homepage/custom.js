@@ -1,5 +1,6 @@
 const GROUP_ACCENTS = {
   status: "green",
+  "status page": "green",
   public: "blue",
   internal: "orange",
   media: "green",
