@@ -61,6 +61,10 @@
 	handle @fcbot {
 		reverse_proxy {{ $dlco1 }}:8050
 	}
+	@home host home.dlco.us
+	handle @home {
+		reverse_proxy {{ $dlco3 }}:3000
+	}
 	@liveevents host liveevents.dlco.us
 	handle @liveevents {
 		reverse_proxy {{ $dlco1 }}:8080
@@ -84,10 +88,6 @@
 	@sonarr host sonarr.dlco.us
 	handle @sonarr {
 		reverse_proxy {{ $dlco1pod }}:8989
-	}
-	@streaming host streaming.dlco.us
-	handle @streaming {
-		reverse_proxy {{ $dlco3 }}:3000
 	}
 	@vsl host vsl.dlco.us
 	handle @vsl {

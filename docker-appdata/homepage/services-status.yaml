@@ -1,0 +1,24 @@
+- Status:
+    - Uptime Kuma:
+        id: status-kuma
+        icon: uptime-kuma.png
+        href: https://kuma.init.dlco.us
+        description: Monitors, incidents, and uptime
+        siteMonitor: https://kuma.init.dlco.us
+        widget:
+          type: uptimekuma
+          url: http://192.168.0.14:3001
+          slug: dlco
+          fields: [up, down, uptime, incident]
+
+    - Status Page:
+        id: status-page
+        icon: mdi-monitor-dashboard
+        description: Kuma public status page, embedded
+        widget:
+          type: iframe
+          name: kuma-status
+          src: https://kuma.init.dlco.us/status/dlco
+          classes: h-96 sm:h-96 md:h-96 lg:h-96 xl:h-96 2xl:h-96
+          allowScrolling: yes
+          loadingStrategy: lazy

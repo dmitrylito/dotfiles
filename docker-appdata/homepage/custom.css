@@ -1,0 +1,148 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap");
+
+:root {
+  --bg: #1f2023;
+  --bg-2: #252629;
+  --panel: rgba(44, 45, 49, 0.82);
+  --panel-strong: rgba(54, 55, 60, 0.95);
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #e6e6e8;
+  --muted: #9a9ba1;
+  --green: #3ddc97;
+  --blue: #4cc2ff;
+  --orange: #ff9f43;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+html,
+body {
+  font-family: "Inter", sans-serif;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(61, 220, 151, 0.07), transparent 32%),
+    radial-gradient(circle at 88% 0%, rgba(76, 194, 255, 0.07), transparent 32%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%) !important;
+  color: var(--text);
+}
+
+#page_container,
+#__next,
+main {
+  position: relative;
+  z-index: 1;
+}
+
+h1,
+h2,
+h3,
+.service-group-name,
+.bookmark-group-name {
+  font-family: "Inter", sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.service-group-name,
+.bookmark-group-name {
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted) !important;
+  padding-left: 0.25rem;
+}
+
+.services-group[data-accent="green"] .service-group-name { color: var(--green) !important; }
+.services-group[data-accent="blue"] .service-group-name { color: var(--blue) !important; }
+.services-group[data-accent="orange"] .service-group-name { color: var(--orange) !important; }
+
+.widget-container,
+.information-widget-resource,
+.information-widget-search,
+.information-widget-greeting,
+.information-widget-datetime {
+  color: var(--text);
+}
+
+.information-widget-resource,
+[class*="information-widget"] {
+  border-radius: 14px;
+}
+
+.information-widget-greeting {
+  font-family: "JetBrains Mono", monospace !important;
+  font-weight: 600;
+  color: var(--green) !important;
+  letter-spacing: 0.08em;
+}
+
+.service-card {
+  position: relative;
+  border: 1px solid var(--line) !important;
+  border-left: 3px solid var(--line) !important;
+  background: var(--panel) !important;
+  box-shadow: var(--shadow) !important;
+  border-radius: 14px !important;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.service-card:hover {
+  transform: translateY(-3px);
+  background: var(--panel-strong) !important;
+}
+
+.services-group[data-accent="green"] .service-card { border-left-color: var(--green) !important; }
+.services-group[data-accent="blue"] .service-card { border-left-color: var(--blue) !important; }
+.services-group[data-accent="orange"] .service-card { border-left-color: var(--orange) !important; }
+
+.services-group[data-accent="green"] .service-card:hover { border-color: var(--green) !important; }
+.services-group[data-accent="blue"] .service-card:hover { border-color: var(--blue) !important; }
+.services-group[data-accent="orange"] .service-card:hover { border-color: var(--orange) !important; }
+
+.service-name {
+  font-weight: 600;
+  color: var(--text) !important;
+}
+
+.service-description {
+  color: var(--muted) !important;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem !important;
+  letter-spacing: 0.02em;
+}
+
+.service-card img,
+.service-card svg {
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
+}
+
+.service-tags,
+[class*="status"] {
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.04em;
+}
+
+input,
+select,
+textarea {
+  border-radius: 10px !important;
+  border: 1px solid var(--line) !important;
+  background: rgba(20, 20, 23, 0.9) !important;
+  color: var(--text) !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(76, 194, 255, 0.35) !important;
+}
+
+.service-card,
+.information-widget-resource,
+.services-group {
+  animation: rise 360ms ease both;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

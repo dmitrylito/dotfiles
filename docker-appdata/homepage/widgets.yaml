@@ -1,0 +1,22 @@
+---
+- search:
+    provider: [brave, google, duckduckgo]
+    focus: true
+    showSearchSuggestions: true
+    target: _blank
+
+- datetime:
+    text_size: xl
+    format:
+      weekday: long
+      month: short
+      day: numeric
+      hour: numeric
+      minute: 2-digit
+
+- resources:
+    label: DLCO-3
+    cpu: true
+    memory: true
+    uptime: true
+    refresh: 5000

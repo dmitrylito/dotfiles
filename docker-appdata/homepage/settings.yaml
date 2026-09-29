@@ -1,0 +1,50 @@
+---
+title: DLCO Home
+description: Every service behind Caddy, live status, and media ops.
+
+theme: dark
+color: zinc
+headerStyle: clean
+iconStyle: theme
+statusStyle: dot
+fullWidth: true
+useEqualHeights: true
+hideVersion: true
+cardBlur: sm
+
+quicklaunch:
+  searchDescriptions: true
+  showSearchSuggestions: true
+  provider: brave
+  hideVisitURL: false
+  mobileButtonPosition: bottom-right
+
+layout:
+  Status:
+    style: row
+    columns: 2
+    icon: mdi-heart-pulse
+  Public:
+    style: row
+    columns: 6
+    icon: mdi-earth
+  Internal:
+    style: row
+    columns: 6
+    icon: mdi-lan
+  Media:
+    style: row
+    columns: 2
+    icon: mdi-play-box-multiple-outline
+  Downloads:
+    style: row
+    columns: 2
+    icon: mdi-download-network-outline
+  Management:
+    style: row
+    columns: 3
+    icon: mdi-tune-variant
+  Infrastructure:
+    style: row
+    columns: 2
+    icon: mdi-server-network-outline
