@@ -1,0 +1,5 @@
+ollama
+ollama-cuda
+samba
+zfs-linux-lts
+zfs-utils

@@ -5,7 +5,6 @@ ast-grep
 base
 base-devel
 bat
-bluez
 bob
 btop
 chezmoi
@@ -45,6 +44,7 @@ kmscon
 lazydocker
 lazygit
 libvips
+limine
 linux
 linux-firmware
 linux-headers
@@ -61,8 +61,6 @@ noto-fonts
 nvidia-container-toolkit
 nvidia-open-lts
 nvtop
-ollama
-ollama-cuda
 openbsd-netcat
 openssh
 pacman-contrib
@@ -74,7 +72,6 @@ python-pip
 python-uv
 ripgrep-all
 rsync
-samba
 smartmontools
 starship
 sudo

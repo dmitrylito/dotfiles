@@ -1,7 +1,7 @@
 # Explicitly installed AUR/foreign packages (auto-generated, do not edit by hand)
 # Regenerate with: scripts/update_server_package_lists.sh
 carapace-bin
-claude-code
+cockpit-caddy
 cockpit-compose
 cockpit-sensors
 gogcli

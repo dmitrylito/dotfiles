@@ -1,1 +1,3 @@
-ollama-cuda
+intel-ucode
+nvidia-container-toolkit
+nvidia-open-lts
