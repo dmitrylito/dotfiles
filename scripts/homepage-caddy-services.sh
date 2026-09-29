@@ -27,8 +27,8 @@ BEGIN {
     icons["cer"] = "mdi-office-building"; icons["cer-staging"] = "mdi-office-building-outline"; icons["backend"] = "mdi-api"
     icons["billing"] = "mdi-cash-multiple"; icons["chat"] = "mdi-chat-outline"; icons["console"] = "mdi-console"
     icons["fcbot"] = "mdi-robot-outline"; icons["liveevents"] = "mdi-broadcast"
-    prefer["kuma"] = "uptime.init.dlco.us"
-    paths["cer"] = "/admin"; paths["cer-staging"] = "/admin"
+    prefer["kuma"] = "uptime.init.dlco.us"; prefer["fcbot"] = "ops.dlco.us"
+    paths["cer"] = "/admin"; paths["cer-staging"] = "/admin"; paths["fcbot"] = "/admin/"
 }
 /^\*\.dlco\.us \{/ { flush_group(); group = "Public"; next }
 /^\*\.init\.dlco\.us \{/ { flush_group(); group = "Internal"; next }
