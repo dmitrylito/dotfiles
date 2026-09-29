@@ -1,0 +1,11 @@
+[Unit]
+Description=Push Uptime Kuma heartbeats every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Unit=kuma-heartbeat.service
+
+[Install]
+WantedBy=timers.target
