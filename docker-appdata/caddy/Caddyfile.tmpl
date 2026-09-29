@@ -63,6 +63,12 @@
 	}
 	@home host home.dlco.us
 	handle @home {
+		# Homepage serves custom.css and its YAML from /api/config without Cache-Control; Cloudflare
+		# otherwise caches them for four hours and hides every style change.
+		header /api/config/* {
+			Cache-Control "no-store"
+			defer
+		}
 		reverse_proxy {{ $dlco3 }}:3000
 	}
 	@liveevents host liveevents.dlco.us
