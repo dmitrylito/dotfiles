@@ -22,6 +22,7 @@ import tomlkit
 
 SOURCE_DIR = Path({{ .chezmoi.sourceDir | quote }})
 BASELINE_PATH = SOURCE_DIR / "scripts/codex-config-baseline.toml.age"
+HOME = {{ .chezmoi.homeDir | quote }}
 RETIRED_MCP_SERVERS = {"node_repl", "context7"}
 SYNCHRONIZED_SETTINGS = (
     ("approval_policy",),
@@ -95,6 +96,15 @@ def remove_unsupported_settings(config):
     )
 
 
+def trust_home(config):
+    if "projects" not in config:
+        config["projects"] = tomlkit.table(is_super_table=True)
+    projects = config["projects"]
+    if HOME not in projects:
+        projects[HOME] = tomlkit.table()
+    projects[HOME]["trust_level"] = "trusted"
+
+
 def apply_host_settings(config):
     if {{ .chezmoi.hostname | quote }} == "DLCO-3":
         if "tui" not in config:
@@ -109,6 +119,7 @@ if not live_text.strip():
     baseline = tomlkit.parse(baseline_text)
     remove_unsupported_settings(baseline)
     apply_host_settings(baseline)
+    trust_home(baseline)
     sys.stdout.write(tomlkit.dumps(baseline))
     raise SystemExit(0)
 
@@ -124,4 +135,5 @@ synchronize_settings(live, baseline)
 remove_retired_servers(live)
 remove_unsupported_settings(live)
 apply_host_settings(live)
+trust_home(live)
 sys.stdout.write(tomlkit.dumps(live))

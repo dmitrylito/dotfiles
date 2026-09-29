@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# modify_.claude.json — forces a few Claude Code UI preferences on every machine.
+# modify_.claude.json — forces a few Claude Code UI preferences and home-folder trust on
+# every machine.
 #
 # Usage: not run by hand. chezmoi executes this on every `apply` with the CURRENT target on
 #        stdin; stdout becomes the new file.
@@ -20,10 +21,30 @@ import sys
 ENFORCED = {
     "defaultToAgentsView": True,
 }
+HOME = {{ .chezmoi.homeDir | quote }}
+# Defaults Claude Code gives a new project entry; a bare {} entry lacks keys it reads.
+PROJECT_DEFAULTS = {
+    "allowedTools": [],
+    "mcpContextUris": [],
+    "mcpServers": {},
+    "enabledMcpjsonServers": [],
+    "disabledMcpjsonServers": [],
+    "hasTrustDialogAccepted": False,
+    "hasClaudeMdExternalIncludesApproved": False,
+    "hasClaudeMdExternalIncludesWarningShown": False,
+}
+
+
+def trust_home(config):
+    projects = config.setdefault("projects", {})
+    entry = projects.setdefault(HOME, dict(PROJECT_DEFAULTS))
+    entry["hasTrustDialogAccepted"] = True
 
 raw = sys.stdin.read()
 if not raw.strip():
-    sys.stdout.write(json.dumps(ENFORCED, indent=2, ensure_ascii=False))
+    fresh = dict(ENFORCED)
+    trust_home(fresh)
+    sys.stdout.write(json.dumps(fresh, indent=2, ensure_ascii=False))
     sys.exit(0)
 try:
     current = json.loads(raw)
@@ -35,6 +56,7 @@ if not isinstance(current, dict):
     sys.exit(0)
 
 current.update(ENFORCED)
+trust_home(current)
 # no trailing newline: Claude Code writes the file without one, and adding it
 # would make every apply rewrite 90KB.
 sys.stdout.write(json.dumps(current, indent=2, ensure_ascii=False))
