@@ -48,7 +48,8 @@ desired_hash=$(
       "$source_dir/packages/server/pacman.txt" \
       "$source_dir/packages/server/aur.txt" \
       "$source_dir/playbook.yml" \
-      "$source_dir/scripts/reconcile-server-package-set.sh"
+      "$source_dir/scripts/reconcile-server-package-set.sh" \
+      "$source_dir/scripts/server-limine.sh"
     for filename in added-pacman.txt added-aur.txt excluded-pacman.txt; do
       host_file="$source_dir/packages/server/hosts/$(hostname -s)/$filename"
       if [[ -f $host_file ]]; then sha256sum "$host_file"; fi

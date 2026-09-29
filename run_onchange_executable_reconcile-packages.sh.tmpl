@@ -10,6 +10,7 @@ set -euo pipefail
 # playbook.yml: {{ include "playbook.yml" | sha256sum }}
 # scripts/reconcile-packages.sh: {{ include "scripts/reconcile-packages.sh" | sha256sum }}
 # scripts/reconcile-server-package-set.sh: {{ include "scripts/reconcile-server-package-set.sh" | sha256sum }}
+# scripts/server-limine.sh: {{ include "scripts/server-limine.sh" | sha256sum }}
 # scripts/capture-server-package-lists.sh: {{ include "scripts/capture-server-package-lists.sh" | sha256sum }}
 # scripts/converge-server-packages.sh: {{ include "scripts/converge-server-packages.sh" | sha256sum }}
 {{- if eq (.profile | lower) "omarchy" }}
