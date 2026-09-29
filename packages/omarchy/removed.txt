@@ -13,6 +13,7 @@ gamescope
 gemini-cli
 github-cli
 gputest
+hyprlauncher
 hyprmon-bin
 hyprpolkitagent
 libqalculate

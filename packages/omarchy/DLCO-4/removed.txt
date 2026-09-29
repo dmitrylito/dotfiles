@@ -1,5 +1,4 @@
 dell-xps-touchpad-haptics
-hyprlauncher
 hyprpwcenter
 linux-headers
 lsp-plugins-lv2
