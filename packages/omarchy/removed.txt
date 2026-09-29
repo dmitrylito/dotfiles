@@ -1,5 +1,6 @@
 android-studio
 claude-code
+foot
 gemini-cli
 github-cli
 hyprmon-bin
