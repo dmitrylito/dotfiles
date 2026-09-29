@@ -32,7 +32,7 @@ main {
   z-index: 1;
 }
 
-/* Group order comes from settings.yaml layout: Status, Public, Internal, Stacks, Downloads.
+/* Group order comes from settings.yaml layout: Status, Media, Management, Personal, Work.
    custom.js is not loaded by this Homepage build, so accents key on that order. */
 .services-group:nth-of-type(1) { --accent: var(--green); }
 .services-group:nth-of-type(2) { --accent: var(--blue); }

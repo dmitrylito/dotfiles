@@ -24,19 +24,19 @@ layout:
     style: row
     columns: 4
     icon: mdi-heart-pulse
-  Public:
-    style: row
-    columns: 6
-    icon: mdi-earth
-  Internal:
-    style: row
-    columns: 6
-    icon: mdi-lan
-  Stacks:
+  Media:
     style: row
     columns: 5
-    icon: mdi-layers-outline
-  Downloads:
+    icon: mdi-play-box-multiple-outline
+  Management:
     style: row
-    columns: 4
-    icon: mdi-download-network-outline
+    columns: 5
+    icon: mdi-tune-variant
+  Personal:
+    style: row
+    columns: 5
+    icon: mdi-account-outline
+  Work:
+    style: row
+    columns: 5
+    icon: mdi-briefcase-outline

@@ -1,0 +1,6 @@
+    - Caddy:
+        id: caddy
+        icon: caddy.png
+        href: https://home.dlco.us
+        description: reverse proxy · VIP 192.168.0.3
+        siteMonitor: https://home.dlco.us
