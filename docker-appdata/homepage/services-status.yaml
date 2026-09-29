@@ -8,7 +8,7 @@
         widget:
           type: uptimekuma
           url: http://192.168.0.14:3001
-          slug: dlco
+          slug: homelab
           fields: [up, down, uptime, incident]
 
     - Status Page:
@@ -18,7 +18,7 @@
         widget:
           type: iframe
           name: kuma-status
-          src: https://kuma.init.dlco.us/status/dlco
+          src: https://kuma.init.dlco.us/status/homelab
           classes: h-96 sm:h-96 md:h-96 lg:h-96 xl:h-96 2xl:h-96
           allowScrolling: yes
           loadingStrategy: lazy
