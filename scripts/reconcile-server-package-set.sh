@@ -32,8 +32,6 @@ trap 'rm -f -- "$desired_file"' EXIT
   if [[ -n $added_aur_list && -f $added_aur_list ]]; then
     sed -E '/^[[:space:]]*(#|$)/d' "$added_aur_list"
   fi
-  # Provisioned separately by the playbook, but intentionally explicit.
-  printf '%s\n' zfs-linux-lts zfs-utils
 } | sort -u | comm -23 - <(
   if [[ -n $excluded_list && -f $excluded_list ]]; then
     sed -E '/^[[:space:]]*(#|$)/d' "$excluded_list"
