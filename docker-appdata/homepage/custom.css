@@ -197,19 +197,19 @@ textarea:focus {
 }
 
 /* Uptime Kuma lives in the Status group (first in layout) but is pinned into the header row as a plain
-   element: the header reserves room on the right, and the group is lifted out of the flow. */
+   element: the header reserves room on the left, and the group is lifted out of the flow. */
 #page_wrapper {
   position: relative;
 }
 
-#information-widgets-right {
-  margin-right: 360px !important;
+#widgets-wrap {
+  padding-left: 360px;
 }
 
 .services-group:nth-of-type(1) {
   position: absolute;
   top: 2.2rem;
-  right: 2.25rem;
+  left: 2.25rem;
   width: auto;
   margin: 0 !important;
   padding: 0 !important;
@@ -260,8 +260,8 @@ textarea:focus {
 }
 
 @media (max-width: 1100px) {
-  #information-widgets-right {
-    margin-right: 0 !important;
+  #widgets-wrap {
+    padding-left: 0;
   }
 
   .services-group:nth-of-type(1) {
