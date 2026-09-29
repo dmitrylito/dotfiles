@@ -19,7 +19,7 @@ trap 'rm -rf -- "$stage_dir"' EXIT
     "$source_dir/scripts/homepage-stacks.sh"
 } > "$stage_dir/services.yaml"
 chmod 0600 "$stage_dir/services.yaml"
-plain=(docker.yaml settings.yaml widgets.yaml bookmarks.yaml custom.css custom.js)
+plain=(docker.yaml settings.yaml widgets.yaml bookmarks.yaml custom.css)
 for name in "${plain[@]}"; do
     cp "$homepage_src/$name" "$stage_dir/$name"
     chmod 0644 "$stage_dir/$name"

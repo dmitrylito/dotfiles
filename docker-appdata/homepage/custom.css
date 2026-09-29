@@ -1,25 +1,26 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap");
 
 :root {
-  --bg: #1f2023;
-  --bg-2: #252629;
-  --panel: rgba(44, 45, 49, 0.82);
-  --panel-strong: rgba(54, 55, 60, 0.95);
-  --line: rgba(255, 255, 255, 0.08);
-  --text: #e6e6e8;
-  --muted: #9a9ba1;
+  --bg: #1c1d20;
+  --bg-2: #232427;
+  --panel: #2a2b30;
+  --panel-hover: #323338;
+  --line: rgba(255, 255, 255, 0.07);
+  --text: #ececee;
+  --muted: #8f9096;
   --green: #3ddc97;
   --blue: #4cc2ff;
   --orange: #ff9f43;
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  --accent: var(--blue);
+  --shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
 }
 
 html,
 body {
   font-family: "Inter", sans-serif;
   background:
-    radial-gradient(circle at 12% 0%, rgba(61, 220, 151, 0.07), transparent 32%),
-    radial-gradient(circle at 88% 0%, rgba(76, 194, 255, 0.07), transparent 32%),
+    radial-gradient(1200px 500px at 15% -10%, rgba(61, 220, 151, 0.08), transparent 60%),
+    radial-gradient(1200px 500px at 85% -10%, rgba(76, 194, 255, 0.08), transparent 60%),
     linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%) !important;
   color: var(--text);
 }
@@ -31,87 +32,111 @@ main {
   z-index: 1;
 }
 
-h1,
-h2,
-h3,
-.service-group-name,
-.bookmark-group-name {
+/* Group order comes from settings.yaml layout: Status, Public, Internal, Stacks, Downloads, Status Page.
+   custom.js is not loaded by this Homepage build, so accents key on that order. */
+.services-group:nth-of-type(1) { --accent: var(--green); }
+.services-group:nth-of-type(2) { --accent: var(--blue); }
+.services-group:nth-of-type(3) { --accent: var(--orange); }
+.services-group:nth-of-type(4) { --accent: var(--green); }
+.services-group:nth-of-type(5) { --accent: var(--blue); }
+.services-group:nth-of-type(6) { --accent: var(--green); }
+
+.services-group {
+  margin-top: 1.25rem !important;
+}
+
+.service-group-name {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   font-family: "Inter", sans-serif;
-  letter-spacing: -0.02em;
-}
-
-.service-group-name,
-.bookmark-group-name {
-  font-size: 0.78rem !important;
-  font-weight: 600 !important;
+  font-size: 0.74rem !important;
+  font-weight: 700 !important;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--muted) !important;
-  padding-left: 0.25rem;
+  letter-spacing: 0.16em;
+  color: var(--accent) !important;
+  padding: 0 0.25rem 0.35rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid var(--line);
 }
 
-.services-group[data-accent="green"] .service-group-name { color: var(--green) !important; }
-.services-group[data-accent="blue"] .service-group-name { color: var(--blue) !important; }
-.services-group[data-accent="orange"] .service-group-name { color: var(--orange) !important; }
-
-.widget-container,
-.information-widget-resource,
-.information-widget-search,
-.information-widget-greeting,
-.information-widget-datetime {
-  color: var(--text);
+.service-group-name::after {
+  content: "";
+  flex: 1;
 }
 
-.information-widget-resource,
-[class*="information-widget"] {
-  border-radius: 14px;
-}
-
-.information-widget-greeting {
-  font-family: "JetBrains Mono", monospace !important;
-  font-weight: 600;
-  color: var(--green) !important;
-  letter-spacing: 0.08em;
+.service-group-name svg,
+.service-group-name img {
+  color: var(--accent);
+  opacity: 0.9;
 }
 
 .service-card {
   position: relative;
+  overflow: hidden;
   border: 1px solid var(--line) !important;
-  border-left: 3px solid var(--line) !important;
-  background: var(--panel) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%), var(--panel) !important;
   box-shadow: var(--shadow) !important;
   border-radius: 14px !important;
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.service-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.service-card::after {
+  content: "";
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent), transparent 70%);
+  opacity: 0.08;
+  pointer-events: none;
+  transition: opacity 160ms ease;
 }
 
 .service-card:hover {
-  transform: translateY(-3px);
-  background: var(--panel-strong) !important;
+  transform: translateY(-2px);
+  background-color: var(--panel-hover) !important;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4), 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent) !important;
 }
 
-.services-group[data-accent="green"] .service-card { border-left-color: var(--green) !important; }
-.services-group[data-accent="blue"] .service-card { border-left-color: var(--blue) !important; }
-.services-group[data-accent="orange"] .service-card { border-left-color: var(--orange) !important; }
+.service-card:hover::after {
+  opacity: 0.18;
+}
 
-.services-group[data-accent="green"] .service-card:hover { border-color: var(--green) !important; }
-.services-group[data-accent="blue"] .service-card:hover { border-color: var(--blue) !important; }
-.services-group[data-accent="orange"] .service-card:hover { border-color: var(--orange) !important; }
+.service-title {
+  padding-left: 0.35rem;
+}
 
 .service-name {
   font-weight: 600;
+  font-size: 0.92rem !important;
   color: var(--text) !important;
 }
 
 .service-description {
   color: var(--muted) !important;
   font-family: "JetBrains Mono", monospace;
-  font-size: 0.68rem !important;
+  font-size: 0.66rem !important;
   letter-spacing: 0.02em;
 }
 
 .service-card img,
 .service-card svg {
-  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
 }
 
 .service-tags,
@@ -120,12 +145,36 @@ h3,
   letter-spacing: 0.04em;
 }
 
+.service-card .bg-theme-200\/50,
+.service-card [class*="bg-theme-200"],
+.service-card [class*="dark:bg-theme-900"] {
+  background: rgba(0, 0, 0, 0.22) !important;
+  border-radius: 8px;
+}
+
+.service-card iframe {
+  height: 52rem !important;
+  border-radius: 10px;
+}
+
+.widget-container,
+.information-widget-search,
+.information-widget-datetime {
+  color: var(--text);
+}
+
+.information-widget-datetime {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 500;
+  color: var(--muted) !important;
+}
+
 input,
 select,
 textarea {
   border-radius: 10px !important;
   border: 1px solid var(--line) !important;
-  background: rgba(20, 20, 23, 0.9) !important;
+  background: rgba(0, 0, 0, 0.28) !important;
   color: var(--text) !important;
 }
 
@@ -133,16 +182,104 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(76, 194, 255, 0.35) !important;
+  border-color: color-mix(in srgb, var(--blue) 60%, transparent) !important;
+  box-shadow: 0 0 0 3px rgba(76, 194, 255, 0.18) !important;
 }
 
 .service-card,
-.information-widget-resource,
 .services-group {
-  animation: rise 360ms ease both;
+  animation: rise 320ms ease both;
 }
 
 @keyframes rise {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Uptime Kuma lives in the Status group (first in layout) but is pinned into the header row as a plain
+   element: the header reserves room on the right, and the group is lifted out of the flow. */
+#page_wrapper {
+  position: relative;
+}
+
+#information-widgets-right {
+  margin-right: 360px !important;
+}
+
+.services-group:nth-of-type(1) {
+  position: absolute;
+  top: 2.2rem;
+  right: 2.25rem;
+  width: auto;
+  margin: 0 !important;
+  padding: 0 !important;
+  z-index: 30;
+  animation: none;
+}
+
+.services-group:nth-of-type(1) > button,
+.services-group:nth-of-type(1) .service-title {
+  display: none;
+}
+
+.services-group:nth-of-type(1) .service-container {
+  flex-wrap: nowrap;
+}
+
+.services-group:nth-of-type(1) .service-block {
+  white-space: nowrap;
+  padding: 0.35rem 0.9rem !important;
+  margin: 0 0.25rem !important;
+}
+
+.services-group:nth-of-type(1) .service-card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: visible;
+  animation: none;
+}
+
+.services-group:nth-of-type(1) .service-card::before,
+.services-group:nth-of-type(1) .service-card::after {
+  display: none;
+}
+
+.services-group:nth-of-type(1) .service-card:hover {
+  transform: none;
+}
+
+.services-group:nth-of-type(1) .service-card [class*="bg-theme-200"],
+.services-group:nth-of-type(1) .service-card [class*="dark:bg-theme-900"] {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+@media (max-width: 1100px) {
+  #information-widgets-right {
+    margin-right: 0 !important;
+  }
+
+  .services-group:nth-of-type(1) {
+    position: static;
+    width: auto;
+  }
+}
+
+#qbittorrent .service-card {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+#qbittorrent .service-title {
+  width: 100%;
+}
+
+#qbittorrent .service-container {
+  flex: 1 1 50%;
+  width: 50%;
 }

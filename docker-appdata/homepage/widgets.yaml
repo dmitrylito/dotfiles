@@ -1,6 +1,6 @@
 ---
 - search:
-    provider: [brave, google, duckduckgo]
+    provider: google
     focus: true
     showSearchSuggestions: true
     target: _blank

@@ -15,7 +15,7 @@ cardBlur: sm
 quicklaunch:
   searchDescriptions: true
   showSearchSuggestions: true
-  provider: brave
+  provider: google
   hideVisitURL: false
   mobileButtonPosition: bottom-right
 
@@ -24,10 +24,6 @@ layout:
     style: row
     columns: 4
     icon: mdi-heart-pulse
-  Stacks:
-    style: row
-    columns: 5
-    icon: mdi-layers-outline
   Public:
     style: row
     columns: 6
@@ -36,18 +32,14 @@ layout:
     style: row
     columns: 6
     icon: mdi-lan
-  Media:
+  Stacks:
     style: row
-    columns: 2
-    icon: mdi-play-box-multiple-outline
+    columns: 5
+    icon: mdi-layers-outline
   Downloads:
     style: row
-    columns: 2
+    columns: 4
     icon: mdi-download-network-outline
-  Management:
-    style: row
-    columns: 3
-    icon: mdi-tune-variant
   Status Page:
     style: row
     columns: 1

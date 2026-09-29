@@ -1,7 +1,7 @@
 #!/bin/sh
 # Sync DLCO-3 Homepage config after a chezmoi source change. Requires the mounted /data SSD and configured age identity.
 {{ if eq .chezmoi.hostname "DLCO-3" -}}
-{{ range list "encrypted_private_services.yaml.age" "services-status.yaml" "docker.yaml" "settings.yaml" "widgets.yaml" "bookmarks.yaml" "custom.css" "custom.js" -}}
+{{ range list "encrypted_private_services.yaml.age" "services-status.yaml" "docker.yaml" "settings.yaml" "widgets.yaml" "bookmarks.yaml" "custom.css" -}}
 # {{ . }}-sha256={{ include (printf "docker-appdata/homepage/%s" .) | sha256sum }}
 {{ end -}}
 # generator-sha256={{ include "scripts/homepage-caddy-services.sh" | sha256sum }}
