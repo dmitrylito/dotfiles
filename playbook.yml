@@ -656,6 +656,27 @@
       changed_when: "'changed' in tailnet_zone.stdout"
       when: p == 'server'
 
+    # Caddy on each server proxies straight to the other servers' LAN ports, so
+    # the servers trust each other's LAN addresses. Same runtime/permanent split.
+    - name: Trust the other servers' LAN addresses in firewalld (server)
+      ansible.builtin.shell: |
+        set -eu
+        changed=
+        for src in 192.168.0.11 192.168.0.12 192.168.0.13; do
+          if ! firewall-cmd --permanent --zone=trusted --query-source="$src" >/dev/null; then
+            firewall-cmd --permanent --zone=trusted --add-source="$src" >/dev/null
+            changed=1
+          fi
+          if ! firewall-cmd --zone=trusted --query-source="$src" >/dev/null; then
+            firewall-cmd --zone=trusted --add-source="$src" >/dev/null
+            changed=1
+          fi
+        done
+        [ -z "$changed" ] || echo changed
+      register: server_lan_zone
+      changed_when: "'changed' in server_lan_zone.stdout"
+      when: p == 'server'
+
     # =========================================================================
     # SECTION 5: OH MY ZSH (All Profiles)
     # =========================================================================
