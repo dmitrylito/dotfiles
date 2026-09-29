@@ -3,7 +3,7 @@
 # Usage: homepage-caddy-services.sh [/path/to/Caddyfile]   (default: ~/docker-appdata/caddy/Caddyfile)
 # `*.dlco.us` sites become the "Public" group, `*.init.dlco.us` sites the "Internal" group; each card links
 # to the first host (or the `prefer` override, with an optional `paths` suffix), shows the hostname(s), and gets a
-# siteMonitor on that host. Stdout is appended to
+# siteMonitor on that same URL. Stdout is appended to
 # services.yaml by sync-media-homepage.sh, so keep the output a top-level YAML list.
 set -euo pipefail
 caddyfile=${1:-$HOME/docker-appdata/caddy/Caddyfile}
@@ -42,7 +42,7 @@ group != "" && $1 ~ /^@/ && $2 == "host" {
 group != "" && pending != "" && $1 == "reverse_proxy" {
     desc = hosts[pending]; if (extras[pending] != "") desc = desc " · " extras[pending]
     path = (pending in paths) ? paths[pending] : ""
-    body = body sprintf("    - %s:\n        id: caddy-%s\n        icon: %s\n        href: https://%s%s\n        description: %s\n        siteMonitor: https://%s\n", pending, pending, icon(pending), hosts[pending], path, desc, hosts[pending])
+    body = body sprintf("    - %s:\n        id: caddy-%s\n        icon: %s\n        href: https://%s%s\n        description: %s\n        siteMonitor: https://%s%s\n", pending, pending, icon(pending), hosts[pending], path, desc, hosts[pending], path)
     count++; pending = ""
 }
 ' "$caddyfile"
