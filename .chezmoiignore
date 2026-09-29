@@ -156,4 +156,12 @@ executable_sync-media-homepage.sh
 .config/containers/systemd/media.pod
 {{ end }}
 
+{{ if not (has .chezmoi.hostname (list "DLCO-1" "DLCO-2")) }}
+# Pushes Uptime Kuma heartbeats for DLCO-1's unpublished ops containers and DLCO-2's VM.
+.local/bin/kuma-heartbeat
+.config/systemd/user/kuma-heartbeat.service
+.config/systemd/user/kuma-heartbeat.timer
+.config/systemd/user/timers.target.wants/kuma-heartbeat.timer
+{{ end }}
+
 docker-appdata/homepage/
