@@ -1,6 +1,7 @@
 [Unit]
 Description=Audiobookshelf (audiobook & podcast server/player)
 After=network-online.target
+RequiresMountsFor=/data
 
 [Container]
 Image=ghcr.io/advplyr/audiobookshelf:latest
@@ -13,8 +14,8 @@ HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3
 HealthStartPeriod=60s
-Volume=/home/dmitrylito/docker-appdata/audiobookshelf/config:/config:Z
-Volume=/home/dmitrylito/docker-appdata/audiobookshelf/metadata:/metadata:Z
+Volume=/data/docker-appdata/audiobookshelf/config:/config:Z
+Volume=/data/docker-appdata/audiobookshelf/metadata:/metadata:Z
 Volume=/data/media/audiobooks:/audiobooks:z
 Volume=/data/media/books:/books:z
 Volume=/data/media/podcasts:/podcasts:z

@@ -1,6 +1,7 @@
 [Unit]
 Description=Prowlarr
 After=network-online.target
+RequiresMountsFor=/data
 
 [Container]
 Image=lscr.io/linuxserver/prowlarr:latest
@@ -14,8 +15,7 @@ HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3
 HealthStartPeriod=60s
-Volume=/home/dmitrylito/docker-appdata/prowlarr:/config:Z
-Volume=/data/media:/data
+Volume=/data/docker-appdata/prowlarr:/config:Z
 
 [Service]
 Restart=always

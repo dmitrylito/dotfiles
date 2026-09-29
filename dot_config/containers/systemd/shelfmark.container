@@ -1,6 +1,9 @@
 [Unit]
 Description=Shelfmark (book search & request hub — downloads into the CWA ingest folder)
 After=network-online.target
+RequiresMountsFor=/data
+After=media-downloads.service
+BindsTo=media-downloads.service
 
 [Container]
 # Standard variant, not lite: the bundled browser is the only bypasser that clears
@@ -28,8 +31,9 @@ HealthStartPeriod=90s
 # UserNS=keep-id makes impossible. keep-id runs it as uid 1000 -> host dmitrylito,
 # and the entrypoint has a real non-root path (unlike the s6-based LSIO images).
 
-Volume=/home/dmitrylito/docker-appdata/shelfmark:/config:Z
-Volume=/scratch:/scratch:z
+Volume=/data/docker-appdata/shelfmark:/config:Z
+Volume=/data/media-scratch:/scratch:z
+Volume=%h/mnt/dlco1-downloads:/scratch/downloads:ro
 Volume=/data/media:/data/media:z
 
 [Install]

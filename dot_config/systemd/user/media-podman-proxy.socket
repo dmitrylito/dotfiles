@@ -1,0 +1,8 @@
+[Unit]
+Description=Loopback Podman API for the authenticated Homepage SSH tunnel
+
+[Socket]
+ListenStream=127.0.0.1:23750
+
+[Install]
+WantedBy=sockets.target

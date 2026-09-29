@@ -1,0 +1,16 @@
+[Unit]
+Description=Authenticated Podman connection from Homepage to DLCO-1
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+RuntimeDirectory=media-remote
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/tailscale ssh dlco-1 -N -T -o ExitOnForwardFailure=yes -o StreamLocalBindUnlink=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L %t/media-remote/podman.sock:127.0.0.1:23750
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,23 @@
+[Unit]
+Description=Read-only DLCO-1 torrent downloads for Shelfmark
+After=network-online.target
+Upholds=shelfmark.service
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=exec
+ExecStartPre=/usr/bin/mkdir -p %h/mnt/dlco1-downloads
+ExecStartPre=/usr/bin/chmod 0700 %h/mnt
+ExecStartPre=/usr/bin/setfacl -m u:100000:rx %h/mnt
+ExecStartPre=/usr/bin/tailscale ssh dlco-1 true
+ExecStart=/usr/bin/sshfs -f -o ro,allow_other,reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,UserKnownHostsFile=%h/.config/tailscale/ssh_known_hosts,StrictHostKeyChecking=yes dlco-1.chimera-pleco.ts.net.:/scratch/downloads %h/mnt/dlco1-downloads
+ExecStartPost=/usr/bin/timeout 15 /bin/sh -c 'until mountpoint -q "$1"; do sleep 0.2; done' sh %h/mnt/dlco1-downloads
+ExecStop=/usr/bin/fusermount3 -u %h/mnt/dlco1-downloads
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

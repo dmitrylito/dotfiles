@@ -1,0 +1,4 @@
+podman:
+  socket: /var/run/docker.sock
+podman-dlco1:
+  socket: /remote-podman/podman.sock

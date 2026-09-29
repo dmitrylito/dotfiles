@@ -133,3 +133,26 @@ docker-appdata/
 {{ if not (has .chezmoi.hostname (list "DLCO-1" "DLCO-2" "DLCO-3")) }}
 docker-appdata/caddy/
 {{ end }}
+
+{{ if ne .chezmoi.hostname "DLCO-1" }}
+{{ range list "plex" "sonarr" "radarr" "qbittorrent" "gluetun" "minecraft" }}
+.config/containers/systemd/{{ . }}.container
+{{ end }}
+.config/containers/systemd/secrets/
+.config/systemd/user/media-podman-proxy.socket
+.config/systemd/user/media-podman-proxy.service
+{{ end }}
+{{ if ne .chezmoi.hostname "DLCO-3" }}
+{{ range list "seerr" "prowlarr" "flaresolverr" "homepage" "audiobookshelf" "calibre-web" "shelfmark" }}
+.config/containers/systemd/{{ . }}.container
+{{ end }}
+.config/containers/storage.conf
+executable_sync-media-homepage.sh
+.config/systemd/user/media-podman-tunnel.service
+.config/systemd/user/media-downloads.service
+{{ end }}
+{{ if not (has .chezmoi.hostname (list "DLCO-1" "DLCO-3")) }}
+.config/containers/systemd/media.pod
+{{ end }}
+
+docker-appdata/homepage/

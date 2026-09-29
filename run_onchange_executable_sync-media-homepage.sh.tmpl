@@ -1,0 +1,9 @@
+#!/bin/sh
+# Sync DLCO-3 Homepage config after a chezmoi source change. Requires the mounted /data SSD and configured age identity.
+{{ if eq .chezmoi.hostname "DLCO-3" -}}
+# services-source-sha256={{ include "docker-appdata/homepage/encrypted_private_services.yaml.age" | sha256sum }}
+# docker-source-sha256={{ include "docker-appdata/homepage/docker.yaml" | sha256sum }}
+exec /home/dmitrylito/.local/share/chezmoi/scripts/sync-media-homepage.sh
+{{ else -}}
+exit 0
+{{ end -}}

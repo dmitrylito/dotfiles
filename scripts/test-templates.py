@@ -99,6 +99,23 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
     if profile == "server":
         assert state[".config/secrets/github-mcp.env"]["contents"].strip() == "GITHUB_PERSONAL_ACCESS_TOKEN=validation-only-token", label
     assert ("ROCR_VISIBLE_DEVICES=0" in state[".zshenv"]["contents"]) == (profile == "omarchy" and hostname == "fcoffice"), label
+    for owner, services in {
+        "DLCO-1": ("plex", "sonarr", "radarr", "qbittorrent", "gluetun", "minecraft"),
+        "DLCO-3": ("seerr", "prowlarr", "flaresolverr", "homepage", "audiobookshelf", "calibre-web", "shelfmark"),
+    }.items():
+        for service in services:
+            assert (f".config/containers/systemd/{service}.container" in state) == (profile == "server" and hostname == owner), f"{label}: {service} ownership"
+    assert "docker-appdata/homepage/services.yaml" not in state, label
+    assert (".config/containers/storage.conf" in state) == (profile == "server" and hostname == "DLCO-3"), label
+    if profile == "server" and hostname in ("DLCO-1", "DLCO-3"):
+        pod = state[".config/containers/systemd/media.pod"]["contents"]
+        assert "192.168.0.2:" not in pod, label
+        assert ("32400" in pod) == (hostname == "DLCO-1"), label
+    if profile == "server" and hostname == "DLCO-3":
+        for service in ("audiobookshelf", "calibre-web", "homepage", "prowlarr", "seerr", "shelfmark"):
+            contents = state[f".config/containers/systemd/{service}.container"]["contents"]
+            assert "Volume=/home/dmitrylito/docker-appdata" not in contents, label
+            assert "Volume=/data/docker-appdata/" in contents, label
     settings = json.loads(state[".claude/settings.json"]["contents"])
     assert any(f"under {home} with" in rule for rule in settings["autoMode"]["allow"]), label
 
@@ -148,7 +165,7 @@ def main():
         upstream = Path(env["OMARCHY_PATH"]) / "config/hypr/hyprland.lua"
         upstream.parent.mkdir(parents=True)
         shutil.copyfile(FIXTURES / "hyprland.lua", upstream)
-        for profile, hostname in (("omarchy", "validation-host"), ("server", "validation-host"), ("mac", "validation-host"), ("omarchy", "fcoffice"), ("server", "DLCO-2"), ("server", "DLCO-3")):
+        for profile, hostname in (("omarchy", "validation-host"), ("server", "validation-host"), ("mac", "validation-host"), ("omarchy", "fcoffice"), ("server", "DLCO-1"), ("server", "DLCO-2"), ("server", "DLCO-3")):
             for work in (False, True):
                 validate_case(profile, work, hostname, staged, scratch, env, age)
         if args.installed_omarchy:
@@ -156,7 +173,7 @@ def main():
             contents = run([sys.executable, str(staged / "dot_config/hypr/modify_hyprland.lua")], env | {"OMARCHY_PATH": str(installed)}, home, "")
             check_syntax("hyprland.lua", contents, env, home)
             print(f"installed Omarchy entrypoint validated: {installed}")
-    print("all 10 fixture-based profile/role/host combinations passed")
+    print("all 14 fixture-based profile/role/host combinations passed")
 
 
 if __name__ == "__main__":

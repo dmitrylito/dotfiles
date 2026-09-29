@@ -23,10 +23,10 @@ modifiers are unchanged and still fail when required real inputs are missing.
 Coverage includes:
 
 - `omarchy`, `server`, and `mac`, each with `work=false` and `work=true`.
-- `fcoffice` Omarchy and `DLCO-2` server, each with both work roles.
+- `fcoffice` Omarchy and `DLCO-1`, `DLCO-2`, and `DLCO-3` server, each with both work roles.
 - Initialization-template TOML and rendered Bash/Zsh, Python, Lua, and TOML syntax.
 - Modifier Python syntax, Claude settings JSON, profile tool ownership, Arch plugin
-  gating, home-path rendering, production-service routing, and workstation GPU gating.
+  gating, home-path rendering, production-service routing, media host ownership and storage paths, and workstation GPU gating.
 
 The `mac` cases override the template OS to Darwin; they still execute on the
 host running the test. They do not prove macOS runtime behavior. Secret contents,

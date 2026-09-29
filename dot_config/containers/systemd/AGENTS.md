@@ -1,4 +1,4 @@
-# CLAUDE.md
+# Quadlet agent guide
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -34,17 +34,12 @@ user services to run without an active login session.
 
 Two networking domains — get this wrong and containers can't reach each other:
 
-1. **`media.pod`** — most services join this shared pod (`Pod=media.pod`) and
-   share its network namespace. Ports are published **only** on the pod
-   (`media.pod`), bound to the LAN IP `192.168.0.2`, never on the individual
-   containers. Members: homepage(3000), seerr(5055), plex(32400), sonarr(8989),
-   radarr(7878), prowlarr(9696), flaresolverr(8191), audiobookshelf(13378),
-   calibre-web(8084->8083), shelfmark(8085). To expose a new pod
-   service, add its `PublishPort=192.168.0.2:<port>:<port>` line to `media.pod`, not the
-   container.
-   Adding a port there **recreates the pod**, which stops every member; bring them
-   back with `systemctl --user restart media-pod.service`, then start each member
-   service.
+1. **`media.pod`** — each media host has its own pod. DLCO-1 (`192.168.0.11`)
+   owns Plex, Sonarr and Radarr. DLCO-3 (`192.168.0.13`) owns Homepage, Seerr,
+   Prowlarr, FlareSolverr, Audiobookshelf, Calibre-Web and Shelfmark. Ports are
+   published on the host's pod, not individual containers. Changing pod ports
+   recreates that pod and interrupts its members. Read `docs/media-host-split.md`
+   in the source repository before changing cross-host connections or storage.
 
 2. **gluetun + qbittorrent VPN namespace** — these are deliberately **outside**
    the pod. `gluetun` runs the ProtonVPN WireGuard tunnel; `qbittorrent` uses
@@ -81,11 +76,14 @@ demand: `systemctl --user start minecraft.service`.
   5.2.1 alike. Prowlarr 2.5.2 no longer throws it, verified against this box, so the unit
   is back on `:latest` (now 5.2.3). Gluetun publishes the qBittorrent WebUI on host
   port `8181` for the existing protected proxy path. Radarr, Sonarr, Shelfmark, and
-  other local integrations reach it at `172.17.0.1:8181` or `192.168.0.2:8181`.
-  The `WebUI\AuthSubnetWhitelist` covers only `192.168.0.2/32`; remote clients still
+  other local integrations reach it at `172.17.0.1:8181` or `192.168.0.11:8181`.
+  The `WebUI\AuthSubnetWhitelist` covers only `192.168.0.11/32`; remote clients still
   authenticate through the existing front-end access controls.
-- **Storage layout**: app config under `/home/dmitrylito/docker-appdata/<svc>`,
-  media under `/data/media`, download scratch under `/scratch`. Plex transcodes to
+- **Storage layout**: app config under `/home/dmitrylito/docker-appdata/<svc>` on DLCO-1 and
+  `/data/docker-appdata/<svc>` on DLCO-3,
+  media under `/data/media`, download scratch under `/scratch` on DLCO-1.
+  DLCO-3 uses `/data/media-scratch` for local book ingest and a read-only SSHFS
+  mount for DLCO-1 downloads. Plex transcodes to
   `/dev/shm` (RAM). ZFS volume mounts use `:Z` (private relabel) for config and
   `:z` (shared relabel) for media paths shared across the *arr stack.
 - **Secrets do not live inline.** `gluetun.container` loads its WireGuard key from

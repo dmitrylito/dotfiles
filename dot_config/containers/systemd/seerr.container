@@ -1,6 +1,7 @@
 [Unit]
 Description=Seerr
 After=network-online.target
+RequiresMountsFor=/data
 
 [Container]
 Image=ghcr.io/seerr-team/seerr:latest
@@ -12,8 +13,7 @@ HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3
 HealthStartPeriod=60s
-Volume=/home/dmitrylito/docker-appdata/seerr:/app/config:Z
-Volume=/data/media:/data/media:z
+Volume=/data/docker-appdata/seerr:/app/config:Z
 
 [Install]
 WantedBy=default.target

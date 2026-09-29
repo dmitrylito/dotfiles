@@ -1,0 +1,7 @@
+[Unit]
+Description=Forward the Homepage SSH connection to the local Podman socket
+Requires=podman.socket
+After=podman.socket
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd %t/podman/podman.sock

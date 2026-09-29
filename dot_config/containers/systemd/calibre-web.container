@@ -1,6 +1,7 @@
 [Unit]
 Description=Calibre-Web Automated (ebook library, Kobo sync, auto-ingest, send-to-Kindle)
 After=network-online.target
+RequiresMountsFor=/data
 
 [Container]
 Image=docker.io/crocodilestick/calibre-web-automated:latest
@@ -29,13 +30,13 @@ HealthStartPeriod=180s
 # No DOCKER_MODS: CWA's own calibre-binaries-setup service installs calibre into
 # /app/calibre + /usr/bin symlinks, so universal-calibre is redundant here.
 
-Volume=/home/dmitrylito/docker-appdata/calibre-web:/config:Z
+Volume=/data/docker-appdata/calibre-web:/config:Z
 # Re-applies the Kobo cover-template patch on every start, including after an AutoUpdate
 # image pull. CWA still ships the lowercase {width} bug; dropping this mount loses the fix.
-Volume=/home/dmitrylito/docker-appdata/calibre-web-init:/custom-cont-init.d:ro
+Volume=/data/docker-appdata/calibre-web-init:/custom-cont-init.d:ro
 Volume=/data/media/calibre-library:/calibre-library:z
 # Drop a book here and CWA imports, converts and applies metadata, then deletes the source.
-Volume=/scratch/calibre-ingest:/cwa-book-ingest:z
+Volume=/data/media-scratch/calibre-ingest:/cwa-book-ingest:z
 Volume=/data/media:/data/media:z
 
 [Install]

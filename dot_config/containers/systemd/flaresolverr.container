@@ -1,6 +1,7 @@
 [Unit]
 Description=FlareSolverr Proxy
 After=network-online.target
+RequiresMountsFor=/data
 
 [Container]
 Image=ghcr.io/flaresolverr/flaresolverr:latest
@@ -18,6 +19,8 @@ HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3
 HealthStartPeriod=60s
+
+Volume=/data/docker-appdata/flaresolverr:/config:Z
 
 [Install]
 WantedBy=default.target

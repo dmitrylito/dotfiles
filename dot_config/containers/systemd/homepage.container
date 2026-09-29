@@ -1,6 +1,9 @@
 [Unit]
 Description=Homepage Dashboard
 After=network-online.target
+RequiresMountsFor=/data
+After=media-podman-tunnel.service
+Wants=media-podman-tunnel.service
 
 [Container]
 Image=ghcr.io/gethomepage/homepage:latest
@@ -26,18 +29,20 @@ Environment=HOMEPAGE_ALLOWED_HOSTS=*
 Environment=PUID=1000
 Environment=PGID=1000
 
-HealthCmd=wget -q --spider http://192.168.0.2:3000/api/healthcheck
+HealthCmd=wget -q --spider http://media:3000/api/healthcheck
 HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3
 HealthStartPeriod=60s
 
 # ZFS Volumes
-Volume=/home/dmitrylito/docker-appdata/homepage/:/app/config:Z
-Volume=/data/pictures:/app/public/pictures:Z
+Volume=/data/docker-appdata/homepage/:/app/config:Z
+Volume=/data/media/pictures:/app/public/pictures:Z
 Volume=%t/podman/podman.sock:/var/run/docker.sock:ro
+Volume=%t/media-remote:/remote-podman:ro
 
 [Service]
+ExecStartPre=/home/dmitrylito/.local/share/chezmoi/scripts/sync-media-homepage.sh
 Restart=always
 
 [Install]

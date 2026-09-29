@@ -1,0 +1,8 @@
+{{ if eq .chezmoi.hostname "DLCO-3" -}}
+[storage]
+driver = "overlay"
+graphroot = "/data/containers/storage"
+
+[storage.options.overlay]
+mountopt = "nodev"
+{{ end -}}
