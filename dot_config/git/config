@@ -30,5 +30,6 @@
 [user]
 	name = Dmitry Litoshik
 	email = dmitrylitoshik@fleetchaser.com
+	signingkey = EA5CE47095FEC53D6FEA1A9117EBAB7936D8724D
 [url "git@github.com:"]
         pushInsteadOf = https://github.com/   # Clone/fetch over HTTPS (no key needed); push over SSH
