@@ -5,6 +5,7 @@ flatpak
 fwupd
 hyprland-protocols
 iotop
+linux
 linux-headers
 lsof
 omarchy-dev

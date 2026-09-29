@@ -2,6 +2,8 @@ cuda
 cudnn
 dell-xps-touchpad-haptics
 dell-xps13-sidecar-amps
+hyprland-qt-support
+lib32-vulkan-radeon
 lsp-plugins-lv2
 openrgb
 qmk-hid

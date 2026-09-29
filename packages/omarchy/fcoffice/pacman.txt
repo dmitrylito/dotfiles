@@ -1,3 +1,2 @@
-linux
 onnxruntime-opt-rocm
 vulkan-tools
