@@ -15,12 +15,9 @@ gimp
 git-delta
 go
 kdeconnect
-libqalculate
-lolcat
 mosh
 noto-fonts-extra
 nwg-displays
-omazed
 openai-codex-desktop
 pigz
 pre-commit
@@ -36,9 +33,7 @@ voxtype-bin
 wayvnc
 wev
 wlr-randr
-xmlstarlet
 ydotool
-yq
 zsh-autosuggestions
 zsh-completions
 zsh-syntax-highlighting
