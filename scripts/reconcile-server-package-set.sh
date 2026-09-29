@@ -77,6 +77,12 @@ if (( ${#desired_asdeps[@]} )); then
   pacman -D --asexplicit "${desired_asdeps[@]}"
 fi
 
+mapfile -t debug < <(list_debug_packages)
+if (( ${#debug[@]} )); then
+  printf 'Removing undeclared debug packages: %s\n' "${debug[*]}"
+  pacman -Rns --noconfirm "${debug[@]}"
+fi
+
 # Removing one obsolete leaf can expose another explicit package that was only
 # required (or optionally required) by it. Recompute until the graph settles.
 while mapfile -t prunable < <(list_prunable) && (( ${#prunable[@]} )); do
