@@ -850,8 +850,15 @@
                 }
               });
 
-        # The converge only pulls; install the listener's own files so the unit
-        # exists before it is enabled. The listener applies everything else.
+        # The converge only pulls, so on a host that has never applied the
+        # listener, install its files first. Under `czu` the outer chezmoi holds
+        # the state lock and this nested apply fails; the listener is then
+        # installed and started by run_onchange_after_ensure-sync-listener.
+        - name: Check for the push listener unit
+          ansible.builtin.stat:
+            path: "{{ st.home }}/.config/systemd/user/chezmoi-sync-listener.service"
+          register: listener_unit
+
         - name: Install the push listener's files
           ansible.builtin.command:
             argv:
@@ -861,7 +868,10 @@
               - "{{ st.home }}/.local/bin/chezmoi-autoupdate"
               - "{{ st.home }}/.local/bin/chezmoi-sync-listener"
               - "{{ st.home }}/.config/systemd/user/chezmoi-sync-listener.service"
-          changed_when: false
+          register: listener_install
+          changed_when: listener_install.rc == 0
+          failed_when: false
+          when: not listener_unit.stat.exists
           become: true
           become_user: "{{ non_root_user }}"
 
@@ -872,6 +882,7 @@
             daemon_reload: true
             enabled: true
             state: started
+          when: listener_unit.stat.exists or (listener_install.rc | default(1)) == 0
           become: true
           become_user: "{{ non_root_user }}"
           environment:

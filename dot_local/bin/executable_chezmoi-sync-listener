@@ -3,7 +3,8 @@
 #
 # Runs as the user unit chezmoi-sync-listener.service on Linux and as the
 # LaunchAgent com.dmitrylito.chezmoi-sync-listener on macOS; both are started by
-# run_onchange_executable_ensure-sync-listener.sh (servers: also playbook.yml). Every CHEZMOI_SYNC_INTERVAL seconds (default 30) it
+# run_onchange_after_executable_ensure-sync-listener.sh (servers: also
+# playbook.yml). Every CHEZMOI_SYNC_INTERVAL seconds (default 30) it
 # reads origin/master with `git ls-remote`. When that differs from the commit
 # chezmoi-autoupdate last applied, it runs `chezmoi-autoupdate --sync` (pull
 # --ff-only + `apply --exclude scripts`; skips a dirty tree). On servers it then
