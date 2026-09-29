@@ -1,9 +1,12 @@
+alsa-tools
 dmidecode
 evtest
 fwupd
 hyprland-protocols
 iotop
 lsof
+mesa-demos
+mesa-utils
 pesign
 powertop
 python-wxpython

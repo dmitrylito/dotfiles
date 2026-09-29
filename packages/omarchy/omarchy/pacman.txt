@@ -1,8 +1,6 @@
 easyeffects
 freerdp
 lact
-nvtop
 openbsd-netcat
 openrgb
 steam
-swaync

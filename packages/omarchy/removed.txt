@@ -21,6 +21,7 @@ pavucontrol
 sesh-bin
 stow
 stress-ng
+swaync
 tmux
 ventoy-bin
 wayvnc

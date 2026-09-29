@@ -3,6 +3,7 @@ cudnn
 dell-xps-touchpad-haptics
 dell-xps13-sidecar-amps
 lsp-plugins-lv2
+openrgb
 qmk-hid
 steam
 ttf-cascadia-mono-nerd

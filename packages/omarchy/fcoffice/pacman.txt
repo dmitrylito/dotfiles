@@ -1,11 +1,6 @@
-alsa-tools
 amd-ucode
 linux
 linux-headers
-mesa-demos
-mesa-utils
-nvtop
 omarchy-dev
 onnxruntime-opt-rocm
-openrgb
 vulkan-tools
