@@ -1,6 +1,5 @@
 alsa-tools
 amd-ucode
-lib32-vulkan-radeon
 linux
 linux-headers
 mesa-demos

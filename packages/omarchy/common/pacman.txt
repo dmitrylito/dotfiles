@@ -8,8 +8,6 @@ claude-desktop
 cmake
 cronie
 direnv
-discord
-dotnet-runtime-9.0
 ex-vi-compat
 flatpak
 gamescope
@@ -17,7 +15,6 @@ ghostty
 gimp
 git-delta
 go
-hyprpolkitagent
 kdeconnect
 libqalculate
 lolcat
@@ -27,7 +24,6 @@ noto-fonts-extra
 nwg-displays
 omazed
 openai-codex-desktop
-pavucontrol
 pigz
 pre-commit
 pv
@@ -42,7 +38,6 @@ uv
 voxtype-bin
 wayvnc
 wev
-wget
 wlr-randr
 xmlstarlet
 ydotool

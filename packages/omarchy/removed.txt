@@ -1,11 +1,14 @@
 7zip
 android-studio
 claude-code
+dotnet-runtime-9.0
 foot
 gemini-cli
 github-cli
 hyprmon-bin
+hyprpolkitagent
 openai-codex-bin
+pavucontrol
 sesh-bin
 stow
 tmux
