@@ -1,4 +1,15 @@
+dmidecode
+evtest
+fwupd
 hyprland-protocols
+iotop
+lsof
+pesign
+powertop
 python-wxpython
 qt5-wayland
+sbctl
 speech-dispatcher
+strace
+tpm2-tools
+usbutils
