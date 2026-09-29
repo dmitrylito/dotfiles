@@ -1,0 +1,6 @@
+{{- if eq (.profile | lower) "omarchy" -}}
+# Replaces SDDM: getty autologins on tty1, this starts the uwsm-managed Hyprland session.
+if [[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]] && uwsm check may-start -q; then
+  exec uwsm start -e -D Hyprland hyprland.desktop
+fi
+{{- end }}
