@@ -33,7 +33,9 @@ fi
 exec 8<"$git_lock"
 flock -n 8 || exit 0
 
-if [[ -n $(git -C "$source_dir" status --porcelain) ]]; then
+# As root, git refuses the user-owned repo ("dubious ownership") and prints
+# nothing on stdout, which would read as clean.
+if [[ -n $(runuser -u "$login_user" -- git -C "$source_dir" status --porcelain) ]]; then
   printf 'Skipping package convergence: chezmoi source is dirty\n' >&2
   exit 0
 fi
