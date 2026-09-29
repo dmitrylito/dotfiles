@@ -23,6 +23,7 @@ stow
 stress-ng
 tmux
 ventoy-bin
+wayvnc
 webcamoid
 xmlstarlet
 yq

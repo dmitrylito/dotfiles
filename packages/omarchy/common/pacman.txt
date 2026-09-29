@@ -30,7 +30,6 @@ tailscale
 telegram-desktop
 uv
 voxtype-bin
-wayvnc
 wev
 wlr-randr
 ydotool
