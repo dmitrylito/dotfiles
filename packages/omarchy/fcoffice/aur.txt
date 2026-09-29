@@ -1,0 +1,8 @@
+coolercontrol-bin
+davinci-resolve
+gputest
+input-remapper-bin
+noisetorch-bin
+rocm-bin
+rocm-bin-extras
+webcamoid

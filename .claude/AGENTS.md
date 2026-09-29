@@ -57,10 +57,10 @@ available as an explicit command:
 
 - **`run_onchange_executable_reconcile-packages.sh.tmpl`** hashes the playbook, reconciliation script, profile/role, and only the active machine's actionable lists. It bootstraps Ansible when needed, then runs after `chezmoi init` or `apply`; unchanged applies are no-ops.
 - **`scripts/reconcile-packages.sh`** is the shared entry point used by the hook and manual audits. It reads the current profile/role and runs the Ansible playbook; Linux uses sudo, macOS does not. Always use `--check` before a manual real run when lists changed substantially.
-- **`playbook.yml`** installs declared packages. Omarchy removes only names explicitly present in the host's `removed.txt`; server profiles additionally prune undeclared explicit packages and demote undeclared packages that must remain as dependencies. The AUR block's temporary sudoers rule is restricted to `/usr/bin/pacman *` and removed in `always`.
-- **`packages/omarchy/<hostname>/`** contains host-specific desired additions, explicit removals, and reference snapshots. `base.packages`, `other.packages`, and `drivers.txt` are never installed. There is no `untracked.regex` because there is no automatic prune.
+- **`playbook.yml`** installs declared packages. Omarchy removes only names in `packages/omarchy/removed.txt` or the host's `removed.txt`, and never reinstalls a declared package whose last `pacman.log` event is a removal; server profiles additionally prune undeclared explicit packages and demote undeclared packages that must remain as dependencies. The AUR block's temporary sudoers rule is restricted to `/usr/bin/pacman *` and removed in `always`.
+- **`packages/omarchy/`** is hand-edited: `common/{pacman,aur}.txt` for every Omarchy host, `<hostname>/{pacman,aur}.txt` for that host, `removed.txt` globally or per host, and `<hostname>/ignored.txt` for installed packages left untracked. Nothing prunes by absence.
 - **`packages/server/`** and **`packages/mac/`** hold the corresponding desired sets.
-- **`scripts/update_package_lists.sh`** regenerates Omarchy inventories manually. **`scripts/update_server_package_lists.sh`** is also called by the guarded server Pacman publisher.
+- **`scripts/update_package_lists.sh`** is the interactive Omarchy drift review (gum); `czu` runs it between pull and apply, and it commits and pushes the list changes it records. **`scripts/update_server_package_lists.sh`** is also called by the guarded server Pacman publisher.
 
 Server hosts install a debounced Pacman post-transaction publisher, a retry
 timer, and a root-owned convergence timer. Publication only runs when the

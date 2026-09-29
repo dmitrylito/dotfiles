@@ -1,12 +1,4 @@
 dell-xps-touchpad-haptics
-claude-code
-gemini-cli
-github-cli
 linux-headers
 lsp-plugins-lv2
-openai-codex-bin
 qmk-hid
-sesh-bin
-stow
-tmux
-zsh-autocomplete

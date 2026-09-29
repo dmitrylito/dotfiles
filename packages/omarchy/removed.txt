@@ -1,0 +1,12 @@
+android-studio
+claude-code
+gemini-cli
+github-cli
+hyprmon-bin
+openai-codex-bin
+sesh-bin
+stow
+tmux
+ventoy-bin
+zsa-keymapp-bin
+zsh-autocomplete

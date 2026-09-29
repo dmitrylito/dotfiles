@@ -1,92 +1,123 @@
 #!/usr/bin/env bash
-# Regenerate this Omarchy host's package inventory for Ansible.
+# Review this Omarchy host's package drift against the hand-edited lists in
+# packages/omarchy/ and record the decisions. `czu` runs it between pulling and
+# applying; run it directly any time. Without a TTY it prints a one-line summary.
+# Needs gum (Omarchy base) and expac.
+#
+#   common/{pacman,aur}.txt          installed on every Omarchy host
+#   <host>/{pacman,aur}.txt          installed on this host too
+#   removed.txt, <host>/removed.txt  uninstalled everywhere / here; never installed
+#   <host>/ignored.txt               installed here, untracked, never asked about
+#
+# "Removed here" means pacman.log's last event for a declared package is a
+# removal. The playbook skips those as well, so an apply never reinstalls a
+# package you removed before you decide here. Changed lists are committed and
+# pushed; Esc or Ctrl-C at any prompt aborts without changing anything.
 
 set -euo pipefail
 
-CHEZMOI_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/chezmoi-packages.XXXXXXXX")"
-trap 'rm -rf -- "$TMP_ROOT"' EXIT
-
-# Refresh the tracked reference from the installed Omarchy. Without this the
-# reference stays at whatever version it was copied from, and every package a
-# later Omarchy release adds to its defaults looks like one the user installed
-# (the v4 update alone put 31 of its own defaults into added-*.txt).
-# Lists are per host because every Omarchy box has different hardware and
-# optional software. Absence from an added list is never an instruction to remove.
+SRC="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 HOST="$(hostname -s 2>/dev/null || uname -n)"
-OUT_DIR="$CHEZMOI_DIR/packages/omarchy/$HOST"
-mkdir -p "$OUT_DIR"
+PKG="$SRC/packages/omarchy"
+HOST_DIR="$PKG/$HOST"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/omarchy-packages.XXXXXXXX")"
+trap 'rm -rf -- "$TMP"' EXIT
 
-OMARCHY_BASE="$OUT_DIR/base.packages"
-OMARCHY_OTHER="$OUT_DIR/other.packages"
-OMARCHY_SRC="/usr/share/omarchy/install"
-[ -f "$OMARCHY_SRC/omarchy-base.packages" ] && cp "$OMARCHY_SRC/omarchy-base.packages" "$OMARCHY_BASE"
-[ -f "$OMARCHY_SRC/omarchy-other.packages" ] && cp "$OMARCHY_SRC/omarchy-other.packages" "$OMARCHY_OTHER"
+names() { cat -- "$@" 2>/dev/null | sed 's/#.*//; s/[[:space:]]//g; /^$/d' | sort -u; }
 
-# The regex used to identify hardware-specific packages that shouldn't sync across machines.
-# GPU compute stacks (CUDA, ROCm/HIP) count as drivers: they're multi-GB and only valid on
-# the vendor whose card the machine actually has, so they belong in drivers.txt (reference
-# only, never installed by the playbook) rather than in the shared added-* lists.
-# The ROCm/HIP tokens are anchored — an unanchored `hip` also matches `starship`.
-DRIVER_REGEX='nvidia|amd|intel|vulkan|apple|macbook|^t2|(^|-)t2($|-)|tuxedo|firmware|dkms|kernel|modules|asus|broadcom|thermald|ptl|dfr|vpl|debug|cuda|cudnn|migraphx|miopen|comgr|nccl|rccl|^roc|^hip(-|$)|^hipblas|^hipcub|^hipfft|^hiprand|^hipsolver|^hipsparse|^hsa-|^hsakmt'
-# Repo-/machine-specific packages that only exist in special repos not configured
-# on every machine (e.g. the CachyOS kernel + its keyring/mirrorlists). Syncing
-# these into the shared lists breaks `chezmoi apply` on machines without those
-# repos ("target not found"), so they're dropped from every generated list —
-# each machine manages its own kernel.
-REPO_SPECIFIC_REGEX='^cachyos|^linux-cachyos'
-# Debug split-packages (e.g. `gputest-debug`) are local build artifacts created
-# by makepkg when building from the AUR with debug options. They're registered
-# in the local pacman DB but exist in NO repo, so syncing them makes the install
-# fail on other machines ("could not find or read package"). Drop them from every
-# generated list. NOTE: matched by suffix so it also strips them out of drivers.txt
-# even though they'd otherwise match the `debug` token in DRIVER_REGEX.
-DEBUG_PKG_REGEX='\-debug$'
-# The regex used to identify pre-installed packages that can be removed
-PREINSTALL_REGEX='aether|cliamp|typora|spotify|libreoffice-fresh|1password-beta|1password-cli|xournalpp|signal-desktop|pinta|obsidian|obs-studio|kdenlive|lazydocker|opencode|claude-code|alacritty|htop|nvim|dart|jdk-openjdk|sassc|libsass|intltool|autoconf-archive|webp-pixbuf-loader'
-# Owned by mise, vendor installers, Chezmoi itself, or cloned shell plugins.
-EXTERNAL_OWNER_REGEX='^(claude-code|gemini-cli|github-cli|openai-codex-bin|sesh-bin|stow|tmux|zsh-autocomplete)$'
+names "$PKG/common/pacman.txt" "$PKG/common/aur.txt" \
+    <(awk '/^    common_linux_packages:/{f=1; next} f && /^      - /{print $2; next} f{exit}' "$SRC/playbook.yml") \
+    > "$TMP/shared"
+names "$TMP/shared" "$HOST_DIR/pacman.txt" "$HOST_DIR/aur.txt" > "$TMP/declared"
+names "$PKG/removed.txt" "$HOST_DIR/removed.txt" > "$TMP/removed"
+names "$HOST_DIR/ignored.txt" > "$TMP/ignored"
+names /usr/share/omarchy/install/omarchy-base.packages /usr/share/omarchy/install/omarchy-other.packages > "$TMP/omarchy"
+pacman -Qq | sort > "$TMP/installed"
+pacman -Qmq | sort > "$TMP/foreign"
+# Explicit packages nothing hard-depends on. Optional dependencies still count as
+# choices: `pacman -Qet` hides them, which dropped 7zip because yazi lists it.
+expac -Q '%w|%n|%N' | awk -F'|' '$1 == "explicit" && $3 == "" {print $2}' | grep -v -- '-debug$' | sort > "$TMP/chosen"
+awk '/\[ALPM\] (installed|removed|upgraded|reinstalled|downgraded) /{a[$4]=$3}
+     END{for (p in a) if (a[p] == "removed") print p}' /var/log/pacman.log | sort > "$TMP/gone"
 
-echo "Gathering current system state..."
+comm -23 "$TMP/chosen" "$TMP/declared" | comm -23 - "$TMP/removed" | comm -23 - "$TMP/ignored" \
+    | comm -23 - "$TMP/omarchy" > "$TMP/new"
+comm -23 "$TMP/declared" "$TMP/installed" | comm -12 - "$TMP/gone" | comm -23 - "$TMP/removed" > "$TMP/dropped"
 
-grep -v '^#' "$OMARCHY_BASE" | grep -v '^$' | grep -vE "$DRIVER_REGEX" | grep -vE "$PREINSTALL_REGEX" > "$TMP_ROOT/omarchy_ref.txt"
-if [ -f "$OMARCHY_OTHER" ]; then
-    grep -v '^#' "$OMARCHY_OTHER" | grep -v '^$' | grep -vE "$DRIVER_REGEX" | grep -vE "$PREINSTALL_REGEX" >> "$TMP_ROOT/omarchy_ref.txt"
+n_new=$(wc -l < "$TMP/new")
+n_dropped=$(wc -l < "$TMP/dropped")
+(( n_new + n_dropped )) || exit 0
+
+if [[ ! -t 0 || ! -t 1 ]]; then
+    printf 'packages: %d undeclared, %d removed here; run %s in a terminal\n' "$n_new" "$n_dropped" "$0"
+    exit 0
 fi
 
-# -Qet, not -Qe: a package that something else hard-depends on is not a choice,
-# it is a dependency that happens to be flagged explicit. Tracking those put 71
-# packages (zsh, neovim, fontconfig, ...) into the "I installed this" lists; the
-# dependency graph reinstalls them on a new machine anyway.
-pacman -Qetnq > "$TMP_ROOT/current_native_explicit.txt"
-pacman -Qetmq > "$TMP_ROOT/current_aur_explicit.txt"
-# drivers.txt is reference only and never installed, so it wants every hardware
-# package present — including the ones -Qet hides because something depends on
-# them (vulkan-radeon <- steam, cuda <- cudnn).
-cat <(pacman -Qenq) <(pacman -Qemq) > "$TMP_ROOT/all_explicit.txt"
-expac -Q '%n %p' | tr ' ' '\n' | sort -u > "$TMP_ROOT/current_all_installed_and_provides.txt"
+# gum exits 1 on Esc and 130 on Ctrl-C; Enter with nothing toggled selects nothing.
+pick() {
+    [[ -s $2 ]] || return 0
+    gum choose --no-limit --height 20 --header "$1 (x/tab toggles, ctrl+a all, enter confirms, esc aborts)" < "$2"
+}
+rest() { comm -23 "$1" <(sort "$2"); }
 
-echo "Calculating differences..."
+pick "Installed here, not declared: install on ALL machines" "$TMP/new" | sort > "$TMP/add_all" || exit 0
+rest "$TMP/new" "$TMP/add_all" > "$TMP/new2"
+pick "Keep on THIS machine ($HOST) only; the rest are ignored" "$TMP/new2" | sort > "$TMP/add_host" || exit 0
+rest "$TMP/new2" "$TMP/add_host" > "$TMP/ignore"
 
-grep -iE "$DRIVER_REGEX" "$TMP_ROOT/all_explicit.txt" | grep -ivE "$REPO_SPECIFIC_REGEX" | grep -ivE "$DEBUG_PKG_REGEX" | sort > "$OUT_DIR/drivers.txt"
+pick "Removed here: remove from ALL machines" "$TMP/dropped" | sort > "$TMP/rm_all" || exit 0
+rest "$TMP/dropped" "$TMP/rm_all" > "$TMP/dropped2"
+pick "Remove on THIS machine ($HOST) only; the rest are reinstalled" "$TMP/dropped2" | sort > "$TMP/rm_host" || exit 0
+rest "$TMP/dropped2" "$TMP/rm_host" > "$TMP/reinstall"
 
-grep -vxFf "$TMP_ROOT/omarchy_ref.txt" "$TMP_ROOT/current_native_explicit.txt" | grep -ivE "$DRIVER_REGEX" | grep -ivE "$PREINSTALL_REGEX" | grep -ivE "$REPO_SPECIFIC_REGEX" | grep -ivE "$DEBUG_PKG_REGEX" | grep -ivE "$EXTERNAL_OWNER_REGEX" | sort > "$OUT_DIR/added-pacman.txt"
+changed=()
+add() { # file, names...
+    local f=$1; shift
+    (( $# )) || return 0
+    mkdir -p "$(dirname -- "$f")"
+    { names "$f"; printf '%s\n' "$@"; } | sort -u > "$TMP/edit"
+    cp -- "$TMP/edit" "$f"
+    changed+=("$f")
+}
+drop() { # file, names...
+    local f=$1; shift
+    [[ -f $f ]] || return 0
+    printf '%s\n' "$@" > "$TMP/drop"
+    grep -vxFf "$TMP/drop" "$f" > "$TMP/edit" || true
+    cmp -s "$TMP/edit" "$f" && return 0
+    cp -- "$TMP/edit" "$f"
+    changed+=("$f")
+}
+split_add() { # dir, names file: foreign packages go to aur.txt, the rest to pacman.txt
+    add "$1/aur.txt" $(comm -12 "$2" "$TMP/foreign")
+    add "$1/pacman.txt" $(comm -23 "$2" "$TMP/foreign")
+}
 
-grep -vxFf "$TMP_ROOT/omarchy_ref.txt" "$TMP_ROOT/current_aur_explicit.txt" | grep -ivE "$DRIVER_REGEX" | grep -ivE "$PREINSTALL_REGEX" | grep -ivE "$REPO_SPECIFIC_REGEX" | grep -ivE "$DEBUG_PKG_REGEX" | grep -ivE "$EXTERNAL_OWNER_REGEX" | sort > "$OUT_DIR/added-aur.txt"
+split_add "$PKG/common" "$TMP/add_all"
+split_add "$HOST_DIR" "$TMP/add_host"
+add "$HOST_DIR/ignored.txt" $(cat "$TMP/ignore")
 
-# Preserve reviewed removals while adding currently absent Omarchy defaults.
-# Removing a name from this policy file is therefore an intentional manual edit.
-touch "$OUT_DIR/removed.txt"
-grep -vxFf "$TMP_ROOT/current_all_installed_and_provides.txt" "$TMP_ROOT/omarchy_ref.txt" \
-    > "$TMP_ROOT/observed-removed.txt" || true
-cat "$OUT_DIR/removed.txt" "$TMP_ROOT/observed-removed.txt" | sed '/^#/d; /^$/d' | sort -u \
-    > "$TMP_ROOT/removed.txt"
-cp "$TMP_ROOT/removed.txt" "$OUT_DIR/removed.txt"
+mapfile -t rm_all < "$TMP/rm_all"
+if (( ${#rm_all[@]} )); then
+    add "$PKG/removed.txt" "${rm_all[@]}"
+    for f in "$PKG"/*/pacman.txt "$PKG"/*/aur.txt; do drop "$f" "${rm_all[@]}"; done
+fi
+mapfile -t rm_host < "$TMP/rm_host"
+if (( ${#rm_host[@]} )); then
+    drop "$HOST_DIR/pacman.txt" "${rm_host[@]}"
+    drop "$HOST_DIR/aur.txt" "${rm_host[@]}"
+    # Still declared for every host, so only a host removal keeps it off here.
+    add "$HOST_DIR/removed.txt" $(comm -12 "$TMP/rm_host" "$TMP/shared")
+fi
 
-echo "======================================"
-echo "✅ Package Lists Updated Successfully!"
-echo "Added Pacman:  $(wc -l < "$OUT_DIR/added-pacman.txt") packages"
-echo "Added AUR:     $(wc -l < "$OUT_DIR/added-aur.txt") packages"
-echo "Removed:       $(wc -l < "$OUT_DIR/removed.txt") packages"
-echo "Local Drivers: $(wc -l < "$OUT_DIR/drivers.txt") packages"
-echo "======================================"
+if [[ -s $TMP/reinstall ]]; then
+    printf 'Reinstalling: %s\n' "$(tr '\n' ' ' < "$TMP/reinstall")"
+    yay -S --needed --noconfirm $(cat "$TMP/reinstall") || printf 'Reinstall failed; the lists are unchanged for these.\n' >&2
+fi
+
+(( ${#changed[@]} )) || exit 0
+mapfile -t changed < <(printf '%s\n' "${changed[@]}" | sort -u)
+git -C "$SRC" add -- "${changed[@]}"
+git -C "$SRC" commit -q -m "Update Omarchy package lists from $HOST" -- "${changed[@]}"
+git -C "$SRC" push -q || printf 'Push failed; the commit is local.\n' >&2
+printf 'Package lists updated: %d file(s)\n' "${#changed[@]}"

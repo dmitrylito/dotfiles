@@ -1,9 +1,0 @@
-amd-ucode
-kernel-modules-hook
-lib32-vulkan-radeon
-linux-firmware
-migraphx
-sof-firmware
-vulkan-radeon
-vulkan-tools
-xpadneo-dkms

@@ -54,15 +54,12 @@
     mac_third_party_casks:
       - peteonrails/voxtype/voxtype
 
-    # Paths to this machine's generated lists. Per host, not per profile: every
-    # Omarchy box has different hardware and optional software. st.host comes
-    # from the probe and uses the same `hostname -s` the generator writes with.
-    omarchy_dir: "{{ chezmoi_source_dir }}/packages/omarchy/{{ st.host }}"
-    pacman_file: "{{ omarchy_dir }}/added-pacman.txt"
-    aur_file: "{{ omarchy_dir }}/added-aur.txt"
-    # drivers.txt is auto-tracked for reference only — drivers are hardware-
-    # specific and must be installed MANUALLY, so the playbook never installs it.
-    removed_file: "{{ omarchy_dir }}/removed.txt"
+    # Hand-edited Omarchy lists (scripts/update_package_lists.sh records
+    # decisions): common/ installs on every host, <host>/ adds to it, and
+    # removed.txt at either level uninstalls and wins over both. st.host comes
+    # from the probe's `hostname -s`.
+    omarchy_dir: "{{ chezmoi_source_dir }}/packages/omarchy"
+    omarchy_host_dir: "{{ omarchy_dir }}/{{ st.host }}"
 
     # Paths to server-specific auto-generated lists
     # (regenerate with scripts/update_server_package_lists.sh on the server)
@@ -102,7 +99,14 @@
           home=$(eval echo "~{{ non_root_user }}")
           yn() { if "$@" >/dev/null 2>&1; then printf true; else printf false; fi; }
           host=$(hostname -s 2>/dev/null || uname -n)
-          host_lists="{{ chezmoi_source_dir }}/packages/omarchy/$host/added-pacman.txt"
+          # Packages whose last pacman.log event is a removal. The playbook
+          # never reinstalls these; update_package_lists.sh asks about them.
+          {% if p == 'omarchy' %}
+          locally_removed=$(awk '/\[ALPM\] (installed|removed|upgraded|reinstalled|downgraded) /{a[$4]=$3}
+            END{for (p in a) if (a[p] == "removed") print p}' /var/log/pacman.log 2>/dev/null | tr '\n' ' ')
+          {% else %}
+          locally_removed=
+          {% endif %}
 
           installed=
           if command -v pacman >/dev/null 2>&1; then
@@ -125,7 +129,7 @@
           printf '"home":"%s",' "$home"
           printf '"host":"%s",' "$host"
           printf '"uid":"%s",' "$(id -u {{ non_root_user | quote }})"
-          printf '"host_lists":%s,' "$(yn test -f "$host_lists")"
+          printf '"locally_removed":"%s",' "$locally_removed"
           printf '"installed":"%s",' "$installed"
           printf '"omz":%s,' "$(yn test -f "$home/.oh-my-zsh/oh-my-zsh.sh")"
           printf '"makeflags":%s,' "$(yn grep -qxF '{{ makeflags_line }}' /etc/makepkg.conf)"
@@ -156,15 +160,17 @@
       when: is_linux
       vars:
         have: "{{ st.installed.split() }}"
-        # A machine that has never run the generator has no host directory yet.
-        # Fall back to the common baseline; removals are always explicit below.
-        listed: "{{ p == 'server' or (p == 'omarchy' and st.host_lists) }}"
         server_added: "{{ ((lookup('file', server_added_file, errors='ignore') | default('', true)).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
         server_added_aur: "{{ ((lookup('file', server_added_aur_file, errors='ignore') | default('', true)).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
         server_excluded: "{{ ((lookup('file', server_excluded_file, errors='ignore') | default('', true)).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
-        want_native: "{{ ((common_linux_packages + ((lookup('file', server_pacman_file if p == 'server' else pacman_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if listed else []) + server_added) | unique) | difference(server_excluded) }}"
-        want_aur: "{{ ((lookup('file', server_aur_file if p == 'server' else aur_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if listed else []) + server_added_aur }}"
-        unwanted: "{{ (lookup('file', removed_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if (p == 'omarchy' and listed) else [] }}"
+        server_native: "{{ (lookup('file', server_pacman_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
+        server_aur: "{{ (lookup('file', server_aur_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
+        omarchy_native: "{{ (((lookup('file', omarchy_dir ~ '/common/pacman.txt', errors='ignore') | default('', true)).splitlines() + (lookup('file', omarchy_host_dir ~ '/pacman.txt', errors='ignore') | default('', true)).splitlines()) | reject('match', '^#') | reject('match', '^$') | list) if p == 'omarchy' else [] }}"
+        omarchy_aur: "{{ (((lookup('file', omarchy_dir ~ '/common/aur.txt', errors='ignore') | default('', true)).splitlines() + (lookup('file', omarchy_host_dir ~ '/aur.txt', errors='ignore') | default('', true)).splitlines()) | reject('match', '^#') | reject('match', '^$') | list) if p == 'omarchy' else [] }}"
+        unwanted: "{{ (((lookup('file', omarchy_dir ~ '/removed.txt', errors='ignore') | default('', true)).splitlines() + (lookup('file', omarchy_host_dir ~ '/removed.txt', errors='ignore') | default('', true)).splitlines()) | reject('match', '^#') | reject('match', '^$') | list) if p == 'omarchy' else [] }}"
+        skipped: "{{ server_excluded + unwanted + st.locally_removed.split() }}"
+        want_native: "{{ (common_linux_packages + server_native + server_added + omarchy_native) | unique | difference(skipped) }}"
+        want_aur: "{{ (server_aur + server_added_aur + omarchy_aur) | unique | difference(skipped) }}"
       ansible.builtin.set_fact:
         installed_packages: "{{ have }}"
         pacman_missing: "{{ want_native | difference(have) }}"
@@ -333,10 +339,7 @@
     # =========================================================================
     # SECTION 4: DYNAMIC PACKAGES (Omarchy & server profiles)
     # =========================================================================
-    # Note: base/other packages are NOT installed because those ship with the
-    # OS. Drivers (drivers.txt) are also NOT installed here — they are
-    # hardware-specific and must be installed manually. The list is still
-    # generated by scripts/update_package_lists.sh for reference.
+    # Note: Omarchy's own defaults are NOT installed here; they ship with the OS.
     #
     # update_cache lives on this task rather than one of its own, so mirrors are
     # contacted only when there is genuinely something to install.

@@ -1,0 +1,4 @@
+antigravity
+antigravity-ide
+appmenu-glib-translator-git
+coolercontrol-bin

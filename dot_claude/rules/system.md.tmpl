@@ -11,8 +11,14 @@
 {{ if eq (.profile | lower) "mac" -}}
 - Packages are tracked under `packages/mac/`; reconciliation is an explicit reviewed command.
 {{- else -}}
+{{- if eq (.profile | lower) "server" -}}
 - Packages never sync or remove themselves. Regenerate deliberately with
-  `~/.local/share/chezmoi/scripts/{{ if eq (.profile | lower) "server" }}update_server_package_lists.sh{{ else }}update_package_lists.sh{{ end }}`,
+  `~/.local/share/chezmoi/scripts/update_server_package_lists.sh`,
   review the diff, and run `scripts/reconcile-packages.sh --check` before reconciliation.
+{{- else -}}
+- Omarchy package lists in `~/.local/share/chezmoi/packages/omarchy/` are hand-edited.
+  `czu` runs `scripts/update_package_lists.sh` (interactive, needs a TTY) to record drift;
+  run `scripts/reconcile-packages.sh --check` before a manual reconciliation.
+{{- end }}
 - Avoid commands that trigger interactive `sudo` prompts unless asked.
 {{- end }}

@@ -13,14 +13,16 @@ single-command setup flow.
 
 ## Ownership
 
-- `omarchy/<hostname>/added-pacman.txt`: native packages intentionally added on
-  that host.
-- `omarchy/<hostname>/added-aur.txt`: AUR packages intentionally added there.
-- `omarchy/<hostname>/removed.txt`: the only automatic removal list.
-- `omarchy/<hostname>/{base,other}.packages`: snapshots of Omarchy-owned
-  packages; reference only.
-- `omarchy/<hostname>/drivers.txt`: hardware-specific reference; never
-  installed automatically.
+- `omarchy/common/{pacman,aur}.txt`: installed on every Omarchy host.
+- `omarchy/<hostname>/{pacman,aur}.txt`: installed on that host too (hardware,
+  GPU stacks, role-specific tools).
+- `omarchy/removed.txt`: uninstalled on every Omarchy host and never installed.
+- `omarchy/<hostname>/removed.txt`: the same for one host; also keeps a
+  `common/` entry off that host.
+- `omarchy/<hostname>/ignored.txt`: installed there but deliberately untracked;
+  the review never asks about them.
+- Omarchy's own defaults are read live from `/usr/share/omarchy/install/` and
+  are never listed here.
 - `server/{pacman,aur}.txt`: canonical explicit package set shared by all
   server-profile Arch machines.
 - `server/hosts/<hostname>/added-pacman.txt`: native packages kept only on
@@ -37,18 +39,20 @@ ollama and samba; DLCO-2 adds libvirt; DLCO-3 swaps in `amd-ucode` and drops
 the NVIDIA stack. Every server boots Limine into the linux-lts UKI
 (`scripts/server-limine.sh`, installed as `chezmoi-limine-sync`).
 
-The old `untracked.regex` files are unnecessary. Omarchy does not prune by
-absence. Server pruning is constrained to the shared and per-host declarations;
+Omarchy does not prune by absence. Server pruning is constrained to the shared and per-host declarations;
 required undeclared packages are retained and marked as dependencies, and
 makepkg `-debug` companions (now disabled in `/etc/makepkg.conf`) are removed.
 
 ## Regeneration
 
-- Run `scripts/update_package_lists.sh` on an Omarchy host.
+- Omarchy lists are edited by hand or through `scripts/update_package_lists.sh`,
+  which `czu` runs between pulling and applying when there is a TTY. It offers
+  explicit packages nothing depends on that are undeclared (install on all hosts,
+  this host, or ignore) and declared packages removed on this host (remove on all
+  hosts, this host, or reinstall), then commits and pushes the list changes.
 - Run `scripts/update_server_package_lists.sh` manually for an audit; the server
   Pacman hook normally schedules it after a successful transaction.
 - Review the diff before committing; generation is not package policy.
-- Do not hand-edit Omarchy base/other snapshots.
 
 On server profiles, successful manual Pacman/yay transactions schedule a
 debounced user service. It regenerates only `packages/server/`, commits those two
@@ -58,8 +62,8 @@ mutate the dotfiles repository.
 
 ## Deliberate exclusions
 
-- tmux and sesh are retired. Omarchy still ships tmux in its base snapshot, so
-  `removed.txt` overrides it on each known host.
+- tmux and sesh are retired. Omarchy still ships tmux, so `omarchy/removed.txt`
+  overrides it.
 - Herdr is the supported multiplexer; its package/vendor installer owns it.
 - `claude`, `codex`, GitHub CLI, Hey, Grok, Pi, Node, and similar npm tools
   belong to the managed mise configuration, not duplicate distro packages.
@@ -67,14 +71,16 @@ mutate the dotfiles repository.
   do not add duplicate distro packages.
 - distro Neovim stays off the desired lists because Bob owns `nvim`.
 - `stow` is obsolete; Chezmoi owns dotfiles.
-- GPU stacks remain in `drivers.txt` because they are host-specific and large.
+- GPU stacks go in the host's lists, never `common/`, because they are
+  hardware-specific and large.
 
 ## Reconciliation guarantees
 
 The playbook installs missing declarations everywhere. Omarchy removes only
-explicit `removed.txt` entries and never infers deletion from absence. Server
+explicit `removed.txt` entries and never infers deletion from absence; it also
+skips any declared package whose last `pacman.log` event is a removal, so an
+apply never undoes a local removal before the review records a decision. Server
 profiles repeatedly remove undeclared explicit leaves, then mark any remaining
 undeclared hard dependencies non-explicit so both servers converge without
-breaking dependency chains. Neither profile sweeps unrelated orphans, and
-`drivers.txt` is never installed. During an AUR build, the temporary sudoers
+breaking dependency chains. Neither profile sweeps unrelated orphans. During an AUR build, the temporary sudoers
 entry permits only `/usr/bin/pacman *` and is removed in an `always` block.

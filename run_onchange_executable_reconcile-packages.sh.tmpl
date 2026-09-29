@@ -14,9 +14,9 @@ set -euo pipefail
 # scripts/capture-server-package-lists.sh: {{ include "scripts/capture-server-package-lists.sh" | sha256sum }}
 # scripts/converge-server-packages.sh: {{ include "scripts/converge-server-packages.sh" | sha256sum }}
 {{- if eq (.profile | lower) "omarchy" }}
-{{- range list "added-pacman.txt" "added-aur.txt" "removed.txt" }}
-{{- range (glob (joinPath $.chezmoi.sourceDir "packages/omarchy" $.chezmoi.hostname .)) }}
-# packages/omarchy/{{ $.chezmoi.hostname }}/{{ base . }}: {{ include . | sha256sum }}
+{{- range $rel := list "common/pacman.txt" "common/aur.txt" "removed.txt" (printf "%s/pacman.txt" $.chezmoi.hostname) (printf "%s/aur.txt" $.chezmoi.hostname) (printf "%s/removed.txt" $.chezmoi.hostname) }}
+{{- range (glob (joinPath $.chezmoi.sourceDir "packages/omarchy" $rel)) }}
+# packages/omarchy/{{ $rel }}: {{ include . | sha256sum }}
 {{- end }}
 {{- end }}
 {{- else if eq (.profile | lower) "server" }}

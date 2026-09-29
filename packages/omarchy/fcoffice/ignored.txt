@@ -1,0 +1,4 @@
+hyprland-protocols
+python-wxpython
+qt5-wayland
+speech-dispatcher

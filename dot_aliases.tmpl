@@ -5,7 +5,13 @@ alias lzd="lazydocker"
 alias lzp='lazypodman'
 alias cz="chezmoi"
 alias czr="chezmoi re-add"
+{{- if eq (.profile | lower) "omarchy" }}
+# Pull, review package drift against the lists, then apply.
+unalias czu 2>/dev/null
+czu() { chezmoi update --apply=false && { {{ joinPath .chezmoi.sourceDir "scripts/update_package_lists.sh" | quote }} || true; } && chezmoi apply "$@"; }
+{{- else }}
 alias czu="chezmoi update"
+{{- end }}
 alias cza="chezmoi apply"
 alias se="secrets-edit"
 alias py="python3"

@@ -1,0 +1,9 @@
+discordupdater
+dotool
+etcher-bin
+gogcli
+google-cloud-cli
+google-cloud-cli-gsutil
+lazycron-bin
+zsh-uv-env-git
+zsh-you-should-use

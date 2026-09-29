@@ -1,0 +1,8 @@
+easyeffects
+freerdp
+lact
+nvtop
+openbsd-netcat
+openrgb
+stress-ng
+swaync

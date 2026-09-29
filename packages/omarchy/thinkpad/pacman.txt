@@ -1,0 +1,10 @@
+alsa-tools
+hyprlauncher
+hyprpwcenter
+matugen
+mesa-demos
+nvtop
+openrgb
+qt6ct
+swaync
+zed

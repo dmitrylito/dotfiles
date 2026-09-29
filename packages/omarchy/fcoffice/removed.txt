@@ -1,12 +1,9 @@
+cuda
+cudnn
 dell-xps-touchpad-haptics
 dell-xps13-sidecar-amps
-claude-code
-gemini-cli
-github-cli
 lsp-plugins-lv2
-openai-codex-bin
 qmk-hid
-sesh-bin
-stow
-tmux
-zsh-autocomplete
+ttf-cascadia-mono-nerd
+ttf-lekton-nerd
+ttf-lilex-nerd

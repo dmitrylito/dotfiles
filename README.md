@@ -148,7 +148,7 @@ actionable package lists change. A no-op apply does not rerun Ansible. You can
 also invoke it explicitly:
 
 ```bash
-scripts/update_package_lists.sh   # regenerate the current Omarchy host inventory
+scripts/update_package_lists.sh   # review Omarchy package drift (czu runs it)
 scripts/reconcile-packages.sh --check
 scripts/reconcile-packages.sh     # install declared and remove removed.txt entries
 ```

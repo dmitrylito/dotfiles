@@ -1,0 +1,13 @@
+alsa-tools
+amd-ucode
+lib32-vulkan-radeon
+linux
+linux-headers
+mesa-demos
+mesa-utils
+nvtop
+omarchy-dev
+onnxruntime-opt-rocm
+openrgb
+stress-ng
+vulkan-tools
