@@ -1,12 +1,11 @@
-alsa-tools
+amd-ucode
 dmidecode
 evtest
+flatpak
 fwupd
 hyprland-protocols
 iotop
 lsof
-mesa-demos
-mesa-utils
 pesign
 powertop
 python-wxpython

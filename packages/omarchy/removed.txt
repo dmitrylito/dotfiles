@@ -1,4 +1,5 @@
 7zip
+alsa-tools
 android-studio
 claude-code
 coolercontrol-bin
@@ -13,6 +14,8 @@ hyprmon-bin
 hyprpolkitagent
 libqalculate
 lolcat
+mesa-demos
+mesa-utils
 nano
 noisetorch-bin
 omazed

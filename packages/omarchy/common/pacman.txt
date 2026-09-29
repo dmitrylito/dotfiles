@@ -9,7 +9,6 @@ cmake
 cronie
 direnv
 ex-vi-compat
-flatpak
 ghostty
 gimp
 git-delta

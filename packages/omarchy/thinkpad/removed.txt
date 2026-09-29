@@ -3,6 +3,8 @@ hyprlauncher
 hyprpwcenter
 linux-headers
 lsp-plugins-lv2
+matugen
 openrgb
 qmk-hid
+qt6ct
 steam

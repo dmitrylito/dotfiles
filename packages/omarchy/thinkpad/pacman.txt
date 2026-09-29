@@ -1,2 +1,0 @@
-matugen
-qt6ct

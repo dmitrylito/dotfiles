@@ -1,4 +1,3 @@
-amd-ucode
 linux
 linux-headers
 omarchy-dev

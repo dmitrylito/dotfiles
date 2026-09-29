@@ -1,5 +1,8 @@
 dell-xps-touchpad-haptics
 dell-xps13-sidecar-amps
 egl-wayland
+freerdp
+lact
 lsp-plugins-lv2
+openbsd-netcat
 qmk-hid
