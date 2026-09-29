@@ -1,6 +1,9 @@
 7zip
 alsa-tools
 android-studio
+antigravity
+antigravity-ide
+appmenu-glib-translator-git
 claude-code
 coolercontrol-bin
 coolercontrold-bin

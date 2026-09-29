@@ -6,3 +6,4 @@ lact
 lsp-plugins-lv2
 openbsd-netcat
 qmk-hid
+slack-desktop
