@@ -1,0 +1,36 @@
+{{- if eq (.profile | lower) "omarchy" -}}
+#!/bin/sh
+# Keep this host from ever sleeping: every sleep target masked and logind
+# ignoring the lid and sleep keys (system/30-never-sleep.conf). The lid only
+# blanks the laptop panel, via the Lid Switch binds in hypr/bindings.lua.
+#
+# Usage: not run by hand. chezmoi runs it during `apply` whenever the drop-in
+#        or installer changes (hashes below). To install directly:
+#        sudo ~/.local/share/chezmoi/system/install-never-sleep.sh
+#
+# Never prompts for a password: if the state is wrong and passwordless sudo is
+# unavailable, it prints the command to run and exits 0 so apply continues.
+#
+#   {{ include "system/30-never-sleep.conf" | sha256sum }}
+#   {{ include "system/install-never-sleep.sh" | sha256sum }}
+set -eu
+
+installer="{{ joinPath .chezmoi.sourceDir "system/install-never-sleep.sh" }}"
+dropin=/etc/systemd/logind.conf.d/30-never-sleep.conf
+targets="sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target"
+
+in_place() {
+	cmp -s "{{ joinPath .chezmoi.sourceDir "system/30-never-sleep.conf" }}" "$dropin" || return 1
+	for t in $targets; do
+		[ "$(systemctl is-enabled "$t" 2>/dev/null)" = masked ] || return 1
+	done
+}
+
+in_place && exit 0
+
+if sudo -n true 2>/dev/null; then
+	sudo -n "$installer"
+else
+	echo "never-sleep: not in place; run: sudo $installer" >&2
+fi
+{{ end -}}
