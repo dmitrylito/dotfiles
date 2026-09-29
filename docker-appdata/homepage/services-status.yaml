@@ -11,15 +11,3 @@
           slug: homelab
           fields: [up, down, uptime, incident]
 
-- Status Page:
-    - Status Page:
-        id: status-page
-        icon: mdi-monitor-dashboard
-        description: Kuma public status page, embedded
-        widget:
-          type: iframe
-          name: kuma-status
-          src: https://uptime.init.dlco.us/status/homelab
-          classes: h-96 sm:h-96 md:h-96 lg:h-96 xl:h-96 2xl:h-96
-          allowScrolling: yes
-          loadingStrategy: lazy

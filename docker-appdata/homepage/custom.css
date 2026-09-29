@@ -32,14 +32,13 @@ main {
   z-index: 1;
 }
 
-/* Group order comes from settings.yaml layout: Status, Public, Internal, Stacks, Downloads, Status Page.
+/* Group order comes from settings.yaml layout: Status, Public, Internal, Stacks, Downloads.
    custom.js is not loaded by this Homepage build, so accents key on that order. */
 .services-group:nth-of-type(1) { --accent: var(--green); }
 .services-group:nth-of-type(2) { --accent: var(--blue); }
 .services-group:nth-of-type(3) { --accent: var(--orange); }
 .services-group:nth-of-type(4) { --accent: var(--green); }
 .services-group:nth-of-type(5) { --accent: var(--blue); }
-.services-group:nth-of-type(6) { --accent: var(--green); }
 
 .services-group {
   margin-top: 1.25rem !important;
@@ -150,11 +149,6 @@ main {
 .service-card [class*="dark:bg-theme-900"] {
   background: rgba(0, 0, 0, 0.22) !important;
   border-radius: 8px;
-}
-
-.service-card iframe {
-  height: 52rem !important;
-  border-radius: 10px;
 }
 
 .widget-container,

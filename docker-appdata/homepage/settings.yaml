@@ -40,7 +40,3 @@ layout:
     style: row
     columns: 4
     icon: mdi-download-network-outline
-  Status Page:
-    style: row
-    columns: 1
-    icon: mdi-monitor-dashboard
