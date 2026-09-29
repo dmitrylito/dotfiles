@@ -1,5 +1,1 @@
-coolercontrol-bin
-gputest
-noisetorch-bin
 slack-desktop
-webcamoid

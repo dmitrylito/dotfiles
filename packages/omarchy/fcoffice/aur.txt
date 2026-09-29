@@ -1,6 +1,2 @@
-coolercontrol-bin
 davinci-resolve
-gputest
 input-remapper-bin
-noisetorch-bin
-webcamoid

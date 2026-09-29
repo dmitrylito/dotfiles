@@ -7,3 +7,4 @@ qmk-hid
 ttf-cascadia-mono-nerd
 ttf-lekton-nerd
 ttf-lilex-nerd
+webcamoid-debug

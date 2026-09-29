@@ -8,5 +8,4 @@ nvtop
 omarchy-dev
 onnxruntime-opt-rocm
 openrgb
-stress-ng
 vulkan-tools
