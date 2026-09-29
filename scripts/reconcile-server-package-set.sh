@@ -61,6 +61,8 @@ if [[ $mode == check ]]; then
   prunable=$(list_prunable)
   extra=$(list_extra_explicit)
   desired_asdeps=$(list_desired_as_dependencies)
+  debug=$(list_debug_packages)
+  [[ -n $debug ]] && printf 'would remove debug packages:\n%s\n' "$debug"
   [[ -n $prunable ]] && printf 'would remove explicit leaves:\n%s\n' "$prunable"
   [[ -n $extra ]] && printf 'current undeclared explicit packages (required entries are demoted after pruning):\n%s\n' "$extra"
   [[ -n $desired_asdeps ]] && printf 'would mark declared packages explicit:\n%s\n' "$desired_asdeps"
