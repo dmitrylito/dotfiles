@@ -1,3 +1,4 @@
+7zip
 android-studio
 claude-code
 foot
