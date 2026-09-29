@@ -7,7 +7,8 @@
 # The switch runs in a transient unit (nm-cutover) so a dropped SSH session
 # cannot stop it halfway. A rollback timer (nm-cutover-rollback) re-enables
 # networkd after 5 minutes unless the post-switch checks pass: the interface
-# gets back its current IPv4 address, a default route and a reachable gateway.
+# is owned by NetworkManager (not "connected (externally)"), networkd is stopped,
+# and the interface has its current IPv4 address and a reachable gateway.
 # Follow it with:  journalctl -fu nm-cutover
 # Keeps systemd-resolved (resolv.conf becomes its stub symlink, as on DLCO-1)
 # and restarts the keepalived container so it re-adds its VIP.
@@ -23,12 +24,22 @@ iface=${1:?usage: server-networkmanager-cutover.sh IFACE}
 (( EUID == 0 )) || { printf 'run as root\n' >&2; exit 1; }
 [[ -e /sys/class/net/$iface ]] || { printf 'no interface %s\n' "$iface" >&2; exit 1; }
 
-rollback_cmd='systemctl disable --now NetworkManager NetworkManager-wait-online;
-systemctl enable --now systemd-networkd.socket systemd-networkd systemd-networkd-wait-online;
-docker restart caddy-keepalived-1 >/dev/null 2>&1 || true'
+# networkd has several socket units that each start it on demand; stopping the
+# service while any is active just restarts it (2026-09-29, DLCO-3).
+networkd_units='systemd-networkd.socket systemd-networkd-varlink.socket
+systemd-networkd-varlink-metrics.socket systemd-networkd-resolve-hook.socket
+systemd-networkd.service systemd-networkd-wait-online.service'
+
+rollback_cmd="systemctl disable --now NetworkManager NetworkManager-wait-online;
+systemctl unmask systemd-networkd.service;
+systemctl enable --now $(echo $networkd_units);
+docker restart caddy-keepalived-1 >/dev/null 2>&1 || true"
 
 if [[ -z $run ]]; then
-  systemctl is-enabled -q systemd-networkd || { printf 'systemd-networkd is not enabled; nothing to cut over\n' >&2; exit 1; }
+  if ! systemctl is-enabled -q systemd-networkd && ! systemctl is-active -q systemd-networkd; then
+    printf 'systemd-networkd is neither enabled nor running; nothing to cut over\n' >&2
+    exit 1
+  fi
   expected=$(ip -4 -o addr show dev "$iface" scope global | awk '{ sub(/\/.*/, "", $4); print $4; exit }')
   [[ -n $expected ]] || { printf '%s has no IPv4 address\n' "$iface" >&2; exit 1; }
 
@@ -67,14 +78,20 @@ chmod 0600 "$keyfile"
 install -d /etc/NetworkManager/conf.d
 printf '[main]\ndns=systemd-resolved\n' >/etc/NetworkManager/conf.d/dns.conf
 
-systemctl disable --now systemd-networkd.socket systemd-networkd systemd-networkd-wait-online || true
+# shellcheck disable=SC2086
+systemctl disable --now $networkd_units || true
+systemctl mask systemd-networkd.service
 systemctl enable --now NetworkManager
+# NetworkManager only observes a device networkd configured; make it take over.
+nmcli connection up "$iface" || true
 systemctl enable NetworkManager-wait-online
 
 ok=
 for _ in $(seq 60); do
   gateway=$(ip route show default dev "$iface" 2>/dev/null | awk '{ print $3; exit }')
-  if ip -4 -o addr show dev "$iface" | grep -q " $expected/" && [[ -n $gateway ]] && ping -c1 -W2 "$gateway" >/dev/null 2>&1; then
+  nm_state=$(nmcli -g GENERAL.STATE device show "$iface" 2>/dev/null)
+  if [[ $nm_state == '100 (connected)' ]] && ! systemctl is-active -q systemd-networkd &&
+     ip -4 -o addr show dev "$iface" | grep -q " $expected/" && [[ -n $gateway ]] && ping -c1 -W2 "$gateway" >/dev/null 2>&1; then
     ok=1
     break
   fi
