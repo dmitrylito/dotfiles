@@ -656,27 +656,6 @@
       changed_when: "'changed' in tailnet_zone.stdout"
       when: p == 'server'
 
-    # Uptime Kuma on DLCO-4 checks each service on its LAN port. DLCO-4 is already
-    # trusted over the tailnet, so trusting its LAN address adds no new exposure.
-    - name: Trust the monitoring host's LAN address in firewalld (server)
-      ansible.builtin.shell: |
-        set -eu
-        changed=
-        if ! firewall-cmd --permanent --zone=trusted --query-source={{ monitor_host_ip }} >/dev/null; then
-          firewall-cmd --permanent --zone=trusted --add-source={{ monitor_host_ip }} >/dev/null
-          changed=1
-        fi
-        if ! firewall-cmd --zone=trusted --query-source={{ monitor_host_ip }} >/dev/null; then
-          firewall-cmd --zone=trusted --add-source={{ monitor_host_ip }} >/dev/null
-          changed=1
-        fi
-        [ -z "$changed" ] || echo changed
-      vars:
-        monitor_host_ip: 192.168.0.14/32
-      register: monitor_zone
-      changed_when: "'changed' in monitor_zone.stdout"
-      when: p == 'server'
-
     # =========================================================================
     # SECTION 5: OH MY ZSH (All Profiles)
     # =========================================================================
