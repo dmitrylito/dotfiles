@@ -7,10 +7,12 @@ bob
 btop
 chafa
 chezmoi
+chromium
 claude-desktop
 cmake
 cronie
 direnv
+discord
 dmidecode
 docker
 docker-buildx
@@ -23,6 +25,7 @@ fastfetch
 fd
 ffmpeg
 flatpak
+foot
 fwupd
 gamescope
 gdb
@@ -47,6 +50,7 @@ man-db
 mise-bin
 mosh
 nano
+nautilus
 noto-fonts-extra
 nwg-displays
 omazed
