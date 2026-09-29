@@ -1,5 +1,3 @@
 linux
-linux-headers
-omarchy-dev
 onnxruntime-opt-rocm
 vulkan-tools

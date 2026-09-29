@@ -5,7 +5,9 @@ flatpak
 fwupd
 hyprland-protocols
 iotop
+linux-headers
 lsof
+omarchy-dev
 pesign
 powertop
 python-wxpython
