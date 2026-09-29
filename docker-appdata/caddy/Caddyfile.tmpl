@@ -188,6 +188,15 @@
 			}
 		}
 	}
+	@dlco2 host dlco2.init.dlco.us
+	handle @dlco2 {
+		reverse_proxy https://{{ $dlco2 }}:9090 {
+			header_up Host {host}
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+	}
 	@dlco3 host dlco3.init.dlco.us
 	handle @dlco3 {
 {{ if eq .chezmoi.hostname "DLCO-3" }}
