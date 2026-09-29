@@ -109,8 +109,10 @@
           {% endif %}
 
           installed=
+          deps=
           if command -v pacman >/dev/null 2>&1; then
             installed=$(pacman -Qq | tr '\n' ' ')
+            deps=$(pacman -Qdq | tr '\n' ' ')
           fi
 
           # Quotes are stripped so this can be embedded in the JSON line below;
@@ -131,6 +133,7 @@
           printf '"uid":"%s",' "$(id -u {{ non_root_user | quote }})"
           printf '"locally_removed":"%s",' "$locally_removed"
           printf '"installed":"%s",' "$installed"
+          printf '"deps":"%s",' "$deps"
           printf '"omz":%s,' "$(yn test -f "$home/.oh-my-zsh/oh-my-zsh.sh")"
           printf '"makeflags":%s,' "$(yn grep -qxF '{{ makeflags_line }}' /etc/makepkg.conf)"
           printf '"brew_trust":"%s",' "$brew_trust"
@@ -179,6 +182,8 @@
         # Only hosts that declare ZFS in their added list get the archzfs stack.
         zfs_wanted: "{{ 'zfs-utils' in server_added }}"
         removed_present: "{{ unwanted | intersect(have) }}"
+        # Declared but recorded as a dependency, so an orphan sweep would take it.
+        declared_as_deps: "{{ ((want_native + want_aur) | intersect(st.deps.split())) if p == 'omarchy' else [] }}"
         yay_installed: "{{ 'yay' in have or 'yay-bin' in have }}"
 
     # =========================================================================
@@ -528,6 +533,11 @@
         - p == 'server'
         - not ansible_check_mode
         - not (server_bootstrap | default(false) | bool)
+
+    - name: Mark declared packages explicitly installed ({{ declared_as_deps | default([]) | join(', ') }})
+      ansible.builtin.command:
+        argv: "{{ ['pacman', '-D', '--asexplicit', '--'] + declared_as_deps }}"
+      when: declared_as_deps | default([]) | length > 0
 
     # Intersected with the installed set first: `state: absent` against an
     # already-clean list still pays the module's full ~350ms inventory build to

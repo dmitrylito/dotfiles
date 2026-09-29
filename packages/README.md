@@ -79,7 +79,9 @@ mutate the dotfiles repository.
 The playbook installs missing declarations everywhere. Omarchy removes only
 explicit `removed.txt` entries and never infers deletion from absence; it also
 skips any declared package whose last `pacman.log` event is a removal, so an
-apply never undoes a local removal before the review records a decision. Server
+apply never undoes a local removal before the review records a decision. Declared
+packages that pacman records as dependencies are marked explicit, so an orphan
+sweep cannot take them. Server
 profiles repeatedly remove undeclared explicit leaves, then mark any remaining
 undeclared hard dependencies non-explicit so both servers converge without
 breaking dependency chains. Neither profile sweeps unrelated orphans. During an AUR build, the temporary sudoers
