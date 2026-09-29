@@ -24,7 +24,11 @@ export DJANGO_SETTINGS_MODULE="fleetchaser.settings"
 
 export VIRTUAL_ENV="$PWD/.venv"
 export PATH="$PWD/.venv/bin:$PATH"
-export COMPOSE_FILE="$PWD/docker/docker-compose.yml"
+# Compose from any directory in the repo. `-f` replaces COMPOSE_FILE and resolves relative to
+# cwd, so overrides need the full base + override list:
+#   docker compose -f "$DOCKER_DIR/docker-compose.yml" -f "$DOCKER_DIR/docker-compose.test-db.yml" up
+export DOCKER_DIR="$PWD/docker"
+export COMPOSE_FILE="$DOCKER_DIR/docker-compose.yml"
 
 # Chezmoi-managed Claude Code skill helpers.
 PATH_add "$HOME/.claude/skills/restack-migrations"
