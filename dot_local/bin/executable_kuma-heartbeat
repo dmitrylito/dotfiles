@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Pushes up/down heartbeats to Uptime Kuma push monitors for things Kuma cannot reach
+# directly: containers with no published port, and libvirt VMs with no network.
+#
+# Usage: kuma-heartbeat            (run by kuma-heartbeat.timer every minute)
+# Config: ~/.config/kuma-heartbeat/checks — NOT chezmoi-managed; the push tokens stay
+#   host-local (mode 0600). One check per line, `#` comments allowed:
+#     container <docker-container-name> <push-token>
+#     vm        <libvirt-domain-name>   <push-token>
+#   A token comes from the push monitor's URL in Kuma (…/api/push/<token>).
+# Env: KUMA_PUSH_BASE overrides the Kuma address (default http://192.168.0.14:3001).
+
+set -uo pipefail
+
+readonly CHECKS="${XDG_CONFIG_HOME:-$HOME/.config}/kuma-heartbeat/checks"
+readonly BASE="${KUMA_PUSH_BASE:-http://192.168.0.14:3001}"
+
+[[ -r "$CHECKS" ]] || { echo "no checks file at $CHECKS" >&2; exit 1; }
+
+check_container() {
+  local state
+  if ! state=$(docker inspect -f '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' "$1" 2>/dev/null); then
+    echo "down container not found"
+    return
+  fi
+  read -r run health <<<"$state"
+  if [[ "$run" == running && ( -z "$health" || "$health" == healthy ) ]]; then
+    echo "up ${run}${health:+ ($health)}"
+  else
+    echo "down ${run}${health:+ ($health)}"
+  fi
+}
+
+# libvirt's system socket needs polkit or root, so the qemu process stands in for
+# `virsh domstate`. A paused domain still counts as up.
+check_vm() {
+  if pgrep -f -- "-name guest=$1," >/dev/null; then
+    echo "up qemu process running"
+  else
+    echo "down qemu process not running"
+  fi
+}
+
+while read -r kind target token _; do
+  [[ -z "${kind:-}" || "$kind" == \#* ]] && continue
+  case "$kind" in
+    container) result=$(check_container "$target") ;;
+    vm) result=$(check_vm "$target") ;;
+    *) echo "unknown check kind: $kind" >&2; continue ;;
+  esac
+  status=${result%% *}
+  msg=${result#* }
+  curl -fsS -o /dev/null --max-time 10 -G "$BASE/api/push/$token" \
+    --data-urlencode "status=$status" --data-urlencode "msg=$msg" \
+    || echo "push failed for $kind $target" >&2
+done <"$CHECKS"
