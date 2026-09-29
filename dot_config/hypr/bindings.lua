@@ -210,3 +210,8 @@ o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true
 
 o.bind("SUPER + M", "Show key bindings", "omarchy-menu-keybindings")
 o.bind("SUPER + CTRL + ALT + L", "Suspend", "systemctl suspend", { locked = true })
+
+-- Sleep is disabled on this host (system/install-never-sleep.sh), so closing the
+-- lid only blanks the panel. Omarchy's own lid binds still run alongside these.
+o.bind("switch:on:Lid Switch", nil, hl.dsp.dpms({ action = "disable", monitor = "eDP-1" }), { locked = true })
+o.bind("switch:off:Lid Switch", nil, hl.dsp.dpms({ action = "enable", monitor = "eDP-1" }), { locked = true })
