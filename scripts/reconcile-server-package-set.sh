@@ -46,6 +46,11 @@ list_extra_explicit() {
   comm -23 <(pacman -Qeq | sort -u) "$desired_file"
 }
 
+# makepkg -debug companions install as dependencies, so pruning never sees them.
+list_debug_packages() {
+  pacman -Qqm | grep -E -- '-debug$' || true
+}
+
 list_desired_as_dependencies() {
   comm -23 \
     <(comm -12 <(pacman -Qq | sort -u) "$desired_file") \
