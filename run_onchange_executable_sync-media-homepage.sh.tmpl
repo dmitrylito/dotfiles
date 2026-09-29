@@ -5,6 +5,7 @@
 # {{ . }}-sha256={{ include (printf "docker-appdata/homepage/%s" .) | sha256sum }}
 {{ end -}}
 # generator-sha256={{ include "scripts/homepage-caddy-services.sh" | sha256sum }}
+# stacks-sha256={{ include "scripts/homepage-stacks.sh" | sha256sum }}
 # caddyfile-sha256={{ include "docker-appdata/caddy/Caddyfile.tmpl" | sha256sum }}
 exec /home/dmitrylito/.local/share/chezmoi/scripts/sync-media-homepage.sh
 {{ else -}}

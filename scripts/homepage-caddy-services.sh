@@ -2,7 +2,7 @@
 # Emit Homepage service groups (YAML list items) for every `@name host …` site in a rendered Caddyfile.
 # Usage: homepage-caddy-services.sh [/path/to/Caddyfile]   (default: ~/docker-appdata/caddy/Caddyfile)
 # `*.dlco.us` sites become the "Public" group, `*.init.dlco.us` sites the "Internal" group; each card links
-# to the first host, describes the backend, and gets a siteMonitor on the first host. Stdout is appended to
+# to the first host, shows the proxy hostname(s), and gets a siteMonitor on the first host. Stdout is appended to
 # services.yaml by sync-media-homepage.sh, so keep the output a top-level YAML list.
 set -euo pipefail
 caddyfile=${1:-$HOME/docker-appdata/caddy/Caddyfile}
@@ -36,9 +36,7 @@ group != "" && $1 ~ /^@/ && $2 == "host" {
     pending = name; hosts[name] = primary; extras[name] = extra; next
 }
 group != "" && pending != "" && $1 == "reverse_proxy" {
-    target = $2 ~ /^@/ ? $3 : $2
-    sub(/^https?:\/\//, "", target)
-    desc = target; if (extras[pending] != "") desc = desc " · also " extras[pending]
+    desc = hosts[pending]; if (extras[pending] != "") desc = desc " · " extras[pending]
     body = body sprintf("    - %s:\n        id: caddy-%s\n        icon: %s\n        href: https://%s\n        description: %s\n        siteMonitor: https://%s\n", pending, pending, icon(pending), hosts[pending], desc, hosts[pending])
     count++; pending = ""
 }

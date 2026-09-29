@@ -5,7 +5,7 @@ const GROUP_ACCENTS = {
   media: "green",
   downloads: "blue",
   management: "orange",
-  infrastructure: "green",
+  stacks: "green",
 };
 
 const applyAccents = () => {

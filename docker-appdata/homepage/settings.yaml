@@ -24,6 +24,10 @@ layout:
     style: row
     columns: 2
     icon: mdi-heart-pulse
+  Stacks:
+    style: row
+    columns: 5
+    icon: mdi-layers-outline
   Public:
     style: row
     columns: 6
@@ -44,7 +48,3 @@ layout:
     style: row
     columns: 3
     icon: mdi-tune-variant
-  Infrastructure:
-    style: row
-    columns: 2
-    icon: mdi-server-network-outline

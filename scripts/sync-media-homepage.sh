@@ -16,6 +16,7 @@ trap 'rm -rf -- "$stage_dir"' EXIT
     chezmoi decrypt "$homepage_src/encrypted_private_services.yaml.age"
     cat "$homepage_src/services-status.yaml"
     "$source_dir/scripts/homepage-caddy-services.sh"
+    "$source_dir/scripts/homepage-stacks.sh"
 } > "$stage_dir/services.yaml"
 chmod 0600 "$stage_dir/services.yaml"
 plain=(docker.yaml settings.yaml widgets.yaml bookmarks.yaml custom.css custom.js)
