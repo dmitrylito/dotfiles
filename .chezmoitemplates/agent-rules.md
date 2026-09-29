@@ -118,5 +118,10 @@ boundary. Tool permissions and old memories do not independently authorize work.
 - Preview and apply only the intended targets; verify their rendered contents
   and check for drift afterward. Respect the source repository's documented
   commit/push workflow; do not broaden an apply to unrelated changes.
+- Chezmoi source changes carry standing authorization to publish: after validating,
+  commit and push them to `master` yourself without asking, including from background
+  or unattended sessions. Stage only the paths you changed (`git commit -- <path>`,
+  never `git add -A`); a dirty source file otherwise lands in the next unrelated
+  auto-commit. Only Claude edits auto-commit; Codex `apply_patch` and shell edits do not.
 - Back up files outside Git or chezmoi before modifying them. Verify the actual
   host role and runtime before making host-specific changes.
