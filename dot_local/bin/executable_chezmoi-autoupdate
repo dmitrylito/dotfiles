@@ -145,8 +145,11 @@ run() {
 
     # Same reasoning as apply_local (see --no-tty there): a wedged background apply
     # holds the lock and silently starves every --local run. Longer bound; it is
-    # off the shell's critical path.
-    $BG_TIMEOUT chezmoi apply --no-tty --exclude scripts >/dev/null 2>&1 </dev/null
+    # off the shell's critical path. --keep-going: one drifted target (its
+    # "changed since chezmoi last wrote it?" prompt fails under --no-tty) must not
+    # hold back every other update; the log names what was left behind.
+    local err
+    err=$($BG_TIMEOUT chezmoi apply --no-tty --keep-going --exclude scripts 2>&1 >/dev/null </dev/null)
     rc=$?
 
     if [ "$rc" -eq 0 ]; then
@@ -155,7 +158,7 @@ run() {
     elif [ "$rc" -eq 124 ]; then
         log "failed: apply timed out after ${TIMEOUT_BG}s"
     else
-        log "failed: chezmoi apply returned $rc"
+        log "failed: chezmoi apply returned $rc${err:+ - $(printf '%s\n' "$err" | grep -v '^chezmoi: warning:' | tr '\n' ' ')}"
     fi
 }
 
