@@ -1,4 +1,3 @@
-model = "validation-model"
 approval_policy = "on-request"
 
 [tui]

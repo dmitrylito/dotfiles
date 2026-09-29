@@ -8,6 +8,7 @@ also changes Claude instructions. Keep Codex-specific behavior in the Codex temp
 runtime state. Keep project trust, hook trust, app permissions, and host-specific
 state intact. Project `.codex/config.toml` files inherit the global approval policy;
 keep integration definitions there without adding independent approval defaults.
+The default `model` is machine-specific and is not seeded or synchronized by chezmoi.
 
 `dot_codex/modify_hooks.json.tmpl` preserves unrelated handlers and enforces one
 Moshi handler per managed event. Invalid JSON or invalid event containers must fail

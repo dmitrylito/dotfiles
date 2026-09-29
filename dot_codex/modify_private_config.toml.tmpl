@@ -24,7 +24,6 @@ SOURCE_DIR = Path({{ .chezmoi.sourceDir | quote }})
 BASELINE_PATH = SOURCE_DIR / "scripts/codex-config-baseline.toml.age"
 RETIRED_MCP_SERVERS = {"node_repl", "context7"}
 SYNCHRONIZED_SETTINGS = (
-    ("model",),
     ("approval_policy",),
     ("tui", "status_line"),
     ("tui", "animations"),
