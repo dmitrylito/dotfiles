@@ -1,0 +1,10 @@
+[Unit]
+Description=Push container and VM heartbeats to Uptime Kuma
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/kuma-heartbeat
+TimeoutStartSec=2min
+Nice=10
