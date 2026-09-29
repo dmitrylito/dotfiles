@@ -96,12 +96,20 @@ def remove_unsupported_settings(config):
     )
 
 
+def apply_host_settings(config):
+    if {{ .chezmoi.hostname | quote }} == "DLCO-3":
+        if "tui" not in config:
+            config["tui"] = tomlkit.table()
+        config["tui"]["fullscreen_transcript"] = False
+
+
 live_text = strip_retired_servers(sys.stdin.read())
 baseline_text = strip_retired_servers(read_baseline())
 
 if not live_text.strip():
     baseline = tomlkit.parse(baseline_text)
     remove_unsupported_settings(baseline)
+    apply_host_settings(baseline)
     sys.stdout.write(tomlkit.dumps(baseline))
     raise SystemExit(0)
 
@@ -116,4 +124,5 @@ fill_defaults(live, baseline)
 synchronize_settings(live, baseline)
 remove_retired_servers(live)
 remove_unsupported_settings(live)
+apply_host_settings(live)
 sys.stdout.write(tomlkit.dumps(live))
