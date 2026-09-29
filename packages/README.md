@@ -50,6 +50,9 @@ makepkg `-debug` companions (now disabled in `/etc/makepkg.conf`) are removed.
   explicit packages nothing depends on that are undeclared (install on all hosts,
   this host, or ignore) and declared packages removed on this host (remove on all
   hosts, this host, or reinstall), then commits and pushes the list changes.
+  After applying, `czu` runs it with `--prune`, which removes orphaned
+  dependencies (`pacman -Qdtq`, minus declared and ignored packages) with
+  `sudo pacman -Rns --noconfirm`.
 - Run `scripts/update_server_package_lists.sh` manually for an audit; the server
   Pacman hook normally schedules it after a successful transaction.
 - Review the diff before committing; generation is not package policy.

@@ -13,6 +13,9 @@
 # removal. The playbook skips those as well, so an apply never reinstalls a
 # package you removed before you decide here. Changed lists are committed and
 # pushed; Esc or Ctrl-C at any prompt aborts without changing anything.
+#
+# --prune (czu runs it after applying) removes orphaned dependencies with
+# `sudo pacman -Rns --noconfirm`, except declared or ignored packages.
 
 set -euo pipefail
 
@@ -39,6 +42,15 @@ pacman -Qmq | sort > "$TMP/foreign"
 expac -Q '%w|%n|%N' | awk -F'|' '$1 == "explicit" && $3 == "" {print $2}' | grep -v -- '-debug$' | sort > "$TMP/chosen"
 awk '/\[ALPM\] (installed|removed|upgraded|reinstalled|downgraded) /{a[$4]=$3}
      END{for (p in a) if (a[p] == "removed") print p}' /var/log/pacman.log | sort > "$TMP/gone"
+
+if [[ ${1:-} == --prune ]]; then
+    pacman -Qdtq | sort | comm -23 - "$TMP/declared" | comm -23 - "$TMP/ignored" > "$TMP/orphans" || true
+    [[ -s $TMP/orphans ]] || exit 0
+    printf 'Removing orphaned dependencies: %s\n' "$(tr '\n' ' ' < "$TMP/orphans")"
+    mapfile -t orphans < "$TMP/orphans"
+    sudo pacman -Rns --noconfirm -- "${orphans[@]}"
+    exit
+fi
 
 comm -23 "$TMP/chosen" "$TMP/declared" | comm -23 - "$TMP/removed" | comm -23 - "$TMP/ignored" \
     | comm -23 - "$TMP/omarchy" > "$TMP/new"
