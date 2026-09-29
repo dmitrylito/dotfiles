@@ -159,9 +159,9 @@
         # A machine that has never run the generator has no host directory yet.
         # Fall back to the common baseline; removals are always explicit below.
         listed: "{{ p == 'server' or (p == 'omarchy' and st.host_lists) }}"
-        server_added: "{{ (lookup('file', server_added_file, errors='ignore').splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
-        server_added_aur: "{{ (lookup('file', server_added_aur_file, errors='ignore').splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
-        server_excluded: "{{ (lookup('file', server_excluded_file, errors='ignore').splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
+        server_added: "{{ ((lookup('file', server_added_file, errors='ignore') | default('', true)).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
+        server_added_aur: "{{ ((lookup('file', server_added_aur_file, errors='ignore') | default('', true)).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
+        server_excluded: "{{ ((lookup('file', server_excluded_file, errors='ignore') | default('', true)).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if p == 'server' else [] }}"
         want_native: "{{ ((common_linux_packages + ((lookup('file', server_pacman_file if p == 'server' else pacman_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if listed else []) + server_added) | unique) | difference(server_excluded) }}"
         want_aur: "{{ ((lookup('file', server_aur_file if p == 'server' else aur_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if listed else []) + server_added_aur }}"
         unwanted: "{{ (lookup('file', removed_file).splitlines() | reject('match', '^#') | reject('match', '^$') | list) if (p == 'omarchy' and listed) else [] }}"
