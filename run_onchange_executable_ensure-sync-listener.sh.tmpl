@@ -1,0 +1,35 @@
+#!/bin/sh
+# Start (or restart) chezmoi-sync-listener, which pulls and applies pushed
+# dotfile commits within seconds on every machine.
+#
+# Usage: not run by hand. chezmoi runs it during a full `apply`/`update` whenever
+#        its rendered content changes. chezmoi-autoupdate skips scripts, so a
+#        machine needs one full apply (`czu`) before its listener exists.
+#
+# Linux: systemd user unit. macOS: LaunchAgent. No-ops where neither manager is
+# reachable (e.g. an apply over ssh with no user session bus).
+#
+# Re-runs when these change:
+#   {{ include "dot_local/bin/executable_chezmoi-sync-listener" | sha256sum }}
+#   {{ include "dot_config/systemd/user/chezmoi-sync-listener.service" | sha256sum }}
+#   {{ include "Library/LaunchAgents/com.dmitrylito.chezmoi-sync-listener.plist.tmpl" | sha256sum }}
+set -eu
+
+{{ if eq (.profile | lower) "mac" -}}
+PLIST="{{ .chezmoi.homeDir }}/Library/LaunchAgents/com.dmitrylito.chezmoi-sync-listener.plist"
+DOMAIN="gui/$(id -u)"
+mkdir -p "{{ .chezmoi.homeDir }}/Library/Logs"
+launchctl bootout "$DOMAIN/com.dmitrylito.chezmoi-sync-listener" 2>/dev/null || true
+launchctl bootstrap "$DOMAIN" "$PLIST"
+echo "ensure-sync-listener: started LaunchAgent com.dmitrylito.chezmoi-sync-listener"
+{{- else -}}
+command -v systemctl >/dev/null 2>&1 || exit 0
+if ! systemctl --user show-environment >/dev/null 2>&1; then
+	echo "ensure-sync-listener: no systemd user manager reachable, skipping"
+	exit 0
+fi
+systemctl --user daemon-reload
+systemctl --user enable chezmoi-sync-listener.service
+systemctl --user restart chezmoi-sync-listener.service
+echo "ensure-sync-listener: chezmoi-sync-listener.service $(systemctl --user is-active chezmoi-sync-listener.service)"
+{{- end }}

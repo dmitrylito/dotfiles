@@ -5,6 +5,7 @@
 #   chezmoi-autoupdate           throttled; no-op if it already ran within MAX_AGE
 #   chezmoi-autoupdate --local   synchronous local-only apply; no network
 #   chezmoi-autoupdate --force   ignore the throttle
+#   chezmoi-autoupdate --sync    like --force, but in the foreground (chezmoi-sync-listener)
 #   chezmoi-autoupdate --status  print the last run's outcome and exit
 #
 # Invoked from ~/.zshrc on interactive shell start, twice: once as --local
@@ -58,6 +59,7 @@ case "${1:-}" in
     --status) [ -r "$LOG" ] && cat "$LOG" || echo "chezmoi-autoupdate: never run"; exit 0 ;;
     --local)  LOCAL=1; FORCE=0 ;;
     --force)  LOCAL=0; FORCE=1 ;;
+    --sync)   LOCAL=0; FORCE=1; SYNC=1 ;;
     "")       LOCAL=0; FORCE=0 ;;
     *)        echo "chezmoi-autoupdate: unknown option: $1" >&2; exit 2 ;;
 esac
@@ -124,7 +126,7 @@ fi
 
 run() {
     # Let the shell finish sourcing its rc files before apply can rewrite them.
-    sleep 3
+    [ "${SYNC:-0}" -eq 1 ] || sleep 3
 
     : >"$STAMP"
 
@@ -160,6 +162,13 @@ run() {
 # Detach stdio too, or the background child holds the caller's pipe open for its
 # whole run — `zsh -ic ... | foo` would block on it.
 # flock is Linux-only; on macOS just run unserialised.
+if [ "${SYNC:-0}" -eq 1 ]; then
+    # Waits for a shell-started run instead of skipping, so the caller's
+    # follow-up (package converge) sees this commit applied.
+    ( flock -w "$TIMEOUT_BG" 9 || { log "skipped: lock busy"; exit 0; }; run ) 9>"$LOCK" </dev/null
+    exit 0
+fi
+
 if command -v flock >/dev/null 2>&1; then
     ( flock -n 9 || exit 0; run ) 9>"$LOCK" >/dev/null 2>&1 </dev/null &
 else

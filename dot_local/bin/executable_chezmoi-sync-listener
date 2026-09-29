@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# chezmoi-sync-listener — apply pushed dotfile commits within seconds, on every machine.
+#
+# Runs as the user unit chezmoi-sync-listener.service on Linux and as the
+# LaunchAgent com.dmitrylito.chezmoi-sync-listener on macOS; both are started by
+# run_onchange_executable_ensure-sync-listener.sh (servers: also playbook.yml). Every CHEZMOI_SYNC_INTERVAL seconds (default 30) it
+# reads origin/master with `git ls-remote`. When that differs from the commit
+# chezmoi-autoupdate last applied, it runs `chezmoi-autoupdate --sync` (pull
+# --ff-only + `apply --exclude scripts`; skips a dirty tree). On servers it then
+# starts the root chezmoi-server-package-converge.service, which a polkit rule
+# from playbook.yml lets this user start. A commit that fails to apply is retried
+# every CHEZMOI_SYNC_RETRY seconds (default 600). Outcome: `chezmoi-autoupdate
+# --status`; logs: `journalctl --user -u chezmoi-sync-listener`, or on macOS
+# ~/Library/Logs/chezmoi-sync-listener.log.
+# Needs the user's GitHub SSH key to work without an agent (the root converge
+# worker already pulls that way).
+
+set -uo pipefail
+
+interval=${CHEZMOI_SYNC_INTERVAL:-30}
+retry=${CHEZMOI_SYNC_RETRY:-600}
+applied="${XDG_CACHE_HOME:-$HOME/.cache}/chezmoi-autoupdate.applied"
+export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10"
+
+src=$(chezmoi source-path) || { echo "no chezmoi source path" >&2; exit 1; }
+self=$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")
+self_sum=$(cksum <"$self")
+tried=
+tried_at=0
+timeout=
+command -v timeout >/dev/null 2>&1 && timeout="timeout 30"
+converge=
+command -v systemctl >/dev/null 2>&1 &&
+  systemctl cat chezmoi-server-package-converge.service >/dev/null 2>&1 &&
+  converge=1
+
+while :; do
+  remote=$($timeout git -C "$src" ls-remote origin refs/heads/master 2>/dev/null | cut -f1)
+  head=
+  [[ -r $applied ]] && IFS=$'\t' read -r _ head <"$applied"
+
+  if [[ -n $remote && $remote != "$head" ]] &&
+     { [[ $remote != "$tried" ]] || (( SECONDS - tried_at >= retry )); }; then
+    tried=$remote
+    tried_at=$SECONDS
+    echo "origin/master ${remote:0:7} != applied ${head:0:7}; syncing"
+    chezmoi-autoupdate --sync
+    chezmoi-autoupdate --status
+    if [[ -n $converge ]]; then
+      systemctl start --no-block chezmoi-server-package-converge.service ||
+        echo "could not start chezmoi-server-package-converge.service" >&2
+    fi
+    # Pick up a new version of this script that the apply just installed.
+    [[ $(cksum <"$self") == "$self_sum" ]] || exec "$self"
+  fi
+  sleep "$interval"
+done

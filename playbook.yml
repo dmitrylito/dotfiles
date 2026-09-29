@@ -832,6 +832,51 @@
           environment:
             XDG_RUNTIME_DIR: "/run/user/{{ st.uid }}"
 
+        # Lets the sync listener start the converge the moment a push lands;
+        # the timer already runs the same unit on the same committed content.
+        - name: Allow the server user to start package convergence
+          ansible.builtin.copy:
+            dest: /etc/polkit-1/rules.d/50-chezmoi-package-converge.rules
+            owner: root
+            group: root
+            mode: '0644'
+            content: |
+              polkit.addRule(function(action, subject) {
+                if (action.id == "org.freedesktop.systemd1.manage-units" &&
+                    action.lookup("unit") == "chezmoi-server-package-converge.service" &&
+                    action.lookup("verb") == "start" &&
+                    subject.user == "{{ non_root_user }}") {
+                  return polkit.Result.YES;
+                }
+              });
+
+        # The converge only pulls; install the listener's own files so the unit
+        # exists before it is enabled. The listener applies everything else.
+        - name: Install the push listener's files
+          ansible.builtin.command:
+            argv:
+              - chezmoi
+              - apply
+              - --no-tty
+              - "{{ st.home }}/.local/bin/chezmoi-autoupdate"
+              - "{{ st.home }}/.local/bin/chezmoi-sync-listener"
+              - "{{ st.home }}/.config/systemd/user/chezmoi-sync-listener.service"
+          changed_when: false
+          become: true
+          become_user: "{{ non_root_user }}"
+
+        - name: Enable the push listener that pulls and applies dotfiles
+          ansible.builtin.systemd_service:
+            name: chezmoi-sync-listener.service
+            scope: user
+            daemon_reload: true
+            enabled: true
+            state: started
+          become: true
+          become_user: "{{ non_root_user }}"
+          environment:
+            XDG_RUNTIME_DIR: "/run/user/{{ st.uid }}"
+
         - name: Enable the root package convergence timer
           ansible.builtin.systemd_service:
             name: chezmoi-server-package-converge.timer

@@ -90,6 +90,7 @@ Projects/fleetchaser/
 .config/aerospace/
 .config/sketchybar/
 .config/borders/
+Library/
 {{ end }}
 
 {{ if eq $profile "mac" }}

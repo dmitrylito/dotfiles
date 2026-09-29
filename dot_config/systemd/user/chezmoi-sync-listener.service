@@ -1,0 +1,13 @@
+[Unit]
+Description=Apply pushed chezmoi commits as soon as they land on origin
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin
+ExecStart=%h/.local/bin/chezmoi-sync-listener
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target
