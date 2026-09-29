@@ -170,6 +170,8 @@
         pacman_missing: "{{ want_native | difference(have) }}"
         # yay-bin bootstraps itself below; feeding it back into yay is a no-op
         aur_missing: "{{ want_aur | reject('equalto', 'yay-bin') | list | difference(have) }}"
+        # Only hosts that declare ZFS in their added list get the archzfs stack.
+        zfs_wanted: "{{ 'zfs-utils' in server_added }}"
         removed_present: "{{ unwanted | intersect(have) }}"
         yay_installed: "{{ 'yay' in have or 'yay-bin' in have }}"
 
@@ -190,6 +192,15 @@
       when:
         - is_linux
         - not st.makeflags
+
+    # makepkg's last debug/!debug wins. The -debug companions it would build
+    # exist in no AUR repo and otherwise pile up as dependency packages.
+    - name: Stop makepkg building -debug companion packages
+      ansible.builtin.lineinfile:
+        path: /etc/makepkg.conf
+        line: "OPTIONS+=(!debug)"
+        validate: 'bash -n %s'
+      when: is_linux
 
     # =========================================================================
     # SECTION 2: MACOS HOMEBREW PACKAGES (Applied only to mac profile)
@@ -248,8 +259,19 @@
     # module to load — make linux-lts the default boot entry. archzfs is also
     # tagged "experimental" upstream and is version-locked to a specific
     # linux-lts release, so a kernel bump may have to wait for an archzfs build.
+    - name: Drop the archzfs repository from servers without ZFS
+      ansible.builtin.blockinfile:
+        path: /etc/pacman.conf
+        marker: "# {mark} ARCHZFS REPO (managed by chezmoi/ansible)"
+        state: absent
+      when:
+        - p == 'server'
+        - not (zfs_wanted | bool)
+
     - name: Set up archzfs binary repo and install ZFS (server)
-      when: p == 'server'
+      when:
+        - p == 'server'
+        - zfs_wanted | bool
       block:
         - name: Receive and locally sign the archzfs signing key
           ansible.builtin.command: "{{ item }}"
@@ -512,6 +534,114 @@
         name: "{{ removed_present }}"
         state: absent
       when: removed_present | default([]) | length > 0
+
+    # Every server boots Limine into the linux-lts UKI; the UKI embeds
+    # /etc/kernel/cmdline and microcode (mkinitcpio `microcode` hook). The old
+    # boot manager's firmware entries stay as a fallback behind Limine.
+    - name: Boot servers through Limine into linux-lts
+      when: p == 'server'
+      block:
+        - name: Build linux-lts as a UKI with a fallback image
+          ansible.builtin.copy:
+            dest: /etc/mkinitcpio.d/linux-lts.preset
+            owner: root
+            group: root
+            mode: '0644'
+            content: |
+              # Managed by chezmoi playbook.yml
+              ALL_kver="/boot/vmlinuz-linux-lts"
+              PRESETS=('default' 'fallback')
+              default_uki="/boot/EFI/Linux/arch-linux-lts.efi"
+              fallback_uki="/boot/EFI/Linux/arch-linux-lts-fallback.efi"
+              fallback_options="-S autodetect"
+          register: lts_preset
+
+        - name: Check for the linux-lts UKI
+          ansible.builtin.stat:
+            path: /boot/EFI/Linux/arch-linux-lts.efi
+          register: lts_uki
+
+        - name: Rebuild the linux-lts UKI
+          ansible.builtin.command:
+            argv: [mkinitcpio, -p, linux-lts]
+          when: >-
+            lts_preset is changed or not lts_uki.stat.exists or
+            (pacman_missing | default([]) | intersect(['amd-ucode', 'intel-ucode']) | length > 0)
+
+        - name: Ensure the local libexec directory exists
+          ansible.builtin.file:
+            path: /usr/local/libexec
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Install root-owned Limine deploy script
+          ansible.builtin.copy:
+            src: "{{ chezmoi_source_dir }}/scripts/server-limine.sh"
+            dest: /usr/local/libexec/chezmoi-limine-sync
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Ensure the pacman hook directory exists
+          ansible.builtin.file:
+            path: /etc/pacman.d/hooks
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        # Sorts after 90-mkinitcpio-install, so rebuilt UKIs exist when it runs.
+        - name: Redeploy Limine after limine or kernel changes
+          ansible.builtin.copy:
+            dest: /etc/pacman.d/hooks/99-limine.hook
+            owner: root
+            group: root
+            mode: '0644'
+            content: |
+              [Trigger]
+              Operation = Install
+              Operation = Upgrade
+              Type = Package
+              Target = limine
+
+              [Trigger]
+              Operation = Install
+              Operation = Upgrade
+              Operation = Remove
+              Type = Path
+              Target = usr/lib/modules/*/vmlinuz
+
+              [Action]
+              Description = Deploying Limine and its boot entries...
+              When = PostTransaction
+              Exec = /usr/local/libexec/chezmoi-limine-sync
+
+        - name: Deploy Limine and make it the first boot entry
+          ansible.builtin.command:
+            argv: [/usr/local/libexec/chezmoi-limine-sync]
+          register: limine_sync
+          changed_when: "'changed:' in limine_sync.stdout"
+
+    # Matches DLCO-1/2, where the tailnet is fully trusted. Runtime and permanent
+    # are set separately; a firewalld reload would make Docker rebuild its rules.
+    - name: Trust the tailnet interface in firewalld (server)
+      ansible.builtin.shell: |
+        set -eu
+        changed=
+        if ! firewall-cmd --permanent --zone=trusted --query-interface=tailscale0 >/dev/null; then
+          firewall-cmd --permanent --zone=trusted --add-interface=tailscale0 >/dev/null
+          changed=1
+        fi
+        if [ "$(firewall-cmd --get-zone-of-interface=tailscale0 2>/dev/null || true)" != trusted ]; then
+          firewall-cmd --zone=trusted --change-interface=tailscale0 >/dev/null
+          changed=1
+        fi
+        [ -z "$changed" ] || echo changed
+      register: tailnet_zone
+      changed_when: "'changed' in tailnet_zone.stdout"
+      when: p == 'server'
 
     # =========================================================================
     # SECTION 5: OH MY ZSH (All Profiles)

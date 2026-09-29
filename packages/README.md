@@ -31,10 +31,16 @@ single-command setup flow.
   installed on that server; capture retains them in the shared list.
 - `mac/{brew,casks,taps}.txt`: desired Homebrew set.
 
+Server hosts are identical apart from CPU and role: DLCO-1 alone declares ZFS
+(`zfs-linux-lts`, `zfs-utils` in its added list turn on the archzfs stack),
+ollama and samba; DLCO-2 adds libvirt; DLCO-3 swaps in `amd-ucode` and drops
+the NVIDIA stack. Every server boots Limine into the linux-lts UKI
+(`scripts/server-limine.sh`, installed as `chezmoi-limine-sync`).
+
 The old `untracked.regex` files are unnecessary. Omarchy does not prune by
-absence. Server pruning is constrained to the shared declarations plus the ZFS
-packages provisioned separately by the playbook; required undeclared packages
-are retained and marked as dependencies.
+absence. Server pruning is constrained to the shared and per-host declarations;
+required undeclared packages are retained and marked as dependencies, and
+makepkg `-debug` companions (now disabled in `/etc/makepkg.conf`) are removed.
 
 ## Regeneration
 
