@@ -215,7 +215,7 @@
 		}
 {{ end }}
 	}
-	@kuma host kuma.init.dlco.us
+	@kuma host kuma.init.dlco.us uptime.init.dlco.us
 	handle @kuma {
 		reverse_proxy {{ $dlco4 }}:3001
 	}
