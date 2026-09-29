@@ -5,7 +5,7 @@
 set -euo pipefail
 remote_sock=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/media-remote/podman.sock
 host=$(hostname)
-declare -A hrefs=([prod]=https://cer.dlco.us [supabase]=https://vsl.dlco.us [caddy]=https://home.dlco.us)
+declare -A hrefs=([prod]=https://cer.dlco.us/admin [supabase]=https://vsl.dlco.us [caddy]=https://home.dlco.us)
 declare -A icons=([prod]=mdi-office-building [supabase]=supabase.png [caddy]=caddy.png [media]=mdi-multimedia)
 card() {
     local name=$1 count=$2 where=$3 engine=$4 server=$5 container=$6
