@@ -26,7 +26,7 @@ layout:
     icon: mdi-heart-pulse
   Media:
     style: row
-    columns: 5
+    columns: 4
     icon: mdi-play-box-multiple-outline
   Management:
     style: row

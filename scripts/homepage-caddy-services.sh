@@ -17,9 +17,9 @@ BEGIN {
     cat["audiobooks"] = "Media"; cat["books"] = "Media"; cat["calibre"] = "Media"; cat["plex"] = "Media"; cat["seerr"] = "Media"
     cat["adguard"] = "Management"; cat["dlco1"] = "Management"; cat["dlco2"] = "Management"; cat["dlco3"] = "Management"
     cat["kuma"] = "Management"; cat["omada"] = "Management"
-    cat["chat"] = "Personal"
-    cat["backend"] = "Work"; cat["billing"] = "Work"; cat["cer"] = "Work"; cat["cer-staging"] = "Work"; cat["console"] = "Work"
-    cat["fcbot"] = "Work"; cat["liveevents"] = "Work"; cat["vsl"] = "Work"
+    cat["chat"] = "Work"; cat["cer"] = "Personal"; cat["cer-staging"] = "Personal"; cat["vsl"] = "Personal"
+    cat["backend"] = "Work"; cat["billing"] = "Work"; cat["console"] = "Work"
+    cat["fcbot"] = "Work"; cat["liveevents"] = "Work"
     skip["home"] = 1; skip["sonarr"] = 1; skip["radarr"] = 1; skip["prowlarr"] = 1; skip["torrent"] = 1
     icons["audiobooks"] = "audiobookshelf.png"; icons["books"] = "calibre-web.png"; icons["calibre"] = "calibre-web.png"
     icons["plex"] = "plex.png"; icons["seerr"] = "overseerr.png"; icons["vsl"] = "supabase.png"
