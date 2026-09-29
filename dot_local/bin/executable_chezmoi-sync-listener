@@ -22,7 +22,8 @@ retry=${CHEZMOI_SYNC_RETRY:-600}
 applied="${XDG_CACHE_HOME:-$HOME/.cache}/chezmoi-autoupdate.applied"
 export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10"
 
-src=$(chezmoi source-path) || { echo "no chezmoi source path" >&2; exit 1; }
+# source-path needs chezmoi's state lock, which a running apply holds.
+until src=$(chezmoi source-path 2>/dev/null); do sleep 10; done
 self=$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")
 self_sum=$(cksum <"$self")
 tried=
