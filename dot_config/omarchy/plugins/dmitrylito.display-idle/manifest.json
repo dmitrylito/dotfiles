@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "dmitrylito.display-idle",
+  "name": "Display Idle",
+  "version": "1.0.0",
+  "author": "dmitrylito",
+  "description": "Turn displays off after idle, without a screensaver or lock",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

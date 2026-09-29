@@ -80,12 +80,16 @@
     },
     {
       "id": "dmitrylito.reminders"
+    },
+    {
+      "id": "dmitrylito.display-idle"
     }
   ],
   "version": 1,
   "disabledPlugins": [
     "omarchy.notifications",
-    "omarchy.reminders"
+    "omarchy.reminders",
+    "omarchy.idle"
   ],
   "cloneSourceRestores": [
     "dmitrylito.notifications",

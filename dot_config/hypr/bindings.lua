@@ -211,7 +211,14 @@ o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true
 o.bind("SUPER + M", "Show key bindings", "omarchy-menu-keybindings")
 o.bind("SUPER + CTRL + ALT + L", "Suspend", "systemctl suspend", { locked = true })
 
--- Sleep is disabled on this host (system/install-never-sleep.sh), so closing the
--- lid only blanks the panel. Omarchy's own lid binds still run alongside these.
-o.bind("switch:on:Lid Switch", nil, hl.dsp.dpms({ action = "disable", monitor = "eDP-1" }), { locked = true })
+-- This host never sleeps or locks (system/install-never-sleep.sh): closing the
+-- lid only blanks the panel. Omarchy's lid-close bind is replaced because it
+-- locks when no external monitor is connected; its lid-open bind still runs.
+hl.unbind("switch:on:Lid Switch")
+o.bind(
+	"switch:on:Lid Switch",
+	nil,
+	"omarchy-hyprland-monitor-clamshell; hyprctl dispatch 'hl.dsp.dpms({ action = \"disable\", monitor = \"eDP-1\" })'",
+	{ locked = true }
+)
 o.bind("switch:off:Lid Switch", nil, hl.dsp.dpms({ action = "enable", monitor = "eDP-1" }), { locked = true })
