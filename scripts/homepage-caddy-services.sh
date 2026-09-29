@@ -29,6 +29,7 @@ BEGIN {
     icons["billing"] = "mdi-cash-multiple"; icons["chat"] = "mdi-chat-outline"; icons["console"] = "mdi-console"
     icons["fcbot"] = "mdi-robot-outline"; icons["liveevents"] = "mdi-broadcast"
     prefer["kuma"] = "uptime.init.dlco.us"; prefer["fcbot"] = "ops.dlco.us"
+    label["fcbot"] = "Ops Center"
     paths["cer"] = "/admin"; paths["cer-staging"] = "/admin"; paths["fcbot"] = "/admin/"
 }
 /^\*\.dlco\.us \{/ || /^\*\.init\.dlco\.us \{/ { inblock = 1; next }
@@ -46,6 +47,7 @@ inblock && pending != "" && $1 == "reverse_proxy" {
     if (group != want) next
     desc = hosts[name]; if (extras[name] != "") desc = desc " · " extras[name]
     path = (name in paths) ? paths[name] : ""
-    printf "    - %s:\n        id: caddy-%s\n        icon: %s\n        href: https://%s%s\n        description: %s\n        siteMonitor: https://%s%s\n", name, name, icon(name), hosts[name], path, desc, hosts[name], path
+    title = (name in label) ? label[name] : name
+    printf "    - %s:\n        id: caddy-%s\n        icon: %s\n        href: https://%s%s\n        description: %s\n        siteMonitor: https://%s%s\n", title, name, icon(name), hosts[name], path, desc, hosts[name], path
 }
 ' "$caddyfile"
