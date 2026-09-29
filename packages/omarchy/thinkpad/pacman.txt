@@ -6,5 +6,6 @@ mesa-demos
 nvtop
 openrgb
 qt6ct
+steam
 swaync
 zed

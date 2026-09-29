@@ -5,11 +5,13 @@ coolercontrol-bin
 coolercontrold-bin
 dotnet-runtime-9.0
 foot
+gamescope
 gemini-cli
 github-cli
 gputest
 hyprmon-bin
 hyprpolkitagent
+nano
 noisetorch-bin
 openai-codex-bin
 pavucontrol

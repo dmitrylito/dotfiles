@@ -4,6 +4,7 @@ dell-xps-touchpad-haptics
 dell-xps13-sidecar-amps
 lsp-plugins-lv2
 qmk-hid
+steam
 ttf-cascadia-mono-nerd
 ttf-lekton-nerd
 ttf-lilex-nerd

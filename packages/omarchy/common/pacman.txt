@@ -10,7 +10,6 @@ cronie
 direnv
 ex-vi-compat
 flatpak
-gamescope
 ghostty
 gimp
 git-delta
@@ -19,7 +18,6 @@ kdeconnect
 libqalculate
 lolcat
 mosh
-nano
 noto-fonts-extra
 nwg-displays
 omazed
@@ -31,7 +29,6 @@ rclone
 rust
 solaar
 spotify
-steam
 tailscale
 telegram-desktop
 uv
