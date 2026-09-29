@@ -66,7 +66,7 @@ if [[ $mode == check ]]; then
   [[ -n $prunable ]] && printf 'would remove explicit leaves:\n%s\n' "$prunable"
   [[ -n $extra ]] && printf 'current undeclared explicit packages (required entries are demoted after pruning):\n%s\n' "$extra"
   [[ -n $desired_asdeps ]] && printf 'would mark declared packages explicit:\n%s\n' "$desired_asdeps"
-  [[ -z $prunable && -z $extra && -z $desired_asdeps ]] && printf 'server package set already canonical\n'
+  [[ -z $debug && -z $prunable && -z $extra && -z $desired_asdeps ]] && printf 'server package set already canonical\n'
   exit 0
 fi
 
