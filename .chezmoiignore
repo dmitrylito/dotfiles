@@ -136,6 +136,7 @@ docker-appdata/caddy/
 {{ end }}
 
 {{ if ne .chezmoi.hostname "DLCO-1" }}
+.local/bin/dialpad-read
 {{ range list "plex" "sonarr" "radarr" "qbittorrent" "gluetun" "minecraft" }}
 .config/containers/systemd/{{ . }}.container
 {{ end }}

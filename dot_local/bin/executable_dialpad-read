@@ -1,0 +1,49 @@
+#!/bin/sh
+# Read-only Dialpad API client: GET https://dialpad.com/api/v2/<path>, following
+# `cursor` pagination, and print JSON to stdout. It never sends anything but GET,
+# which is why a Claude Code permission rule can allow it outright.
+#
+# Usage:    dialpad-read <path> [key=value ...]
+#             dialpad-read contacts                 -> JSON array of every contact
+#             dialpad-read contacts/<id>            -> one object
+#             dialpad-read users email=a@b.com
+# Requires: the running `ops-backend` container on DLCO-1 (ops-center prod), whose
+#           DIALPAD_API_KEY is used in place and never printed.
+# Config:   DIALPAD_READ_MAX_PAGES (default 500) caps pagination; hitting it is an error.
+set -eu
+
+[ $# -ge 1 ] || { sed -n '2,12p' "$0" >&2; exit 2; }
+
+exec docker exec -i -e DIALPAD_READ_MAX_PAGES="${DIALPAD_READ_MAX_PAGES:-500}" \
+  ops-backend python - "$@" <<'PY'
+import json, os, sys, urllib.error, urllib.parse, urllib.request
+
+path, *pairs = sys.argv[1:]
+if "://" in path or path.startswith("/") or ".." in path.split("/"):
+    sys.exit(f"dialpad-read: refusing path {path!r}")
+params = dict(p.split("=", 1) for p in pairs)
+max_pages = int(os.environ["DIALPAD_READ_MAX_PAGES"])
+headers = {"Authorization": "Bearer " + os.environ["DIALPAD_API_KEY"], "Accept": "application/json"}
+
+def get(query):
+    url = f"https://dialpad.com/api/v2/{path}?" + urllib.parse.urlencode(query)
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers, method="GET")) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        sys.exit(f"dialpad-read: HTTP {e.code}: {e.read()[:500].decode(errors='replace')}")
+
+page = get(params)
+if not isinstance(page, dict) or "items" not in page:
+    json.dump(page, sys.stdout, indent=1)
+    sys.exit()
+items = list(page["items"] or [])
+pages = 1
+while page.get("cursor"):
+    if pages >= max_pages:
+        sys.exit(f"dialpad-read: stopped at DIALPAD_READ_MAX_PAGES={max_pages} with more pages left")
+    page = get({**params, "cursor": page["cursor"]})
+    items += page.get("items") or []
+    pages += 1
+json.dump(items, sys.stdout, indent=1)
+PY
