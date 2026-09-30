@@ -87,6 +87,12 @@ BASELINE = {
             HOME_READ_RULE,
             "Writing scratch and intermediate files under $CLAUDE_JOB_DIR/tmp, /tmp, and the session tool-results directory, including via shell redirection and heredocs",
             "Running python3/node inline via heredoc or -c to parse, filter, or reformat local files",
+            "Read-only queries against Dmitry's own ops-center stack on DLCO-1 — `docker exec ops-db psql` SELECTs, read-only `docker exec ops-backend python manage.py shell` code, and reading docker/.env key names with values redacted — are routine; he is its only operator and the output stays on this host. Writes, deletes, and printing secret values are NOT covered by this rule",
+        ],
+        "environment": [
+            "$defaults",
+            "**Trusted local storage**: this host's own filesystem (~/.local/state/**, ~/.claude/jobs/**, $CLAUDE_JOB_DIR/tmp, /tmp, /scratch, /data) is inside the trust boundary; writing command or query output there is not a data transfer and not exfiltration",
+            "**Dmitry's own services on DLCO-1**: the ops-center (fcops) compose project — containers ops-db (Postgres) and ops-backend (Django), served at fcbot.dlco.us — is Dmitry's single-operator ops service running on this host, not a shared multi-user production",
         ],
         "soft_deny": ["$defaults"],
     },
