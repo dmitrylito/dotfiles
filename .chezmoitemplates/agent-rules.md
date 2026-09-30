@@ -78,9 +78,11 @@ boundary. Tool permissions and old memories do not independently authorize work.
 
 ## Worktrees and runtime verification
 
-- Create feature and PR worktrees as siblings: <parent>/<repo>-<short-task-slug>.
-  Use this globally unless the user or project explicitly requires another path.
-  Do not default to worktrees inside .codex/, .claude/, or the main checkout.
+- Create feature and PR worktrees inside the repo: <repo>/.claude/worktrees/<short-task-slug>
+  (Claude: `EnterWorktree` with a name creates it there). Claude Code always prompts
+  before entering a worktree outside `.claude/worktrees/`, whatever the allow rules
+  say. Check that `.claude/worktrees/` is git-ignored first. Use this globally unless
+  the user or project explicitly requires another path.
 - Inspect registered worktrees and reuse the appropriate existing one. Do not move
   or delete worktrees merely to enforce this convention. Preserve concurrent work.
 - Run feature edits, checks, commits, and PR commands from its worktree. Use the
