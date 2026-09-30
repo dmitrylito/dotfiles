@@ -8,6 +8,8 @@ Usage (wired into ~/.claude/settings.json by dot_claude/modify_settings.json.tmp
 Reads the hook JSON on stdin, asks `claude agents --json` which other live sessions share
 this session's git repo, and if any do: `notify` injects a note advising EnterWorktree,
 `guard` denies the write so the session has to isolate before it can touch the checkout.
+`guard` judges the repo of the file being written, not the session cwd, so writes outside
+any repo (job tmp, ~/.local/state, memory) or into a linked worktree always pass.
 
 Fails open on every error — a broken guard must never block editing.
 
@@ -61,6 +63,13 @@ def in_linked_worktree(cwd):
     return resolve(own) != resolve(shared)
 
 
+def existing_dir(path):
+    path = os.path.dirname(os.path.abspath(path))
+    while path != "/" and not os.path.isdir(path):
+        path = os.path.dirname(path)
+    return path
+
+
 def repo_opts_out(repo):
     return os.path.exists(os.path.join(repo, ".claude", "no-isolation-guard"))
 
@@ -108,7 +117,13 @@ def main():
     except (ValueError, OSError):
         payload = {}
     cwd = payload.get("cwd") or os.getcwd()
-    if in_linked_worktree(cwd) or in_linked_worktree(os.getcwd()):
+    tool_input = payload.get("tool_input") or {}
+    target = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if mode == "guard" and target:
+        cwd = existing_dir(os.path.join(cwd, os.path.expanduser(target)))
+    elif in_linked_worktree(os.getcwd()):
+        allow()
+    if in_linked_worktree(cwd):
         allow()
     repo = toplevel(cwd)
     if not repo or repo_opts_out(repo):
