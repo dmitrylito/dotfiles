@@ -1,22 +1,30 @@
-"""Regenerate odometer miles and hourly state mileage rollups from imported readings.
+"""Regenerate GPS odometer miles and hourly state mileage rollups for one report window.
 
 Replays readings (imported into the local Bigtable emulator via dev_sync_readings)
 through the vehicle state machine with an in-memory backend — modeled on
 reprocess_vehicle_stats, but works for any vehicle (no migration install needed).
+Only rows inside [REPORT_START, REPORT_END) are replaced; data outside the window
+is left alone.
 
-Parameterized via environment variables:
+Parameterized via environment variables (all UTC, "YYYY-MM-DD HH:MM:SS"):
     REPLAY_VEHICLE_IDS  comma-separated vehicle PKs (required)
-    REPLAY_LOWER        UTC start "YYYY-MM-DD HH:MM:SS" (required, match import --start)
-    REPLAY_UPPER        UTC end   "YYYY-MM-DD HH:MM:SS" (required, match import --end)
+    REPLAY_LOWER        replay start, a few hours before REPORT_START (warm-up)
+    REPORT_START        first instant of the report window
+    REPORT_END          first instant after the report window
+    REPORT_TZ           customer timezone, only for the printed summary
 
-Run inside the backend container (repo root must contain this file):
-    python manage.py shell -c "exec(open('reprocess_state_mileage.py').read())"
+Run inside the backend container (run_pipeline.sh does this):
+    python manage.py shell -c "$(cat reprocess_state_mileage.py)"
 """
 
 import os
+from collections import Counter
 from datetime import datetime, UTC
+from zoneinfo import ZoneInfo
 
 import united_states
+from django.db import transaction
+from django.db.models import Max, Sum
 
 from pipeline.tasks.utils import reprocess_readings
 from reports.models import HourlyStateMileageRollup
@@ -34,8 +42,10 @@ def _env_dt(name: str) -> datetime:
     return datetime.strptime(os.environ[name], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
 
 
-IMPORT_LOWER = _env_dt("REPLAY_LOWER")
-IMPORT_UPPER = _env_dt("REPLAY_UPPER")
+REPLAY_LOWER = _env_dt("REPLAY_LOWER")
+REPORT_START = _env_dt("REPORT_START")
+REPORT_END = _env_dt("REPORT_END")
+REPORT_TZ = ZoneInfo(os.environ.get("REPORT_TZ", "UTC"))
 VEHICLE_IDS = [int(v) for v in os.environ["REPLAY_VEHICLE_IDS"].split(",")]
 
 
@@ -46,23 +56,22 @@ def state_at(point):
         return None
 
 
-def replay_vehicle(vehicle: Vehicle) -> None:
-    collected: list[dict] = []
+def collect_miles(vehicle: Vehicle) -> list:
+    collected = []
 
     class CollectingOdometerProcessor(OdometerProcessor):
         def on_mile(self, source, reading, state, miles):
-            collected.append(
-                {"reading": reading, "mile": miles - state.starting_odometer}
-            )
+            collected.append(reading)
 
     backend = InMemoryBackend()
     state = backend.get_state(vehicle.pk)
-    # Same forced source as reprocess_vehicle_stats: GPS is always present.
+    # Same forced source as reprocess_vehicle_stats: GPS is always present, and a
+    # frozen or under-counting ECU odometer is the usual reason for a rerun.
     state.odometer_source = OdometerSource.gps
     backend.save_state(state)
     manager = VehicleStateManager(vehicle, backend=backend)
 
-    readings = reprocess_readings(vehicle, IMPORT_LOWER, IMPORT_UPPER)
+    readings = reprocess_readings(vehicle, REPLAY_LOWER, REPORT_END)
     print(f"[{vehicle.pk}] {vehicle.identifier}: {len(readings)} readings", flush=True)
 
     for reading in readings:
@@ -72,61 +81,90 @@ def replay_vehicle(vehicle: Vehicle) -> None:
             if active_reading:
                 CollectingOdometerProcessor(manager.state).process(active_reading)
 
-    print(f"[{vehicle.pk}] {len(collected)} miles traveled in window", flush=True)
+    return [r for r in collected if REPORT_START <= r.ts < REPORT_END]
 
-    # The state machine can initialize the device odometer with a one-time jump,
-    # uniformly offsetting every collected mile number. Deltas are what matter:
-    # anchor the first mile at 1 (same idea as reprocess_vehicle_stats' MAX anchor).
-    if collected:
-        offset = min(c["mile"] for c in collected) - 1
-        for c in collected:
-            c["mile"] -= offset
 
-    # mile is unique per vehicle; continue numbering from the last pre-window mile.
+def mile_base(vehicle: Vehicle, count: int) -> int:
+    # (vehicle, mile) is unique. Continue from the last pre-window mile so numbering
+    # stays chronological, unless the new miles would run into rows after the window
+    # (GPS usually counts more than the source the vehicle had live).
     base = (
-        Odometer.objects.filter(vehicle=vehicle, created__lt=IMPORT_LOWER)
-        .order_by("-mile")
-        .values_list("mile", flat=True)
-        .first()
-    ) or 0
-
-    deleted = Odometer.objects.filter(
-        vehicle=vehicle, created__gte=IMPORT_LOWER
-    ).delete()
-    print(
-        f"[{vehicle.pk}] deleted {deleted[0]} stale odometer rows, base mile {base}",
-        flush=True,
+        Odometer.objects.filter(vehicle=vehicle, created__lt=REPORT_START).aggregate(
+            m=Max("mile")
+        )["m"]
+        or 0
     )
+    collides = Odometer.objects.filter(
+        vehicle=vehicle,
+        created__gte=REPORT_END,
+        mile__gt=base,
+        mile__lte=base + count,
+    ).exists()
+    if collides:
+        base = Odometer.objects.filter(vehicle=vehicle).aggregate(m=Max("mile"))["m"]
+        print(f"[{vehicle.pk}] post-window miles overlap; numbering above {base}")
+    return base
 
-    Odometer.objects.bulk_create(
-        [
+
+def replay_vehicle(vehicle: Vehicle) -> None:
+    miles = collect_miles(vehicle)
+    in_window = dict(created__gte=REPORT_START, created__lt=REPORT_END)
+
+    with transaction.atomic():
+        deleted, _ = Odometer.objects.filter(vehicle=vehicle, **in_window).delete()
+        base = mile_base(vehicle, len(miles))
+        odometers = [
             Odometer(
                 vehicle=vehicle,
                 source=OdometerSource.gps,
-                created=m["reading"].ts,
-                point=m["reading"].point,
-                mile=base + m["mile"],
-                state=state_at(m["reading"].point),
-                reading_key=m["reading"].pk,
+                created=r.ts,
+                point=r.point,
+                mile=base + i,
+                state=state_at(r.point),
+                reading_key=r.pk,
             )
-            for m in collected
-        ],
-        batch_size=1000,
+            for i, r in enumerate(miles, start=1)
+        ]
+        Odometer.objects.bulk_create(odometers, batch_size=1000)
+
+        # One mile per odometer row per (hour, state). Not add_odometer: it takes
+        # max(mile) - min(mile) per state per hour, which double-counts when a truck
+        # crosses a state line and back within the same hour.
+        HourlyStateMileageRollup.objects.filter(
+            vehicle=vehicle, hour__gte=REPORT_START, hour__lt=REPORT_END
+        ).delete()
+        per_hour = Counter(
+            (o.created.replace(minute=0, second=0, microsecond=0), o.state)
+            for o in odometers
+        )
+        HourlyStateMileageRollup.objects.bulk_create(
+            [
+                HourlyStateMileageRollup(
+                    vehicle=vehicle, hour=hour, state=state, traveled=n
+                )
+                for (hour, state), n in per_hour.items()
+            ]
+        )
+
+    total = HourlyStateMileageRollup.objects.filter(
+        vehicle=vehicle, hour__gte=REPORT_START, hour__lt=REPORT_END
+    ).aggregate(t=Sum("traveled"))["t"] or 0
+    print(
+        f"[{vehicle.pk}] replaced {deleted} odometer rows with {len(odometers)}; "
+        f"rollup total {total}",
+        flush=True,
     )
+    if total != len(odometers):
+        raise RuntimeError(f"[{vehicle.pk}] rollup total {total} != {len(odometers)} miles")
 
-    rollups_deleted = HourlyStateMileageRollup.objects.filter(
-        vehicle=vehicle, hour__gte=IMPORT_LOWER
-    ).delete()
-    print(f"[{vehicle.pk}] deleted {rollups_deleted[0]} stale rollups", flush=True)
-
-    for odom in (
-        vehicle.odometer.filter(created__gte=IMPORT_LOWER)
-        .order_by("created")
-        .iterator()
-    ):
-        HourlyStateMileageRollup.objects.add_odometer(odom)
-
-    print(f"[{vehicle.pk}] rollups rebuilt", flush=True)
+    summary = Counter(
+        (o.created.astimezone(REPORT_TZ).strftime("%Y-%m"), o.state) for o in odometers
+    )
+    for (month, state), n in sorted(summary.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+        print(f"[{vehicle.pk}] {month} {state or '??'}: {n} mi", flush=True)
+    unknown = sum(n for (_, state), n in summary.items() if state is None)
+    if unknown:
+        print(f"[{vehicle.pk}] WARNING {unknown} mi with no state (off-map points)")
 
 
 for vehicle_id in VEHICLE_IDS:

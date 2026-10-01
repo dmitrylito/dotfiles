@@ -1,102 +1,69 @@
 ---
 name: state-mileage-import
-description: Import production readings for specific vehicles into local dev and regenerate accurate state mileage reports (HourlyStateMileageRollup). Use when the user asks to import/sync vehicle readings, fix or regenerate state mileage / IFTA report data locally, or reprocess odometer miles for vehicles.
+description: Generate a State Mileage (IFTA) report locally for the vehicles and date range Dmitry gives — imports production readings, regenerates GPS odometer miles and HourlyStateMileageRollup for just that window, ready to pull from the local frontend. Use when asked to generate/regenerate a state mileage or IFTA report, import/sync vehicle readings, or reprocess odometer miles for vehicles.
 ---
 
-# State Mileage Import & Reprocess
+# Local State Mileage Report (one-off)
 
-Imports raw production readings for given vehicles into the local Bigtable
-emulator, replays them through the vehicle state machine to regenerate
-`tracker.Odometer` rows, and rebuilds `reports.HourlyStateMileageRollup` —
-the table the State Mileage / IFTA report reads.
+One run per request: the vehicles and dates Dmitry gives, regenerated in the local dev
+DB, then he pulls the report from the local frontend. No backups, no scheduling — the
+nightly DB refresh wiping it afterwards is fine.
 
-## Inputs to collect from the user
-
-- Vehicle names (e.g. `R-01, DT-06`) or PKs, and the customer if names are ambiguous
-- Report date range and its timezone (usually the customer's, e.g. `America/New_York`)
-
-## Steps
-
-### 1. Resolve vehicles and window
+## 1. Resolve vehicle IDs
 
 ```sql
 SELECT v.id, v.identifier, c.name, c.timezone
 FROM vehicle_vehicle v JOIN accounting_customer c ON c.id = v.customer_id
-WHERE v.identifier ILIKE 'R-01%' AND v.deleted IS NULL;
+WHERE c.name ILIKE '%<customer>%' AND v.identifier ILIKE '<name>%' AND v.deleted IS NULL;
 ```
 
-Vehicle identifiers often have VIN suffixes (`R-01 1M2AA18Y...`) and deleted
-same-named duplicates — match by prefix, filter `deleted IS NULL`.
+Identifiers often carry VIN suffixes (`JH# 6 DT VIN 1M2P…`) and deleted same-named
+duplicates — match by prefix, filter `deleted IS NULL`. Ask only if a name is ambiguous.
 
-Convert the report range to a UTC import window (naive `--start/--end` params
-are UTC; containers run UTC). E.g. Jul 1 2025 – Jun 30 2026 ET →
-`"2025-07-01 00:00:00"` – `"2026-07-01 04:00:00"` (pad the start a few hours
-early so the state machine warms up before the report window).
-
-### 2. Run the pipeline (sequential, one vehicle at a time)
+## 2. Run the pipeline
 
 ```bash
-bash .claude/skills/state-mileage-import/run_pipeline.sh \
-  "6508,7677,6507" "2025-07-01 00:00:00" "2026-07-01 04:00:00"
+bash ~/.claude/skills/state-mileage-import/run_pipeline.sh <ids_csv> <first_day> <last_day>
+# e.g. Q3 2026:  run_pipeline.sh 3502,6508 2026-07-01 2026-09-30
 ```
 
-Run in the background (a year of one vehicle ≈ 200k–850k readings, ~5–15 min
-each) and monitor the output. Optional args 4/5: source Bigtable instance
-(default `fleetchaser-default-production`) and backend checkout path (default
-main checkout; pass a worktree to run different code — the script copies the
-gitignored `docker/.env` and GCP creds into it).
+Dates are inclusive `YYYY-MM-DD` in each vehicle's customer timezone (looked up
+automatically). Run it in the background; a quarter of one truck is ~300k readings,
+~10 min. It stops with a non-zero exit if the replay saw fewer readings than were
+imported or if the rollup total doesn't equal the regenerated miles.
 
-**Never parallelize imports**: the emulator is in-memory and gets OOM-killed
-around ~2M rows (~10KB/row); every restart silently wipes ALL emulator data.
-The pipeline restarts the emulator per vehicle deliberately — anything else in
-the emulator is disposable.
+Only rows inside the window are replaced; everything outside it is untouched. The
+script prints, per vehicle, miles by month and state — report those numbers.
 
-### 3. Verify
+**Never run two pipelines at once**: the emulator is in-memory and gets OOM-killed
+around ~2M rows, and every vehicle restarts it (wiping ALL emulator data). Check
+`ps aux | grep dev_sync_readings` first.
 
-Per vehicle, the replay log must show a readings count matching the import
-(`import done` lines × 1000 ≈ readings) — a shortfall means data was lost
-mid-replay; rerun that vehicle. Then check totals (hours are UTC):
+A vehicle with readings but ~0 miles may genuinely be parked; confirm on a sample of
+readings before calling it a bug.
 
-```sql
-SELECT v.identifier, h.state, sum(h.traveled) AS miles
-FROM reports_hourlystatemileagerollup h JOIN vehicle_vehicle v ON v.id = h.vehicle_id
-WHERE h.vehicle_id IN (...) AND h.hour >= '<utc_start>' AND h.hour < '<utc_end>'
-GROUP BY 1, 2 ORDER BY 1, 3 DESC;
-```
+## 3. Pull the report
 
-Sanity: max(traveled) per hour should be < ~80; a single huge hour means mile
-numbering broke. A vehicle with readings but 0 miles may genuinely be parked —
-check a sample: all `movement_type` parked + frozen `gps_meters_odometer`
-means the truck really isn't moving.
-
-### 4. Protect against the nightly DB refresh
-
-The local dev DB is refreshed nightly, wiping regenerated rows. Offer to dump
-them (`\copy` of `tracker_odometer` + `reports_hourlystatemileagerollup` for
-the vehicles/window) with a restore script — see
-`~/mileage-report-backup/restore.sh` for a working example (transactional
-delete+copy, then `setval` both id sequences).
-
-## Why this approach (don't "simplify" to these)
-
-- `reprocess_vehicle_stats` requires a migration-reason TrackerInstall
-  (`installs.get(reason='mig')` raises for most vehicles) and mutates installs.
-- `pipeline.tasks.ReprocessVehicleInRange` does NOT regenerate odometer miles —
-  for a list of readings, `ReadingIntake.process` never runs `OdometerProcessor`.
-- The bundled `reprocess_state_mileage.py` replays through
-  `VehicleStateManager` + `InMemoryBackend` (no live-state side effects),
-  forces GPS odometer source (like `reprocess_vehicle_stats`), anchors mile
-  numbers (devices can initialize with a one-time odometer jump; `Odometer`
-  is unique on `(vehicle, mile)` so numbering continues from the last
-  pre-window mile), and rebuilds rollups via `add_odometer` in created order.
-
-## Viewing in the frontend
-
-Report page: `https://console.dlco.us/reports/ifta` (Reports → State Mileage),
-after logging in and switching into the vehicles' customer. If console.dlco.us
-is 502: start the dev server (nginx proxies port 4200; `PORT=8083` is exported
-in the shell, so unset it):
+`https://console.dlco.us/reports/ifta` (Reports → State Mileage): log in, switch into
+the vehicles' customer, set the same date range. If it's 502, start the dev server
+(nginx proxies 4200; `PORT=8083` is exported in the shell, so unset it):
 `cd ~/Projects/frontend && unset PORT && bunx ng serve frontend -c local --host 0.0.0.0 --port 4200`
 (needs `allowedHosts: ["console.dlco.us"]` under the serve target options in
-`angular.json`). If the main frontend checkout doesn't compile, serve from a
-clean worktree and copy in the gitignored `src/environments/environment.local.ts`.
+`angular.json`). If the main frontend checkout doesn't compile, serve from a clean
+worktree and copy in the gitignored `src/environments/environment.local.ts`.
+
+## Why it works this way (don't "simplify" to these)
+
+- Miles come from GPS, not the vehicle's live source: a frozen or under-counting ECU
+  odometer is the usual reason a report is wrong (JH# 6, 2026: ECU ~30% low, then
+  frozen from 2026-08-20).
+- Rollups are one mile per odometer row per (hour, state), not
+  `HourlyStateMileageRollup.objects.add_odometer`: that takes `max(mile) - min(mile)`
+  per state per hour and double-counts in-hour border crossings (+105 mi on JH# 6 Q3).
+- `reprocess_vehicle_stats` needs a migration-reason TrackerInstall
+  (`installs.get(reason='mig')` raises for most vehicles) and mutates installs.
+- `pipeline.tasks.ReprocessVehicleInRange` does NOT regenerate odometer miles — for a
+  list of readings, `ReadingIntake.process` never runs `OdometerProcessor`.
+- `Odometer` is unique on `(vehicle, mile)`: new miles continue from the last
+  pre-window mile, or number above the vehicle's max if that would collide with rows
+  after the window.
