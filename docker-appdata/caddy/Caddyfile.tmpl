@@ -59,7 +59,15 @@
 	}
 	@fcbot host dialpad.dlco.us fcbot.dlco.us ops.dlco.us
 	handle @fcbot {
-		reverse_proxy {{ $dlco1 }}:8050
+		# The knowledge-base MCP is its own ASGI container (ops-mcp), not the gunicorn
+		# backend; it answers 421 to any Host but ops.dlco.us.
+		@kbmcp path /mcp /mcp/*
+		handle @kbmcp {
+			reverse_proxy {{ $dlco1 }}:8052
+		}
+		handle {
+			reverse_proxy {{ $dlco1 }}:8050
+		}
 	}
 	@home host home.dlco.us
 	handle @home {
