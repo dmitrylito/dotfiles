@@ -18,6 +18,11 @@ Environment="VPN_SERVICE_PROVIDER=protonvpn"
 Environment="VPN_TYPE=wireguard"
 EnvironmentFile=/home/dmitrylito/.config/containers/systemd/secrets/gluetun.env
 Environment="VPN_PORT_FORWARDING=on"
+# Unpinned, gluetun picks a random Proton server worldwide (it landed in Singapore,
+# capping torrents at ~10 MB/s). Only 6 of ~174 New York WireGuard servers support
+# port forwarding, so PORT_FORWARD_ONLY is required or forwarding fails.
+Environment="SERVER_CITIES=New York"
+Environment="PORT_FORWARD_ONLY=on"
 
 # ProtonVPN's forwarded port is dynamic. Push it into qBittorrent's listen port
 # whenever it changes, otherwise qBittorrent gets no inbound peers and downloads
