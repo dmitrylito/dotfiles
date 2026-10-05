@@ -898,7 +898,9 @@ def positive(value):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="fc-daily-report", description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="fc-daily-report", description=__doc__
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     command = commands.add_parser("collect")
     command.add_argument("--date", default=None)
