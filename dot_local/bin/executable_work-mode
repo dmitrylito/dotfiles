@@ -25,12 +25,18 @@
 # any workspace; the focused window is restored at the end.
 #
 # Launching is a separate phase from placing, so the cold starts overlap instead
-# of running end to end. Ordering is only enforced WITHIN a chromium profile: the
-# first process for a profile directory becomes its browser process and every
-# later window of that profile is a forwarded command line, so the entry that
-# opens a plain browser window goes first and is waited for. Separate profiles
-# share nothing and start in parallel. Spotify reaches its scratchpad through a
-# silent window rule in chezmoi.lua, so it never flashes over the foreground.
+# of running end to end. Every chromium profile shares ONE browser process: the
+# singleton socket belongs to the data dir, not the profile, so the first chromium
+# launch becomes the browser process for all of them and every later window is a
+# forwarded command line. Cold-started side by side, the launches race for that
+# socket and the losers' windows are dropped. So the entry that opens a plain
+# browser window goes first, alone, and is waited for; only then do the web apps
+# of every profile start. Spotify starts in parallel with it and reaches its
+# scratchpad through a silent window rule in chezmoi.lua, so it never flashes over
+# the foreground.
+#
+# Only one run at a time: a second launch while the first is still waiting on a
+# cold start would spawn every app the first has not seen yet, a second time.
 #
 # Waiting is driven by Hyprland's event socket rather than by polling: every
 # dispatch that has an event confirming it (a move, a focus) is waited on instead
@@ -109,6 +115,15 @@ if ! hyprctl version >/dev/null 2>&1; then
   export HYPRLAND_INSTANCE_SIGNATURE
 fi
 
+# fd 9 holds the lock; everything this script starts is given 9>&- so a long-lived
+# child cannot keep holding it after the script exits.
+exec 9>"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/work-mode.lock"
+if ! flock -n 9; then
+  log "already running; ignoring this launch"
+  notify-send -t 3000 "Work mode" "Still starting up — give it a moment" 2>/dev/null
+  exit 0
+fi
+
 # ---------------------------------------------------------------- event socket
 
 EVENT_LOG=""
@@ -126,7 +141,7 @@ events_start() {
   [[ -S "$sock" ]] || { log "WARN  no event socket; falling back to fixed waits"; return 1; }
 
   EVENT_LOG="$(mktemp -t work-mode-events.XXXXXX)"
-  socat -u "UNIX-CONNECT:$sock" - >"$EVENT_LOG" 2>/dev/null &
+  socat -u "UNIX-CONNECT:$sock" - >"$EVENT_LOG" 2>/dev/null 9>&- &
   EVENT_PID=$!
 }
 
@@ -450,33 +465,31 @@ spawn() {
   fi
 
   log "open  ${E_LABEL[$name]}"
-  setsid -f uwsm-app -- "${E_FILE[$name]}" >/dev/null 2>&1
+  setsid -f uwsm-app -- "${E_FILE[$name]}" >/dev/null 2>&1 9>&-
 }
 
 events_start
 FOCUS_ADDR="$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')"
 
-# The entry that opens a plain browser window owns its profile's process, so it is
-# launched before that profile's web apps and waited for.
+# The entry that opens a plain browser window becomes the browser process for
+# every profile, so it is launched alone and waited for before any web app.
 OWNER=""
 for name in "${ENTRIES[@]}"; do
   [[ -n "${E_PROFILE[$name]}" && -z "${E_URL[$name]}" ]] && { OWNER="$name"; break; }
 done
-OWNER_PROFILE="${OWNER:+${E_PROFILE[$OWNER]}}"
 
 for name in "${ENTRIES[@]}"; do
-  [[ "$name" == "$OWNER" ]] && continue
-  [[ -n "$OWNER_PROFILE" && "${E_PROFILE[$name]}" == "$OWNER_PROFILE" ]] && continue
-  spawn "$name"
+  [[ -z "${E_PROFILE[$name]}" ]] && spawn "$name"
 done
 
 if [[ -n "$OWNER" ]]; then
   spawn "$OWNER"
   wait_for "${E_CLASS[$OWNER]}" >/dev/null || log "WARN  ${E_LABEL[$OWNER]} window never appeared"
-  for name in "${ENTRIES[@]}"; do
-    [[ "$name" != "$OWNER" && "${E_PROFILE[$name]}" == "$OWNER_PROFILE" ]] && spawn "$name"
-  done
 fi
+
+for name in "${ENTRIES[@]}"; do
+  [[ -n "${E_PROFILE[$name]}" && "$name" != "$OWNER" ]] && spawn "$name"
+done
 
 for name in "${ENTRIES[@]}"; do
   addr="$(wait_for "${E_CLASS[$name]}")" \
