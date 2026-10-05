@@ -17,7 +17,5 @@ target (`~/.zshrc`, `~/.config/**`, `~/.claude/**`, …) is silently wiped on th
   bg worktree-isolation guard is disabled only in this repo `.claude/settings.json`, which is
   scoped to sessions rooted here. From `~` the guard blocks Edit/Write, forcing `sed` — which
   also skips the repo PostToolUse auto-commit hook (matcher `Write|Edit|NotebookEdit`).
-- `.claude/no-isolation-guard` exempts this repo from `~/.claude/hooks/isolation-guard.py`,
-  which otherwise makes a session call EnterWorktree when another live session shares the repo.
-  A worktree copy is not what `chezmoi apply` reads, so concurrent sessions here edit the same
-  source — check `git status` before you start.
+- Never use a worktree here: `chezmoi apply` reads only the real source, so concurrent
+  sessions edit the same files — check `git status` before you start.

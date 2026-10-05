@@ -83,6 +83,10 @@ boundary. Tool permissions and old memories do not independently authorize work.
   before entering a worktree outside `.claude/worktrees/`, whatever the allow rules
   say. Check that `.claude/worktrees/` is git-ignored first. Use this globally unless
   the user or project explicitly requires another path.
+- Before the first edit in a repo, check whether another agent session may be working in
+  the same checkout (Claude: `claude agents`; anyone: uncommitted changes you did not
+  make). If so, make your edits in a worktree rather than the shared checkout. A
+  read-only task, or a session already in a worktree, needs no new one.
 - Inspect registered worktrees and reuse the appropriate existing one. Do not move
   or delete worktrees merely to enforce this convention. Preserve concurrent work.
 - Run feature edits, checks, commits, and PR commands from its worktree. Use the

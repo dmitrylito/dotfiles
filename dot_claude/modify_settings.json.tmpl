@@ -62,14 +62,6 @@ STYLE_HOOKS = {
     "Stop": ("observe", 15),
 }
 
-ISOLATION_GUARD = "python3 '" + HOME + "/.claude/hooks/isolation-guard.py' "
-# event -> (mode, matcher, timeout). notify only warns at session start; guard denies the
-# first write when another live session shares the repo, forcing EnterWorktree first.
-ISOLATION_HOOKS = (
-    ("SessionStart", "notify", None, 15),
-    ("PreToolUse", "guard", "Write|Edit|NotebookEdit", 15),
-)
-
 BASELINE = {
     "agentPushNotifEnabled": True,
     "autoCompactEnabled": False,
@@ -363,26 +355,16 @@ def is_isolation_group(group):
     )
 
 
-def enforce_isolation_hooks(hooks):
-    """Same deal as the style guard: enforced, not opt-in, so a settings.json edit cannot
-    switch collision protection off. Use ISOLATION_GUARD=0 for one session instead."""
-    for event, mode, matcher, timeout in ISOLATION_HOOKS:
+# The isolation guard was retired for a rule in agent-rules.md; this strips the hook entries
+# hosts still carry from before. Safe to delete once every host has applied it.
+def remove_isolation_hooks(hooks):
+    for event in ("SessionStart", "PreToolUse"):
         groups = hooks.get(event)
         if not isinstance(groups, list):
-            groups = hooks[event] = []
+            continue
         groups[:] = [g for g in groups if not is_isolation_group(g)]
-        group = {
-            "hooks": [
-                {
-                    "command": ISOLATION_GUARD + mode,
-                    "timeout": timeout,
-                    "type": "command",
-                }
-            ]
-        }
-        if matcher:
-            group["matcher"] = matcher
-        groups.append(group)
+        if not groups:
+            del hooks[event]
     return hooks
 
 
@@ -432,7 +414,7 @@ if isinstance(auto_mode, dict) and isinstance(auto_mode.get("allow"), list):
     ]
 current["hooks"] = enforce_moshi_hooks(current.get("hooks"), BASELINE["hooks"])
 enforce_style_hooks(current["hooks"])
-enforce_isolation_hooks(current["hooks"])
+remove_isolation_hooks(current["hooks"])
 enforce_scalars(current, ENFORCED_SCALARS)
 enforce_disabled_plugins(current, DISABLED_PLUGINS)
 enforce_allow(current, BASELINE["permissions"])
