@@ -105,6 +105,24 @@ def trust_home(config):
     projects[HOME]["trust_level"] = "trusted"
 
 
+
+def configure_ops_center(config):
+    token = {{ index (index (include ".secrets.yaml.age" | decrypt | fromYaml) "shared") "OPS_CENTER_MCP_API_KEY" | quote }}
+    if not token:
+        raise ValueError("shared OPS_CENTER_MCP_API_KEY is missing")
+    if "mcp_servers" not in config:
+        config["mcp_servers"] = tomlkit.table(is_super_table=True)
+    server = tomlkit.table()
+    server["url"] = "https://ops.dlco.us/mcp"
+    server["enabled"] = True
+    server["startup_timeout_sec"] = 20
+    server["tool_timeout_sec"] = 120
+    headers = tomlkit.table()
+    headers["Authorization"] = "Bearer " + token
+    headers["User-Agent"] = "codex-ops-center/1.0"
+    server["http_headers"] = headers
+    config["mcp_servers"]["ops-center"] = server
+
 def apply_host_settings(config):
     if {{ .chezmoi.hostname | quote }} == "DLCO-3":
         if "tui" not in config:
@@ -118,6 +136,7 @@ baseline_text = strip_retired_servers(read_baseline())
 if not live_text.strip():
     baseline = tomlkit.parse(baseline_text)
     remove_unsupported_settings(baseline)
+    configure_ops_center(baseline)
     apply_host_settings(baseline)
     trust_home(baseline)
     sys.stdout.write(tomlkit.dumps(baseline))
@@ -134,6 +153,7 @@ fill_defaults(live, baseline)
 synchronize_settings(live, baseline)
 remove_retired_servers(live)
 remove_unsupported_settings(live)
+configure_ops_center(live)
 apply_host_settings(live)
 trust_home(live)
 sys.stdout.write(tomlkit.dumps(live))

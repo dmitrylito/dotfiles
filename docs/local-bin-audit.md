@@ -12,6 +12,7 @@ large vendor binary; it means its owner and consumer are known.
 | `chromium-profile-launch` | resolves named Chromium profiles and web apps | Omarchy launchers | keep |
 | `claude-prune-agents` | prunes stale completed agent entries | Linux timer | keep |
 | `discord-ptm` | Discord push-to-mute | Omarchy keybind | keep |
+| `fc-daily-report` | cached daily evidence and personal timelines | all profiles, shared daily-report skill | keep; managed global command |
 | `fc-mypy`, `fc-dmypy` | Django-aware mypy wrappers | work role, Neovim | keep |
 | `herdr-remote-picker` | chooses an SSH target for Herdr | Omarchy/mac keybind | keep |
 | `import-db` | refreshes local Fleet Chaser DB from production dump | work role | keep; newly managed |

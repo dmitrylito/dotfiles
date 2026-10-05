@@ -1,0 +1,81 @@
+# Global daily-report evidence command
+
+`fc-daily-report` is managed here, available from any working directory. The
+Fleet Chaser shared daily-report skill in ops-center supplies interpretation and
+report formatting; this repository owns the executable, adapters and fixtures.
+
+Sources: `dot_local/bin/executable_fc-daily-report` launches the standard-library
+Python package in `dot_local/libexec/fc-daily-report/`. Targets are
+`~/.local/bin/fc-daily-report` and `~/.local/libexec/fc-daily-report/`, installed on
+all profiles and roles. No ops-center source command or new server endpoint is required.
+
+```sh
+fc-daily-report collect --date YYYY-MM-DD --mode timeline
+fc-daily-report collect --date YYYY-MM-DD --mode work
+fc-daily-report documents --run RUN_DIR --ref call:123 --ref email:456
+fc-daily-report collect --date YYYY-MM-DD --run RUN_DIR
+fc-daily-report collect --date YYYY-MM-DD --run RUN_DIR --refresh
+fc-daily-report import-gmail --run RUN_DIR --input -
+```
+
+The default MCP transport reads Ops Center remotely on every device. An existing
+`OPS_CENTER_MCP_API_KEY` from the encrypted shared secrets page is read from the
+environment or the private managed `~/.config/secrets/shared.env`; the optional
+`OPS_CENTER_MCP_TOKEN` overrides it. `--transport docker` remains available.
+
+The Docker transport uses the running `ops-backend` knowledge-base read services
+with its SELECT-only role. The script is passed over stdin; the container stays on
+its deployed checkout/image. Browser reads use existing SSH trust for `fcoffice`.
+Live Linear is query-only and actor-attributed. Companion task audits verify the
+`/app` mount and report stale development data explicitly rather than crediting
+empty results. Collection does not sync, send, create, or alter source records.
+
+`--transport mcp` uses the existing shared credential through HTTPS to
+`https://ops.dlco.us/mcp`; tokens never belong in command arguments or artifacts.
+The adapter implements the Ops Center server's stateless JSON Streamable HTTP
+contract, not arbitrary SSE/stateful servers. It reuses `describe_schema`, `run_sql`,
+and `get_document`. See the
+[official transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
+Codex's private global config includes `[mcp_servers.ops-center]` on every profile,
+with the Authorization header rendered from that same encrypted secrets page. This
+works for GUI, IDE, CLI and daemon instances without shell-environment dependence.
+The modifier preserves unrelated live config and synchronizes this owned server.
+New sessions pick up the connector; existing sessions are not interrupted.
+[Official Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
+Sources needing a runtime (live Linear and task audit) use local Docker when
+`ops-backend` is running, otherwise existing SSH trust for `--runtime-host dlco`.
+Override that host if its alias differs; no SSH configuration or credentials are
+created. Browser history independently uses `--browser-host fcoffice`. Failed SSH
+sources remain gaps while remote Ops Center evidence remains available.
+
+Gmail connector results pass through stdin before redacted persistence. Full
+thread messages are normalized recursively from connector and native Gmail MIME
+formats; HTML is a fallback. Selected threads are explicitly partial mailbox
+coverage. Older messages remain context; only day-window activity enters the index.
+
+Local private artifacts: `~/.local/state/ops-center/daily-reports/<day>/<run>/`.
+A manifest freezes person, timezone, day bounds, cutoff and named limits. The index
+contains previews and grouped browser pages; complete selected evidence is cached
+separately. Reuse does no remote reads. Refresh keeps prior results, retries failed
+sources and overlaps recent communication activity by five minutes; older backfills
+need a new run. Gaps and stale sources remain visible. Browser visits and open-tab
+spans never establish exact time spent or completed transactions.
+
+Additional browser profiles must be selected explicitly after confirming ownership:
+`--browser-profiles Default 'Profile 2' 'Profile 3'`. By default only the browser
+account exactly matching `--person` is selected. Never include a coworker's profile.
+
+Validation, from this source repository:
+
+```sh
+uv run --with pytest python -m pytest -q scripts/test-fc-daily-report.py
+uv run --with ruff ruff check --isolated --select F,E9,I,B --target-version py311 --no-cache dot_local/libexec/fc-daily-report scripts/test-fc-daily-report.py
+uv run --with ruff ruff format --isolated --line-length 80 --no-cache --check dot_local/libexec/fc-daily-report scripts/test-fc-daily-report.py
+chezmoi apply --dry-run ~/.local/bin/fc-daily-report ~/.local/libexec/fc-daily-report
+```
+
+The fixtures cover timezone boundaries, Gmail formats and actor identity, credential
+redaction, duplicate call legs, capped/failed pages, complete-document caching,
+cache-only reuse, and MCP initialization/read-only dispatch. Live checks should use
+read-only collection and inspect source gaps, not change synchronization or accounts.

@@ -20,7 +20,7 @@ ENCRYPTED_FIXTURES = {
     "docker-appdata/homepage/encrypted_private_services.yaml.age": "[]\n",
     ".secrets.yaml.age": "".join(
         f"{group}:\n  VALIDATION_ONLY: '1'\n"
-        + ("  GITHUB_PERSONAL_ACCESS_TOKEN: validation-only-token\n" if group == "shared" else "")
+        + ("  GITHUB_PERSONAL_ACCESS_TOKEN: validation-only-token\n  OPS_CENTER_MCP_API_KEY: validation-only-ops-token\n" if group == "shared" else "")
         for group in ("shared", "omada-mcp", "gluetun", "caddy")
     ),
     "scripts/moshi-pairing-token.age": "validation-only-token\n",
@@ -116,6 +116,13 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
             contents = state[f".config/containers/systemd/{service}.container"]["contents"]
             assert "Volume=/home/dmitrylito/docker-appdata" not in contents, label
             assert "Volume=/data/docker-appdata/" in contents, label
+    codex = tomllib.loads(state[".codex/config.toml"]["contents"])
+    ops_mcp = codex["mcp_servers"]["ops-center"]
+    assert ops_mcp["url"] == "https://ops.dlco.us/mcp", label
+    assert ops_mcp["enabled"] is True, label
+    assert ops_mcp["http_headers"]["Authorization"] == "Bearer validation-only-ops-token", label
+    assert ".local/bin/fc-daily-report" in state, label
+    assert ".local/libexec/fc-daily-report/collect.py" in state, label
     settings = json.loads(state[".claude/settings.json"]["contents"])
     assert any(f"under {home} with" in rule for rule in settings["autoMode"]["allow"]), label
 

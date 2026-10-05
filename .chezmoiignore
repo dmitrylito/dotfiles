@@ -22,6 +22,7 @@ system/
 
 # Bytecode regenerates on every run; managing it guarantees permanent drift.
 .claude/hooks/__pycache__/
+.local/libexec/fc-daily-report/__pycache__/
 
 {{ if and (ne $profile "omarchy") (ne $profile "mac") }}
 .config/ghostty/

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Collect, cache, and normalize daily Fleet Chaser evidence from any directory.
+# Usage: fc-daily-report collect --date YYYY-MM-DD --mode work|timeline
+# Requires Python 3.11+ and Docker/SSH or an existing Ops Center MCP key.
+set -eu
+exec python3 "$HOME/.local/libexec/fc-daily-report/collect.py" "$@"
