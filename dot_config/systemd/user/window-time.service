@@ -1,0 +1,13 @@
+[Unit]
+Description=Track time spent per focused window
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/window-time watch
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

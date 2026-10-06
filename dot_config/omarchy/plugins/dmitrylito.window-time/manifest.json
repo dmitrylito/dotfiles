@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "dmitrylito.window-time",
+  "name": "Window Time",
+  "version": "1.0.0",
+  "author": "dmitrylito",
+  "description": "Tell the window-time tracker when input goes idle, so time away is not counted",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

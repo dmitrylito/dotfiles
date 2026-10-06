@@ -83,6 +83,9 @@
     },
     {
       "id": "dmitrylito.display-idle"
+    },
+    {
+      "id": "dmitrylito.window-time"
     }
   ],
   "version": 1,

@@ -1,0 +1,409 @@
+#!/usr/bin/python3
+#
+# window-time — how long each Hyprland window has focus, with the page URL for
+# Chromium / Chrome windows, looked up by page title in the browser's History DB.
+#
+#   window-time watch                 run the tracker (systemd: window-time.service)
+#   window-time report [SINCE] [--by window|app|site]
+#                                     totals, longest first
+#   window-time log [SINCE]           focus timeline, one line per stretch
+#   window-time idle SECONDS          tell the tracker input stopped SECONDS ago
+#   window-time active                tell the tracker input is back
+#
+# SINCE: today (default), yesterday, week, 30m / 2h / 3d, or YYYY-MM-DD[ HH:MM].
+#
+# Data lives in $XDG_DATA_HOME/window-time/window-time.db (table `spans`).
+# Idle reports come from the dmitrylito.window-time omarchy shell plugin; without
+# it, time away from the keyboard counts toward whichever window had focus.
+#
+# URL lookup is a best guess: Chromium writes History a few seconds late, and only
+# keeps the latest title per URL, so a title shared by several pages (or one that
+# changed since) maps to the most recently visited match, or to nothing.
+# /usr/bin/python3 on purpose: stdlib only, and the mise shim is not wanted here.
+
+import argparse
+import json
+import os
+import re
+import select
+import signal
+import socket
+import sqlite3
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from urllib.parse import quote, urlsplit
+
+RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+DATA_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "window-time"
+DB_PATH = DATA_DIR / "window-time.db"
+CONTROL_SOCKET = RUNTIME_DIR / "window-time.sock"
+
+CHECKPOINT_SECONDS = 15
+
+# Browser window class -> user data dir. Web app windows ("chrome-<host>__<path>-
+# <Profile_N>") carry no browser name, so every data dir is searched for those.
+BROWSER_DATA_DIRS = {
+    "chromium": Path.home() / ".config/chromium",
+    "google-chrome": Path.home() / ".config/google-chrome",
+}
+BROWSER_TITLE_SUFFIX = re.compile(r" - (Chromium|Google Chrome)$")
+WEBAPP_CLASS = re.compile(r"^chrome-(?P<host>.+?)__(?P<path>.*)-(?P<profile>Default|Profile_\d+)$")
+
+# Terminals running agents animate a spinner in the title; without stripping it
+# every frame would start a new span.
+TITLE_SPINNER = re.compile(r"^[⠀-⣿✢-✽·*✳✶✻✽✢\s]+")
+
+SCHEMA = """
+create table if not exists spans (
+    id integer primary key,
+    start real not null,
+    end real not null,
+    class text not null,
+    title text not null,
+    profile text,
+    url text
+);
+create index if not exists spans_start on spans (start);
+"""
+
+
+def connect_db():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(DB_PATH, timeout=10)
+    db.execute("pragma journal_mode=wal")
+    db.executescript(SCHEMA)
+    return db
+
+
+def is_browser(cls):
+    return cls in BROWSER_DATA_DIRS or bool(WEBAPP_CLASS.match(cls))
+
+
+def profile_names(data_dir):
+    try:
+        cache = json.loads((data_dir / "Local State").read_text())["profile"]["info_cache"]
+    except (OSError, ValueError, KeyError):
+        return {}
+    return {directory: info.get("name") or directory for directory, info in cache.items()}
+
+
+def latest_visit(history, title):
+    # immutable=1: Chromium holds an exclusive lock on History while it runs.
+    uri = f"file:{quote(str(history))}?immutable=1"
+    try:
+        with sqlite3.connect(uri, uri=True) as db:
+            return db.execute(
+                "select url, last_visit_time from urls where title = ? "
+                "order by last_visit_time desc limit 1",
+                (title,),
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+
+
+def resolve_url(cls, title):
+    """Return (profile name, url) for a browser window, or (None, None)."""
+    if webapp := WEBAPP_CLASS.match(cls):
+        wanted = webapp["profile"].replace("_", " ")
+        data_dirs = list(BROWSER_DATA_DIRS.values())
+    else:
+        wanted = None
+        data_dirs = [BROWSER_DATA_DIRS[cls]]
+        title = BROWSER_TITLE_SUFFIX.sub("", title)
+    best = (None, None, -1)
+    for data_dir in data_dirs:
+        names = profile_names(data_dir)
+        for directory in [wanted] if wanted else names:
+            history = data_dir / directory / "History"
+            if not history.exists():
+                continue
+            if (hit := latest_visit(history, title)) and hit[1] > best[2]:
+                best = (names.get(directory, directory), hit[0], hit[1])
+    if best[1] is None and webapp:
+        names = {}
+        for data_dir in data_dirs:
+            names |= profile_names(data_dir)
+        return names.get(wanted, wanted), None
+    return best[0], best[1]
+
+
+def hypr_signatures():
+    hypr = RUNTIME_DIR / "hypr"
+    preferred = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    others = sorted(
+        (p.name for p in hypr.glob("*") if (p / ".socket2.sock").exists()),
+        key=lambda name: (hypr / name).stat().st_mtime,
+        reverse=True,
+    ) if hypr.is_dir() else []
+    return ([preferred] if preferred else []) + [s for s in others if s != preferred]
+
+
+def connect_hyprland():
+    # Dead sessions leave socket files behind, some still accepting connections, so
+    # a signature only counts once hyprctl answers through it.
+    for signature in hypr_signatures():
+        env = os.environ | {"HYPRLAND_INSTANCE_SIGNATURE": signature}
+        try:
+            active = subprocess.run(
+                ["hyprctl", "-j", "activewindow"], env=env, capture_output=True, text=True, timeout=3
+            )
+            window = json.loads(active.stdout or "{}") if active.returncode == 0 else None
+        except (subprocess.TimeoutExpired, ValueError, OSError):
+            window = None
+        if window is None:
+            continue
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            sock.connect(str(RUNTIME_DIR / "hypr" / signature / ".socket2.sock"))
+        except OSError:
+            sock.close()
+            continue
+        return sock, window
+    return None, None
+
+
+def clean_title(title):
+    return TITLE_SPINNER.sub("", title).strip()
+
+
+class Tracker:
+    def __init__(self, db):
+        self.db = db
+        self.span_id = None
+        self.span_start = None
+        self.cls = ""
+        self.title = ""
+        self.address = ""
+        self.idle = False
+        self.url_resolved = False
+
+    def focus(self, cls, title, now):
+        title = clean_title(title)
+        if (cls, title) == (self.cls, self.title):
+            return
+        self.close(now)
+        self.cls, self.title = cls, title
+        self.open(now)
+
+    def open(self, now):
+        if self.idle or not self.cls:
+            return
+        cur = self.db.execute(
+            "insert into spans (start, end, class, title) values (?, ?, ?, ?)",
+            (now, now, self.cls, self.title),
+        )
+        self.db.commit()
+        self.span_id, self.span_start, self.url_resolved = cur.lastrowid, now, False
+
+    def close(self, end):
+        if self.span_id is None:
+            return
+        self.db.execute("update spans set end = ? where id = ?", (max(end, self.span_start), self.span_id))
+        self.db.commit()
+        self.resolve()
+        self.span_id = None
+
+    def resolve(self):
+        if self.span_id is None or self.url_resolved or not is_browser(self.cls):
+            return
+        profile, url = resolve_url(self.cls, self.title)
+        self.db.execute("update spans set profile = ?, url = ? where id = ?", (profile, url, self.span_id))
+        self.db.commit()
+        self.url_resolved = url is not None
+
+    def checkpoint(self, now):
+        if self.span_id is not None:
+            self.db.execute("update spans set end = ? where id = ?", (now, self.span_id))
+            self.db.commit()
+            self.resolve()
+
+    def go_idle(self, seconds, now):
+        self.close(now - seconds)
+        self.idle = True
+
+    def go_active(self, now):
+        if self.idle:
+            self.idle = False
+            self.open(now)
+
+    def handle_event(self, line, now):
+        name, _, data = line.partition(">>")
+        if name == "activewindow":
+            cls, _, title = data.partition(",")
+            self.focus(cls, title, now)
+        elif name == "activewindowv2":
+            self.address = data.removeprefix("0x")
+        elif name == "windowtitlev2":
+            address, _, title = data.partition(",")
+            if address.removeprefix("0x") == self.address:
+                self.focus(self.cls, title, now)
+
+
+def watch(_args):
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    db = connect_db()
+    tracker = Tracker(db)
+    CONTROL_SOCKET.unlink(missing_ok=True)
+    control = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    control.bind(str(CONTROL_SOCKET))
+    try:
+        while True:
+            hypr, window = connect_hyprland()
+            if hypr is None:
+                time.sleep(2)
+                continue
+            now = time.time()
+            tracker.address = (window.get("address") or "").removeprefix("0x")
+            tracker.focus(window.get("class", ""), window.get("title", ""), now)
+            buffer = b""
+            next_checkpoint = now + CHECKPOINT_SECONDS
+            while True:
+                ready, _, _ = select.select([hypr, control], [], [], max(0, next_checkpoint - time.time()))
+                now = time.time()
+                if control in ready:
+                    message = control.recv(256).decode(errors="replace").split()
+                    if message[:1] == ["idle"] and len(message) == 2:
+                        tracker.go_idle(float(message[1]), now)
+                    elif message[:1] == ["active"]:
+                        tracker.go_active(now)
+                if hypr in ready:
+                    chunk = hypr.recv(65536)
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    *lines, buffer = buffer.split(b"\n")
+                    for line in lines:
+                        tracker.handle_event(line.decode(errors="replace"), now)
+                if now >= next_checkpoint:
+                    tracker.checkpoint(now)
+                    next_checkpoint = now + CHECKPOINT_SECONDS
+            hypr.close()
+            tracker.close(time.time())
+            tracker.cls = tracker.title = ""
+            time.sleep(1)
+    finally:
+        tracker.close(time.time())
+        CONTROL_SOCKET.unlink(missing_ok=True)
+
+
+def send_control(message):
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    try:
+        sock.sendto(message.encode(), str(CONTROL_SOCKET))
+    except OSError as error:
+        print(f"window-time: tracker not reachable ({error})", file=sys.stderr)
+        return 1
+    return 0
+
+
+def parse_since(text):
+    midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    if text == "today":
+        return midnight
+    if text == "yesterday":
+        return midnight - timedelta(days=1)
+    if text == "week":
+        return midnight - timedelta(days=midnight.weekday())
+    if match := re.fullmatch(r"(\d+)([mhd])", text):
+        unit = {"m": "minutes", "h": "hours", "d": "days"}[match[2]]
+        return datetime.now() - timedelta(**{unit: int(match[1])})
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            pass
+    raise SystemExit(f"window-time: cannot read SINCE {text!r}")
+
+
+def load_spans(db, since):
+    rows = db.execute(
+        "select id, start, end, class, title, profile, url from spans where end > ? order by start",
+        (since,),
+    ).fetchall()
+    spans = []
+    for id_, start, end, cls, title, profile, url in rows:
+        if url is None and is_browser(cls):
+            profile, url = resolve_url(cls, title)
+            if url is not None:
+                db.execute("update spans set profile = ?, url = ? where id = ?", (profile, url, id_))
+        spans.append((max(start, since), end, cls, title, profile, url))
+    db.commit()
+    return spans
+
+
+def app_label(cls, profile):
+    if webapp := WEBAPP_CLASS.match(cls):
+        cls = f"{webapp['host']} app"
+    return f"{cls} ({profile})" if profile else cls
+
+
+def format_duration(seconds):
+    seconds = int(seconds)
+    hours, rest = divmod(seconds, 3600)
+    minutes, seconds = divmod(rest, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def report(args):
+    since = parse_since(args.since)
+    spans = load_spans(connect_db(), since.timestamp())
+    totals = {}
+    for start, end, cls, title, profile, url in spans:
+        app = app_label(cls, profile)
+        title = BROWSER_TITLE_SUFFIX.sub("", title)
+        if args.by == "app":
+            key, url = app, None
+        elif args.by == "site":
+            key = urlsplit(url).hostname or url if url else app
+            title, url = "", None
+        else:
+            key = (app, url or title)
+        entry = totals.setdefault(key, {"seconds": 0.0, "app": app if args.by != "site" else key})
+        entry["seconds"] += end - start
+        entry["title"], entry["url"] = ("" if args.by == "app" else title), url
+    grand = sum(entry["seconds"] for entry in totals.values())
+    print(f"{format_duration(grand)} tracked since {since:%Y-%m-%d %H:%M}\n")
+    width = max((len(entry["app"]) for entry in totals.values()), default=0)
+    for entry in sorted(totals.values(), key=lambda entry: -entry["seconds"]):
+        print(f"{format_duration(entry['seconds']):>8}  {entry['app']:<{width}}  {entry['title']}".rstrip())
+        if entry["url"]:
+            print(f"{'':>8}  {'':<{width}}  {entry['url']}")
+
+
+def log(args):
+    since = parse_since(args.since)
+    for start, end, cls, title, profile, url in load_spans(connect_db(), since.timestamp()):
+        print(
+            f"{datetime.fromtimestamp(start):%H:%M:%S}  {format_duration(end - start):>8}  "
+            f"{app_label(cls, profile)}  {BROWSER_TITLE_SUFFIX.sub('', title)}" + (f"  {url}" if url else "")
+        )
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="window-time", description="Time spent per focused window.")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("watch", help="run the tracker").set_defaults(func=watch)
+    report_parser = commands.add_parser("report", help="totals per window, app or site")
+    report_parser.add_argument("since", nargs="?", default="today")
+    report_parser.add_argument("--by", choices=["window", "app", "site"], default="window")
+    report_parser.set_defaults(func=report)
+    log_parser = commands.add_parser("log", help="focus timeline")
+    log_parser.add_argument("since", nargs="?", default="today")
+    log_parser.set_defaults(func=log)
+    idle_parser = commands.add_parser("idle", help="input stopped SECONDS ago")
+    idle_parser.add_argument("seconds", type=float)
+    idle_parser.set_defaults(func=lambda a: send_control(f"idle {a.seconds}"))
+    commands.add_parser("active", help="input is back").set_defaults(func=lambda a: send_control("active"))
+    args = parser.parse_args()
+    sys.exit(args.func(args) or 0)
+
+
+if __name__ == "__main__":
+    main()
