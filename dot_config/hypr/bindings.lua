@@ -63,7 +63,11 @@ o.bind("SUPER + ALT + RETURN", "Terminal", { launch = terminal })
 o.bind("SUPER + semicolon", "Terminal", { launch = terminal })
 -- Remote, not local: with a local herdr the client owns prefix mode, so the server-side
 -- [[keys.command]] popups (prefix+g lazygit, prefix+u urls) never fire.
-o.bind("SUPER + B", "Herdr remote (choose SSH target)", { launch = "xdg-terminal-exec ~/.local/bin/herdr-remote-picker" })
+o.bind(
+	"SUPER + B",
+	"Herdr remote (choose SSH target)",
+	{ launch = "xdg-terminal-exec ~/.local/bin/herdr-remote-picker" }
+)
 -- o.rebind("SUPER + SHIFT + F", "File manager", { tui = "yazi", focus = true }) -- yazi over the default nautilus, which hardcodes dot entries to sort last
 o.bind("SUPER + SHIFT + D", "Discord", 'omarchy-launch-or-focus ^discord$ "uwsm-app -- discord.desktop"')
 o.bind("SUPER + SHIFT + Y", "YouTube", 'omarchy-launch-webapp "https://youtube.com/" --profile-directory="Default"')
@@ -121,6 +125,17 @@ hl.bind("SUPER + P", pseudopanel.toggle, {
 -- keypress before revealing the scratchpad.
 local qconsole_share = 0.5 -- fraction of the usable height the console covers
 local qconsole_box = 2 -- panel width as a multiple of its height; math.huge = full width
+local qconsole_split_box = math.huge -- same, once two or more windows tile in it
+
+local function qconsole_tiled_count()
+	local count = 0
+	for _, window in ipairs(hl.get_windows()) do
+		if not window.floating and window.workspace and window.workspace.name == "special:scratchpad" then
+			count = count + 1
+		end
+	end
+	return count
+end
 
 local function qconsole_refit()
 	local monitor = hl.get_active_monitor()
@@ -140,7 +155,8 @@ local function qconsole_refit()
 	width = width / monitor.scale - reserved.left - reserved.right
 
 	local tall = math.floor(height * qconsole_share)
-	local wide = math.min(width, tall * qconsole_box)
+	local box = qconsole_tiled_count() >= 2 and qconsole_split_box or qconsole_box
+	local wide = math.min(width, tall * box)
 	local side = math.max(0, math.floor((width - wide) / 2))
 	local bottom = math.max(0, math.floor(height - tall))
 
@@ -160,6 +176,14 @@ local function qconsole_toggle()
 	-- closes the focus-event race that leaves mixed-scale setups using stale
 	-- geometry until the pointer moves to another monitor.
 	hl.timer(qconsole_refit, { timeout = 50, type = "oneshot" })
+end
+
+-- Refit when windows join or leave so the panel widens or narrows in place.
+-- Deferred so a closing window is already gone from get_windows().
+for _, event in ipairs({ "window.open", "window.close", "window.destroy", "window.move_to_workspace" }) do
+	hl.on(event, function()
+		hl.timer(qconsole_refit, { timeout = 50, type = "oneshot" })
+	end)
 end
 
 -- Focusing a window on a hidden special workspace does not reveal it, so toggle the
@@ -190,12 +214,16 @@ end
 
 hl.unbind("SUPER + S") -- Omarchy default: Toggle scratchpad
 hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad (fit current monitor)" })
-o.bind("SUPER + A", "Toggle AI scratchpad", hl.dsp.workspace.toggle_special("AI"))
+o.bind("SUPER + E", "Toggle AI scratchpad", hl.dsp.workspace.toggle_special("AI"))
 o.bind("SUPER + D", "Toggle Spotify scratchpad", spotify_toggle)
 o.bind("SUPER + SHIFT + M", "Music", spotify_toggle)
 
 o.bind("SUPER + ALT + A", "Move window to AI", hl.dsp.window.move({ workspace = "special:AI", follow = false }))
-o.bind("SUPER + ALT + D", "Move window to Spotify", hl.dsp.window.move({ workspace = "special:spotify", follow = false }))
+o.bind(
+	"SUPER + ALT + D",
+	"Move window to Spotify",
+	hl.dsp.window.move({ workspace = "special:spotify", follow = false })
+)
 
 -- ---------------------------------------------------------------------------
 -- Dictation
@@ -218,7 +246,7 @@ hl.unbind("switch:on:Lid Switch")
 o.bind(
 	"switch:on:Lid Switch",
 	nil,
-	"omarchy-hyprland-monitor-clamshell; hyprctl dispatch 'hl.dsp.dpms({ action = \"disable\", monitor = \"eDP-1\" })'",
+	'omarchy-hyprland-monitor-clamshell; hyprctl dispatch \'hl.dsp.dpms({ action = "disable", monitor = "eDP-1" })\'',
 	{ locked = true }
 )
 o.bind("switch:off:Lid Switch", nil, hl.dsp.dpms({ action = "enable", monitor = "eDP-1" }), { locked = true })
