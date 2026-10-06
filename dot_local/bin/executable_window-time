@@ -7,6 +7,9 @@
 #   window-time report [SINCE] [--by window|app|site]
 #                                     totals, longest first
 #   window-time log [SINCE]           focus timeline, one line per stretch
+#
+# report and log skip stretches shorter than --min seconds (default
+# MIN_SPAN_SECONDS): focus passing through windows on the way to another.
 #   window-time idle SECONDS          tell the tracker input stopped SECONDS ago
 #   window-time active                tell the tracker input is back
 #
@@ -42,6 +45,7 @@ DB_PATH = DATA_DIR / "window-time.db"
 CONTROL_SOCKET = RUNTIME_DIR / "window-time.sock"
 
 CHECKPOINT_SECONDS = 15
+MIN_SPAN_SECONDS = 1.0
 
 # Browser window class -> user data dir. Web app windows ("chrome-<host>__<path>-
 # <Profile_N>") carry no browser name, so every data dir is searched for those.
@@ -318,13 +322,15 @@ def parse_since(text):
     raise SystemExit(f"window-time: cannot read SINCE {text!r}")
 
 
-def load_spans(db, since):
+def load_spans(db, since, min_seconds):
     rows = db.execute(
         "select id, start, end, class, title, profile, url from spans where end > ? order by start",
         (since,),
     ).fetchall()
     spans = []
     for id_, start, end, cls, title, profile, url in rows:
+        if end - start < min_seconds:
+            continue
         if url is None and is_browser(cls):
             profile, url = resolve_url(cls, title)
             if url is not None:
@@ -353,7 +359,7 @@ def format_duration(seconds):
 
 def report(args):
     since = parse_since(args.since)
-    spans = load_spans(connect_db(), since.timestamp())
+    spans = load_spans(connect_db(), since.timestamp(), args.min)
     totals = {}
     for start, end, cls, title, profile, url in spans:
         app = app_label(cls, profile)
@@ -379,7 +385,7 @@ def report(args):
 
 def log(args):
     since = parse_since(args.since)
-    for start, end, cls, title, profile, url in load_spans(connect_db(), since.timestamp()):
+    for start, end, cls, title, profile, url in load_spans(connect_db(), since.timestamp(), args.min):
         print(
             f"{datetime.fromtimestamp(start):%H:%M:%S}  {format_duration(end - start):>8}  "
             f"{app_label(cls, profile)}  {BROWSER_TITLE_SUFFIX.sub('', title)}" + (f"  {url}" if url else "")
@@ -393,9 +399,11 @@ def main():
     report_parser = commands.add_parser("report", help="totals per window, app or site")
     report_parser.add_argument("since", nargs="?", default="today")
     report_parser.add_argument("--by", choices=["window", "app", "site"], default="window")
+    report_parser.add_argument("--min", type=float, default=MIN_SPAN_SECONDS, help="skip shorter stretches (seconds)")
     report_parser.set_defaults(func=report)
     log_parser = commands.add_parser("log", help="focus timeline")
     log_parser.add_argument("since", nargs="?", default="today")
+    log_parser.add_argument("--min", type=float, default=MIN_SPAN_SECONDS, help="skip shorter stretches (seconds)")
     log_parser.set_defaults(func=log)
     idle_parser = commands.add_parser("idle", help="input stopped SECONDS ago")
     idle_parser.add_argument("seconds", type=float)
