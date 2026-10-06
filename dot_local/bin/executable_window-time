@@ -54,7 +54,7 @@ WEBAPP_CLASS = re.compile(r"^chrome-(?P<host>.+?)__(?P<path>.*)-(?P<profile>Defa
 
 # Terminals running agents animate a spinner in the title; without stripping it
 # every frame would start a new span.
-TITLE_SPINNER = re.compile(r"^[⠀-⣿✢-✽·*✳✶✻✽✢\s]+")
+TITLE_SPINNER = re.compile("^[\u2800-\u28ff\u25a0-\u25ff\u2722-\u273d\u00b7*\\s]+")
 
 SCHEMA = """
 create table if not exists spans (
@@ -329,7 +329,7 @@ def load_spans(db, since):
             profile, url = resolve_url(cls, title)
             if url is not None:
                 db.execute("update spans set profile = ?, url = ? where id = ?", (profile, url, id_))
-        spans.append((max(start, since), end, cls, title, profile, url))
+        spans.append((max(start, since), end, cls, clean_title(title), profile, url))
     db.commit()
     return spans
 
