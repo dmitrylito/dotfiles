@@ -27,7 +27,22 @@ if [[ $(h workspace list | jq '.result.workspaces | length') == 0 ]]; then
   h pane run "$pane" omarchy-agent --inline >/dev/null
 fi
 
+# Only this client starts with the sidebar collapsed: it reads a copy of the real
+# config (so keys and theme still match) via HERDR_CONFIG_PATH, which the server
+# never sees. prefix+b still toggles it. Env goes in the command because
+# uwsm-app does not pass this process's environment to the terminal.
+config="${HERDR_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml}"
+client_config="${XDG_RUNTIME_DIR:-/tmp}/herdr-agent/config.toml"
+mkdir -p "${client_config%/*}"
+awk '
+  /^[[:space:]]*sidebar_start_collapsed[[:space:]]*=/ { next }
+  { print }
+  /^\[ui\][[:space:]]*$/ { print "sidebar_start_collapsed = true"; ui = 1 }
+  END { if (!ui) print "\n[ui]\nsidebar_start_collapsed = true" }
+' "$config" 2>/dev/null >"$client_config" || printf '[ui]\nsidebar_start_collapsed = true\n' >"$client_config"
+client=(env "HERDR_CONFIG_PATH=$client_config" herdr --session "$session")
+
 if [[ ${1:-} == --inline ]]; then
-  exec herdr --session "$session"
+  exec "${client[@]}"
 fi
-exec omarchy-launch-tui --app-id=org.omarchy.agent herdr --session "$session"
+exec omarchy-launch-tui --app-id=org.omarchy.agent "${client[@]}"
