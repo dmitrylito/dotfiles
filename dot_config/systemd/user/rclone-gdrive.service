@@ -5,9 +5,10 @@ After=graphical-session.target network-online.target
 
 [Service]
 Type=notify
+ExecStartPre=-/usr/bin/fusermount3 -uz %h/GoogleDrive
 ExecStartPre=/usr/bin/mkdir -p %h/GoogleDrive
 ExecStart=/usr/bin/rclone mount gdrive: %h/GoogleDrive --vfs-cache-mode full
-ExecStop=/usr/bin/fusermount3 -u %h/GoogleDrive
+ExecStop=/usr/bin/fusermount3 -uz %h/GoogleDrive
 Restart=on-failure
 RestartSec=10
 
