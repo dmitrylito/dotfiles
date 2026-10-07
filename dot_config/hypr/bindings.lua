@@ -165,7 +165,7 @@ local function qconsole_refit()
 		gaps_in = 0,
 		gaps_out = { top = 0, right = side, bottom = bottom, left = side },
 		no_border = true,
-		on_created_empty = "[workspace special:scratchpad silent] omarchy-agent",
+		on_created_empty = "[workspace special:scratchpad silent] herdr-agent",
 	})
 end
 
