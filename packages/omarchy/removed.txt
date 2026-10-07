@@ -21,7 +21,6 @@ lolcat
 mesa-demos
 mesa-utils
 nano
-noisetorch-bin
 omazed
 openai-codex-bin
 pavucontrol
