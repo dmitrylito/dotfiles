@@ -174,7 +174,9 @@ YML
 start_db_only() {
   step_begin Stack "Stopping the stack and starting db only (restore-tuned postgres)."
   cd "$COMPOSE_DIR"
-  docker compose --progress quiet down
+  # stop, not down: backend's redis has no named volume, so every down/up left its
+  # old anonymous /data volume behind (one orphan per night).
+  docker compose --progress quiet stop
   write_restore_override
   docker compose --progress quiet -f docker-compose.yml -f "$RESTORE_PG_OVERRIDE" up -d db
   wait_for_db
@@ -291,7 +293,7 @@ restore_dump() {
 snapshot_and_restart() {
   step_begin Stack "Stopping db and snapshotting $VOLUME_NAME to $SNAPSHOT_FILE."
   cd "$COMPOSE_DIR"
-  docker compose --progress quiet down
+  docker compose --progress quiet stop
   mkdir -p "$(dirname "$SNAPSHOT_FILE")"
   # stdout is a per-file tar listing (~330k lines); stderr still surfaces failures.
   docker-volume-snapshot create "$VOLUME_NAME" "$SNAPSHOT_FILE" >/dev/null
