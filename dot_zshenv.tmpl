@@ -1,5 +1,14 @@
 # vim: set filetype=zsh:
 
+# A non-interactive zsh never runs the direnv hook, so it keeps whatever .envrc
+# the launching shell had loaded. The Claude daemon is started from whichever dir
+# the first `claude` ran in; started in ~/Projects/ops-center, every job shell got
+# COMPOSE_PROJECT_NAME=ops-center and `docker compose` in other repos hit prod.
+# Re-evaluate for the current dir: outside the .envrc tree this unloads it.
+if [[ ! -o interactive && -n "${DIRENV_DIR:-}" ]] && (( ${+commands[direnv]} )); then
+  eval "$(DIRENV_LOG_FORMAT= direnv export zsh 2>/dev/null)"
+fi
+
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
