@@ -38,6 +38,7 @@ system/
 .config/systemd/user/omarchy-lock-dpms-guard.service
 .config/systemd/user/dotoold.service
 .config/systemd/user/herdr-server.service
+.config/systemd/user/rclone-gdrive.service
 .config/systemd/user/graphical-session.target.wants/
 .config/mimeapps.list
 .config/spotify-flags.conf

@@ -1,0 +1,15 @@
+[Unit]
+Description=Mount Google Drive at ~/GoogleDrive (rclone)
+PartOf=graphical-session.target
+After=graphical-session.target network-online.target
+
+[Service]
+Type=notify
+ExecStartPre=/usr/bin/mkdir -p %h/GoogleDrive
+ExecStart=/usr/bin/rclone mount gdrive: %h/GoogleDrive --vfs-cache-mode full
+ExecStop=/usr/bin/fusermount3 -u %h/GoogleDrive
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target
