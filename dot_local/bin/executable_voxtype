@@ -11,6 +11,11 @@
 FORK="$HOME/.local/share/voxtype-mgx/vx-rc4/target/release/voxtype"
 [ -x "$FORK" ] || FORK=/usr/bin/voxtype
 
+# MIGraphX is linked by soname but its dir is not on the loader path: rocm-bin-extras
+# 10.1 moved it to /opt/migraphx/lib, and ld.so.conf can't list that dir directly
+# (per-gfx code objects there make ldconfig warn on every pacman run).
+export LD_LIBRARY_PATH="/opt/migraphx/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 # TEMPORARY (2026-09-11): tracing who stops dictation a few seconds after it starts.
 # Records every `record` subcommand with its caller chain. Remove this block and the
 # log at ~/.cache/voxtype/cli-trace.log once the culprit is identified.
