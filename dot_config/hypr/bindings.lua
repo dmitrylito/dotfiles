@@ -123,7 +123,7 @@ hl.bind("SUPER + P", pseudopanel.toggle, {
 -- monitors that rule can still contain the previous monitor's bottom gap when
 -- SUPER+S runs, so refit it synchronously against the monitor receiving the
 -- keypress before revealing the scratchpad.
-local qconsole_share = 0.5 -- fraction of the usable height the console covers
+local qconsole_share = 0.66 -- fraction of the usable height the console covers
 local qconsole_box = 2 -- panel width as a multiple of its height; math.huge = full width
 local qconsole_split_box = math.huge -- same, once two or more windows tile in it
 
