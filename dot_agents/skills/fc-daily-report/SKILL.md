@@ -118,7 +118,7 @@ Do not invoke another model to summarize or check the same material.
 
 Lead with the first observed work activity and collection cutoff. Then a **Time**
 summary from `timeline.json` `totals`: work time (`work_seconds`: work-categorized
-time plus calls), screen time by category, watching and idle time, away (locked)
+time plus calls), screen time by category, watching and idle time, away (displays off or locked)
 time, terminal time, call time and how much of it was off-screen, and scheduled
 meetings that nothing measured. These are measured on the FCOffice desktop and from Dialpad; say
 so, and name `coverage` gaps (no screen data, no exact URLs, no idle rows, no pane
