@@ -7,6 +7,8 @@
 #   window-time report [SINCE] [--by window|app|site]
 #                                     totals, longest first
 #   window-time log [SINCE]           focus timeline, one line per stretch
+#   window-time export [SINCE] [--until UNTIL]
+#                                     spans and calls as JSON, for fc-daily-report
 #
 # report and log skip stretches shorter than --min seconds (default
 # MIN_SPAN_SECONDS): focus passing through windows on the way to another.
@@ -15,7 +17,8 @@
 #
 # SINCE: today (default), yesterday, week, 30m / 2h / 3d, or YYYY-MM-DD[ HH:MM].
 #
-# Data lives in $XDG_DATA_HOME/window-time/window-time.db (table `spans`).
+# Data lives in $XDG_DATA_HOME/window-time/window-time.db: `spans` (focus) and
+# `calls` (a CALL_APPS process recording the mic, tracked whatever has focus).
 # Idle reports come from the dmitrylito.window-time omarchy shell plugin; without
 # it, time away from the keyboard counts toward whichever window had focus.
 # Idle is ignored while a CALL_APPS process records the microphone (a Meet or
@@ -77,6 +80,13 @@ create table if not exists spans (
     url text
 );
 create index if not exists spans_start on spans (start);
+create table if not exists calls (
+    id integer primary key,
+    start real not null,
+    end real not null,
+    apps text not null
+);
+create index if not exists calls_start on calls (start);
 """
 
 
@@ -179,15 +189,16 @@ def clean_title(title):
     return TITLE_SPINNER.sub("", title).strip()
 
 
-def call_active():
+def call_apps():
     try:
         result = subprocess.run(
             ["pactl", "-f", "json", "list", "source-outputs"], capture_output=True, text=True, timeout=3
         )
         streams = json.loads(result.stdout or "[]")
     except (subprocess.TimeoutExpired, ValueError, OSError):
-        return False
-    return any(stream["properties"].get("application.process.binary") in CALL_APPS for stream in streams)
+        return set()
+    binaries = {stream["properties"].get("application.process.binary") for stream in streams}
+    return binaries & CALL_APPS
 
 
 class Tracker:
@@ -200,6 +211,7 @@ class Tracker:
         self.address = ""
         self.input_idle = False
         self.in_call = False
+        self.call_id = None
         self.url_resolved = False
 
     @property
@@ -240,9 +252,28 @@ class Tracker:
         self.db.commit()
         self.url_resolved = url is not None
 
+    def update_call(self, now):
+        apps = call_apps()
+        if apps and self.call_id is None:
+            cur = self.db.execute(
+                "insert into calls (start, end, apps) values (?, ?, ?)", (now, now, ",".join(sorted(apps)))
+            )
+            self.call_id = cur.lastrowid
+        elif self.call_id is not None:
+            self.db.execute("update calls set end = ? where id = ?", (now, self.call_id))
+            if not apps:
+                self.call_id = None
+        self.db.commit()
+        self.set_call(bool(apps), now)
+
+    def end_call(self, now):
+        if self.call_id is not None:
+            self.db.execute("update calls set end = ? where id = ?", (now, self.call_id))
+            self.db.commit()
+            self.call_id = None
+
     def checkpoint(self, now):
-        if self.input_idle:
-            self.set_call(call_active(), now)
+        self.update_call(now)
         if self.span_id is not None:
             self.db.execute("update spans set end = ? where id = ?", (now, self.span_id))
             self.db.commit()
@@ -257,7 +288,7 @@ class Tracker:
             self.close(now)
 
     def go_idle(self, seconds, now):
-        self.set_call(call_active(), now)
+        self.update_call(now)
         self.input_idle = True
         if self.away:
             self.close(now - seconds)
@@ -281,6 +312,15 @@ class Tracker:
                 self.focus(self.cls, title, now)
 
 
+def audio_events():
+    # Mic streams opening and closing show up here at once; the checkpoint poll
+    # covers the time while pactl is down (pipewire-pulse restarting).
+    try:
+        return subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+    except OSError:
+        return None
+
+
 def watch(_args):
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     db = connect_db()
@@ -288,6 +328,7 @@ def watch(_args):
     CONTROL_SOCKET.unlink(missing_ok=True)
     control = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     control.bind(str(CONTROL_SOCKET))
+    audio = audio_events()
     try:
         while True:
             hypr, window = connect_hyprland()
@@ -297,11 +338,20 @@ def watch(_args):
             now = time.time()
             tracker.address = (window.get("address") or "").removeprefix("0x")
             tracker.focus(window.get("class", ""), window.get("title", ""), now)
+            tracker.update_call(now)
             buffer = b""
             next_checkpoint = now + CHECKPOINT_SECONDS
             while True:
-                ready, _, _ = select.select([hypr, control], [], [], max(0, next_checkpoint - time.time()))
+                sources = [hypr, control] + ([audio.stdout] if audio else [])
+                ready, _, _ = select.select(sources, [], [], max(0, next_checkpoint - time.time()))
                 now = time.time()
+                if audio and audio.stdout in ready:
+                    events = os.read(audio.stdout.fileno(), 65536)
+                    if not events:
+                        audio.wait()
+                        audio = None
+                    elif b"source-output" in events:
+                        tracker.update_call(now)
                 if control in ready:
                     message = control.recv(256).decode(errors="replace").split()
                     if message[:1] == ["idle"] and len(message) == 2:
@@ -319,12 +369,16 @@ def watch(_args):
                 if now >= next_checkpoint:
                     tracker.checkpoint(now)
                     next_checkpoint = now + CHECKPOINT_SECONDS
+                    audio = audio or audio_events()
             hypr.close()
             tracker.close(time.time())
             tracker.cls = tracker.title = ""
             time.sleep(1)
     finally:
         tracker.close(time.time())
+        tracker.end_call(time.time())
+        if audio:
+            audio.terminate()
         CONTROL_SOCKET.unlink(missing_ok=True)
 
 
@@ -427,6 +481,25 @@ def log(args):
         )
 
 
+def export(args):
+    since = parse_since(args.since).timestamp()
+    until = parse_since(args.until).timestamp() if args.until else time.time()
+    db = connect_db()
+    spans = [
+        {"start": start, "end": min(end, until), "class": cls, "title": title, "profile": profile, "url": url}
+        for start, end, cls, title, profile, url in load_spans(db, since, args.min)
+        if start < until
+    ]
+    calls = [
+        {"start": max(start, since), "end": min(end, until), "apps": apps.split(",")}
+        for start, end, apps in db.execute(
+            "select start, end, apps from calls where end > ? and start < ? order by start", (since, until)
+        )
+    ]
+    json.dump({"host": socket.gethostname(), "since": since, "until": until, "spans": spans, "calls": calls}, sys.stdout)
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(prog="window-time", description="Time spent per focused window.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -440,6 +513,11 @@ def main():
     log_parser.add_argument("since", nargs="?", default="today")
     log_parser.add_argument("--min", type=float, default=MIN_SPAN_SECONDS, help="skip shorter stretches (seconds)")
     log_parser.set_defaults(func=log)
+    export_parser = commands.add_parser("export", help="spans and calls as JSON")
+    export_parser.add_argument("since", nargs="?", default="today")
+    export_parser.add_argument("--until", help="end of the range (same formats as SINCE; default now)")
+    export_parser.add_argument("--min", type=float, default=0, help="skip shorter stretches (seconds)")
+    export_parser.set_defaults(func=export)
     idle_parser = commands.add_parser("idle", help="input stopped SECONDS ago")
     idle_parser.add_argument("seconds", type=float)
     idle_parser.set_defaults(func=lambda a: send_control(f"idle {a.seconds}"))
