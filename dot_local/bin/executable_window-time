@@ -18,6 +18,8 @@
 # Data lives in $XDG_DATA_HOME/window-time/window-time.db (table `spans`).
 # Idle reports come from the dmitrylito.window-time omarchy shell plugin; without
 # it, time away from the keyboard counts toward whichever window had focus.
+# Idle is ignored while a CALL_APPS process records the microphone (a Meet or
+# Dialpad call), so call time still counts, toward whichever window has focus.
 #
 # URL lookup is a best guess: Chromium writes History a few seconds late, and only
 # keeps the latest title per URL, so a title shared by several pages (or one that
@@ -46,6 +48,10 @@ CONTROL_SOCKET = RUNTIME_DIR / "window-time.sock"
 
 CHECKPOINT_SECONDS = 15
 MIN_SPAN_SECONDS = 1.0
+
+# application.process.binary of PipeWire capture streams that mean "on a call".
+# NoiseTorch and voxtype also record the mic, so this is an allowlist.
+CALL_APPS = {"chromium", "chrome", "zoom", "slack", "discord", "teams-for-linux"}
 
 # Browser window class -> user data dir. Web app windows ("chrome-<host>__<path>-
 # <Profile_N>") carry no browser name, so every data dir is searched for those.
@@ -173,6 +179,17 @@ def clean_title(title):
     return TITLE_SPINNER.sub("", title).strip()
 
 
+def call_active():
+    try:
+        result = subprocess.run(
+            ["pactl", "-f", "json", "list", "source-outputs"], capture_output=True, text=True, timeout=3
+        )
+        streams = json.loads(result.stdout or "[]")
+    except (subprocess.TimeoutExpired, ValueError, OSError):
+        return False
+    return any(stream["properties"].get("application.process.binary") in CALL_APPS for stream in streams)
+
+
 class Tracker:
     def __init__(self, db):
         self.db = db
@@ -181,8 +198,13 @@ class Tracker:
         self.cls = ""
         self.title = ""
         self.address = ""
-        self.idle = False
+        self.input_idle = False
+        self.in_call = False
         self.url_resolved = False
+
+    @property
+    def away(self):
+        return self.input_idle and not self.in_call
 
     def focus(self, cls, title, now):
         title = clean_title(title)
@@ -193,7 +215,7 @@ class Tracker:
         self.open(now)
 
     def open(self, now):
-        if self.idle or not self.cls:
+        if self.away or not self.cls:
             return
         cur = self.db.execute(
             "insert into spans (start, end, class, title) values (?, ?, ?, ?)",
@@ -219,18 +241,31 @@ class Tracker:
         self.url_resolved = url is not None
 
     def checkpoint(self, now):
+        if self.input_idle:
+            self.set_call(call_active(), now)
         if self.span_id is not None:
             self.db.execute("update spans set end = ? where id = ?", (now, self.span_id))
             self.db.commit()
             self.resolve()
 
+    def set_call(self, in_call, now):
+        was_away = self.away
+        self.in_call = in_call
+        if was_away and not self.away:
+            self.open(now)
+        elif self.away and not was_away:
+            self.close(now)
+
     def go_idle(self, seconds, now):
-        self.close(now - seconds)
-        self.idle = True
+        self.set_call(call_active(), now)
+        self.input_idle = True
+        if self.away:
+            self.close(now - seconds)
 
     def go_active(self, now):
-        if self.idle:
-            self.idle = False
+        was_away = self.away
+        self.input_idle = False
+        if was_away:
             self.open(now)
 
     def handle_event(self, line, now):
