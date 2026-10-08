@@ -178,7 +178,7 @@ areas from the evidence, he decides. Dmitry's areas (2026-10-08):
 - **Internal Tools**: tooling, engineering and the ops pipeline.
 - **Business Development**: internal meetings and product work (e.g. customer
   product feedback sessions), vendors, research.
-- **Misc**: audio tools and music; kept out of the management total, noted apart.
+- **Misc**: audio tools and music; its own row in the management report.
 
 Title `Fleet Chaser Time Report — <date> (<start> – <cutoff>)`, the total, then one
 row per area, largest first: area, time, share, and one line of concrete work done
