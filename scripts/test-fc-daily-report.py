@@ -1043,3 +1043,29 @@ def test_console_customer_splits_time_and_is_categorizable(
         "fc_customer:Landmark Materials",
     ]
     assert result["blocks"][-1]["titles"][0]["title"] == "Fleet Chaser"
+
+
+def test_pane_follows_chat_title_after_resume_or_fork(timeline_module):
+    sessions = {
+        ("dlco-1", "old"): {"title": "billing audit", "active": [[0, 10]]},
+        ("dlco-1", "main"): {"title": "els billing", "active": [[0, 50]]},
+        ("dlco-1", "fork"): {"title": "els billing ⑂", "active": [[0, 60]]},
+    }
+    by_title = timeline_module.sessions_by_title(sessions)
+
+    def pane(title):
+        return {"host": "DLCO-1", "agent_session": "old", "title": title}
+
+    assert timeline_module.pane_session(
+        pane("✳ els billing"), sessions, by_title
+    ) == ("dlco-1", "main")
+    assert timeline_module.pane_session(
+        pane("els billing ⑂"), sessions, by_title
+    ) == ("dlco-1", "fork")
+    assert timeline_module.pane_session(
+        pane("billing audit"), sessions, by_title
+    ) == ("dlco-1", "old")
+    assert timeline_module.pane_session(pane("zsh"), sessions, by_title) == (
+        "dlco-1",
+        "old",
+    )

@@ -81,6 +81,9 @@ TERMINAL_CLASSES = {
 SCRATCHPAD_CLASS = "org.omarchy.agent"
 TITLE_HOST = re.compile(r"^(?P<host>[\w.-]+): ")
 WEBAPP_CLASS = re.compile(r"^chrome-(?P<host>.+?)__")
+TITLE_SPINNER = re.compile(
+    "^[\u2800-\u28ff\u25a0-\u25ff\u2722-\u273d\u00b7*\\s]+"
+)
 BROWSER_SUFFIX = re.compile(r" - (Chromium|Google Chrome)$")
 UNREAD_PREFIX = re.compile(r"^\(\d+\)\s*")
 MEET_CODE = re.compile(r"\b([a-z]{3}-[a-z]{4}-[a-z]{3})\b")
@@ -209,8 +212,39 @@ def project_of(cwd):
     return Path(cwd).name if cwd else None
 
 
-def split_terminal(segment, panes, prompts_by_host, sessions):
+def title_key(title):
+    return (
+        re.sub(r"\s+", " ", TITLE_SPINNER.sub("", title or "")).strip().lower()
+    )
+
+
+def sessions_by_title(sessions):
+    """(host, title) -> the most recently active session with that title."""
+    found = {}
+    for key, session in sessions.items():
+        if not session.get("title"):
+            continue
+        last = max((b for _, b in session.get("active", [])), default=0)
+        slot = (key[0], title_key(session["title"]))
+        if slot not in found or last > found[slot][0]:
+            found[slot] = (last, key)
+    return {slot: key for slot, (_, key) in found.items()}
+
+
+def pane_session(pane, sessions, by_title):
+    """herdr keeps the session id a pane's agent started with; after /resume,
+    /clear or a fork the pane title (the chat's title) is the reliable link."""
+    key = (pane["host"].lower(), pane.get("agent_session"))
+    title = title_key(pane.get("title"))
+    session = sessions.get(key)
+    if title and (session is None or title_key(session.get("title")) != title):
+        key = by_title.get((key[0], title), key)
+    return key if key in sessions else None
+
+
+def split_terminal(segment, panes, prompts_by_host, sessions, by_title=None):
     """Split one terminal focus span into per-session pieces."""
+    by_title = by_title if by_title is not None else sessions_by_title(sessions)
     host = segment["host"]
     pieces, cursor = [], segment["start"]
     covered = sorted(
@@ -224,14 +258,12 @@ def split_terminal(segment, panes, prompts_by_host, sessions):
                 inferred(segment, cursor, start, prompts_by_host.get(host, []))
             )
         if pane is not None:
-            key = (pane["host"].lower(), pane.get("agent_session"))
-            session = sessions.get(key)
             pieces.append(
                 {
                     **segment,
                     "start": start,
                     "end": end,
-                    "session": key if session else None,
+                    "session": pane_session(pane, sessions, by_title),
                     "agent": pane.get("agent"),
                     "pane_title": pane.get("title"),
                     "cwd": pane.get("cwd"),
@@ -273,6 +305,7 @@ def build_segments(screen, agents, bounds):
         ((s.get("host") or "").lower(), s.get("session_id")): s
         for s in agents.get("sessions", [])
     }
+    by_title = sessions_by_title(sessions)
     prompts_by_host = defaultdict(list)
     for key, session in sessions.items():
         for prompt in session.get("prompts", []):
@@ -305,7 +338,9 @@ def build_segments(screen, agents, bounds):
             segment["kind"] = "terminal"
             segment["host"] = terminal_host(span, screen_host)
             segments.extend(
-                split_terminal(segment, panes, prompts_by_host, sessions)
+                split_terminal(
+                    segment, panes, prompts_by_host, sessions, by_title
+                )
             )
         else:
             segment["kind"] = "browser" if site else "app"
