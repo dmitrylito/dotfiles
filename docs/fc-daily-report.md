@@ -50,9 +50,10 @@ code in the Meet tab title; otherwise the event appears under
 `scheduled_meetings`, not in totals. Screen idle over the omarchy shell plugin
 timeout is excluded unless a call holds the mic.
 
-Away is only time behind the omarchy lock screen: window-time polls the lock state
-every five seconds (`locks`; `window-time import-locks` backfills from the shell
-journal). Any other time without input (keyboard/mouse, two minutes, from the
+Away is time with every display powered off or the omarchy lock screen up:
+window-time polls both every five seconds (`displays_off`, `locks`;
+`window-time import-locks` backfills them from the journal). The displays go off
+after five idle minutes (`dmitrylito.display-idle`), so those minutes stay idle. Any other time without input (keyboard/mouse, two minutes, from the
 omarchy shell plugin) is `idle`, whatever its length, or `watching` when a window
 was holding the screen awake. Call time is never idle: calls keep counting through
 idle from the desktop microphone, and Dialpad calls off the desktop are subtracted

@@ -147,7 +147,8 @@ uncategorized. Never decide a category for him.
   (`fc_api` source), logged in with the ops center's FC account from the chezmoi
   `fc-api` secrets group; if it is a gap, report the error (an expired password
   means updating that group with `secrets-edit`) and say today's actions are missing.
-- **Watching, idle and away**: away is only time behind the lock screen. Any other
+- **Watching, idle and away**: away is time with the displays off or the screen
+  locked (displays go off after five idle minutes). Any other
   time without keyboard/mouse input is `idle` (whatever its length) or `watching`
   when a window held the screen awake (video, Meet without a call). Call time is
   never idle. Present them as such; Dmitry categorizes idle and watching himself.
