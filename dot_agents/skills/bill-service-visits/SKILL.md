@@ -45,6 +45,12 @@ One invocation, one selection prompt, then apply. Agent-agnostic: lives in `~/.a
    match, target (`append <invoice>` / `NEW draft`), install/camera/vehicle records ±4/3 days,
    warnings (date mismatch, shared hardware records between two tasks, existing line, no
    evidence, unbilled customer), and a drafted customer-facing `work_performed`.
+   - Evidence kinds: `*_install`, `*_removed` (re-saved rows and swaps filtered out), and
+     `tracker_online` — a vehicle whose tracker data resumed after a silence with no install
+     (plug-in or wiring fix). Vehicles named in the task text are checked 14 days back with a
+     4-day silence; others only within ±1 day of the visit after 7+ days silent, and are
+     listed but left out of the draft (fleets resume idle units every Monday). Confirm an
+     unnamed `tracker_online` row before adding it to `work_performed`.
    - Unresolved customer: pick from the printed suggestions, add
      `"<company name>": "<customer uuid>"` to `~/.local/state/service-visit-billing/customer-map.json`,
      rerun `evidence`. Never guess a customer.

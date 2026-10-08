@@ -193,7 +193,7 @@ def cmd_evidence(args):
         print(f"\n{m['source_task_key']} #{m['number']} {m['name']}")
         print(f"   customer: {cust}   target: {target}   date: {m['service_date']}")
         for e in m["evidence"]:
-            print(f"   {e['kind']:16} {e['date']} {e['vehicle']}")
+            print(f"   {e['kind']:18} {e['date']} {e['vehicle']}  {e.get('detail', '')}".rstrip())
         for w in m["warnings"]:
             print(f"   ⚠ {w}")
         print(f"   work_performed: {m['work_performed']}")
