@@ -55,7 +55,11 @@ was holding the screen awake. Call time is never idle: calls keep counting throu
 idle from the desktop microphone, and Dialpad calls off the desktop are subtracted
 from idle. Browser spans carry the active tab's exact URL from the window-time
 Chromium extension (`url_source: tab`); older spans keep the History title match
-(`history`). `records` lists what was on screen by record: FC tasks, vehicles and
+(`history`). On console.fleetchaser.com the extension also reports the customer the
+console is scoped to (the `customer_id` claim of its token; the token never leaves
+the page), so a customer switch with the same URL starts a new span; names come from
+the ops center's `mirror_fc_customer`, `fc_customers` totals time per customer, and
+`fc_customer:<name>` is a rule key. `records` lists what was on screen by record: FC tasks, vehicles and
 devices, admin objects, HubSpot records, Gmail threads, Google docs and Linear
 issues.
 

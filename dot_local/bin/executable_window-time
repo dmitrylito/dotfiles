@@ -25,7 +25,8 @@
 # e.g. a video or Meet tab) and `locks` (the omarchy lock screen was up: the
 # only time counted as away).
 # Browser URLs come from the window-time Chromium extension when it is loaded
-# (`url_source` = tab: the active tab's exact URL, a new span per navigation);
+# (`url_source` = tab: the active tab's exact URL, a new span per navigation or FC
+# console customer switch, `fc_customer` = the console's customer id);
 # otherwise from History, matched by title (`url_source` = history).
 #   window-time tab                   Chromium native-messaging host (the extension)
 #   window-time import-locks [SINCE]  backfill `locks` from the omarchy shell journal
@@ -153,8 +154,10 @@ def connect_db():
     db = sqlite3.connect(DB_PATH, timeout=10)
     db.execute("pragma journal_mode=wal")
     db.executescript(SCHEMA)
-    if "url_source" not in {row[1] for row in db.execute("pragma table_info(spans)")}:
-        db.execute("alter table spans add column url_source text")
+    columns = {row[1] for row in db.execute("pragma table_info(spans)")}
+    for column in ("url_source", "fc_customer"):
+        if column not in columns:
+            db.execute(f"alter table spans add column {column} text")
     return db
 
 
@@ -427,6 +430,7 @@ class Tracker:
         self.lock_id = None
         self.signature = None
         self.span_url = self.span_url_source = None
+        self.span_tab = None
         self.tabs = {}
 
     @property
@@ -474,35 +478,37 @@ class Tracker:
         )
         self.db.commit()
         self.span_id, self.span_start = cur.lastrowid, now
-        self.span_url = self.span_url_source = None
-        if is_browser(self.cls) and (url := self.tabs.get(page_title(self.title))):
-            self.set_tab_url(url)
+        self.span_url = self.span_url_source = self.span_tab = None
+        if is_browser(self.cls) and (known := self.tabs.get(page_title(self.title))):
+            self.set_tab(known)
 
-    def set_tab_url(self, url):
-        self.span_url, self.span_url_source = url, "tab"
+    def set_tab(self, tab):
+        url, customer = tab
+        self.span_url, self.span_url_source, self.span_tab = url, "tab", tab
         self.db.execute(
-            "update spans set url = ?, url_source = 'tab', profile = ? where id = ?",
-            (url, profile_for_url(self.cls, url), self.span_id),
+            "update spans set url = ?, url_source = 'tab', fc_customer = ?, profile = ? where id = ?",
+            (url, customer, profile_for_url(self.cls, url), self.span_id),
         )
         self.db.commit()
 
     def tab(self, report, now):
-        title, url = report.get("title") or "", report.get("url")
-        if not url:
+        title = report.get("title") or ""
+        tab = (report.get("url"), report.get("fc_customer_id"))
+        if not tab[0]:
             return
         self.tabs.pop(title, None)
-        self.tabs[title] = url
+        self.tabs[title] = tab
         while len(self.tabs) > TAB_MEMORY:
             self.tabs.pop(next(iter(self.tabs)))
         if self.span_id is None or not is_browser(self.cls) or page_title(self.title) != title:
             return
-        if url == self.span_url:
+        if tab == self.span_tab:
             return
         if self.span_url_source == "tab" and now - self.span_start > TAB_SETTLE_SECONDS:
             self.close(now)
             self.open(now)
-        if self.span_id is not None and self.span_url != url:
-            self.set_tab_url(url)
+        if self.span_id is not None and self.span_tab != tab:
+            self.set_tab(tab)
 
     def close(self, end):
         if self.span_id is None:
@@ -824,9 +830,10 @@ def export(args):
             "profile": profile,
             "url": url,
             "url_source": url_source,
+            "fc_customer": fc_customer,
         }
-        for start, end, cls, title, profile, url, url_source in db.execute(
-            "select start, end, class, title, profile, url, url_source from spans"
+        for start, end, cls, title, profile, url, url_source, fc_customer in db.execute(
+            "select start, end, class, title, profile, url, url_source, fc_customer from spans"
             " where end > ? and start < ? and end - start >= ? order by start",
             (since, until, args.min),
         )
@@ -911,7 +918,8 @@ def tab_host(_args):
     # Chromium native messaging: 4-byte native-order length, then JSON, both ways.
     while header := sys.stdin.buffer.read(4):
         report = json.loads(sys.stdin.buffer.read(int.from_bytes(header, sys.byteorder)))
-        sent = send_control("tab " + json.dumps({"url": report.get("url"), "title": report.get("title")})) == 0
+        forwarded = {key: report.get(key) for key in ("url", "title", "fc_customer_id")}
+        sent = send_control("tab " + json.dumps(forwarded)) == 0
         reply = json.dumps({"ok": sent}).encode()
         sys.stdout.buffer.write(len(reply).to_bytes(4, sys.byteorder) + reply)
         sys.stdout.buffer.flush()

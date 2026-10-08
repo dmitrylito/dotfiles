@@ -990,3 +990,56 @@ def claims_of(token):
     import fc_api
 
     return fc_api.claims(token)
+
+
+def test_console_customer_splits_time_and_is_categorizable(
+    collector, timeline_module, tmp_path, bounds
+):
+    def span(start, end, customer):
+        return {
+            "start": start,
+            "end": end,
+            "class": "chromium",
+            "title": "Fleet Chaser - Chromium",
+            "profile": "Work",
+            "url": "https://console.fleetchaser.com/map",
+            "fc_customer": customer,
+        }
+
+    collector.save(
+        tmp_path / "manifest.json",
+        {"bounds": bounds, "config": {"timeline_bucket_minutes": 30}},
+    )
+    collector.save(
+        tmp_path / "screen.json",
+        {
+            "host": "fcoffice",
+            "spans": [
+                span(at(13), at(13, 10), "c-fc"),
+                span(at(13, 10), at(13, 30), "c-lm"),
+            ],
+            "customer_names": {
+                "c-fc": {"name": "Fleet Chaser"},
+                "c-lm": {"name": "Landmark Materials"},
+            },
+        },
+    )
+    rules = tmp_path / "rules.json"
+    rules.write_text(
+        json.dumps({"rules": {"fc_customer:Landmark Materials": "landmark"}})
+    )
+    result = timeline_module.build(tmp_path, rules)
+    assert result["fc_customers"][0] == {
+        "customer": "Landmark Materials",
+        "seconds": 1200,
+        "titles": [{"title": "Fleet Chaser", "seconds": 1200}],
+    }
+    assert result["totals"]["by_category"] == {
+        "uncategorized": 600,
+        "landmark": 1200,
+    }
+    assert [g["key"] for g in result["review"]] == [
+        "fc_customer:Fleet Chaser",
+        "fc_customer:Landmark Materials",
+    ]
+    assert result["blocks"][-1]["titles"][0]["title"] == "Fleet Chaser"

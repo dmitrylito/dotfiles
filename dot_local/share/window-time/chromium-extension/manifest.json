@@ -1,9 +1,26 @@
 {
   "manifest_version": 3,
   "name": "window-time",
-  "version": "1.0",
-  "description": "Reports the active tab's URL and title to the local window-time tracker (dotfiles: dot_local/bin/executable_window-time). Nothing leaves this machine.",
+  "version": "1.1",
+  "description": "Reports the active tab's URL and title, and the FC console customer, to the local window-time tracker (dotfiles: dot_local/bin/executable_window-time). Nothing leaves this machine.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuckbutIOelZ6ASdU2Cw8cogUkB5+qLOU9KCax9tcR4SNTPUdxHQMdU+K1CoR/FziyDB5h/19Nz1J+LWhhK3hMofuI8+12eI7wGgWv34jk+PqXMSlzd2vOxu15DHArsr3SSLyGtULnx6HsijT26iOqdlGqKO4Q4iN/gVkDw7+Fn80Z5PSIHW8OgSed2amjpLoR7QNc/9uJq5dDnvmqLE93Duer8RXfLMLniWhnndXoX21SsEu2v+o8HnyaENMUZb63idkNpxmDXk4zbibf4Vnds/hvTAVJQrFP+lbQ8E5t0oRIMX0FEAJOT3DHWkZ/RS8Ev1JkkYIRqEt/tvbHcVYmQIDAQAB",
-  "permissions": ["tabs", "nativeMessaging"],
-  "background": {"service_worker": "background-1.js"}
+  "permissions": [
+    "tabs",
+    "nativeMessaging",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background-2.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://console.fleetchaser.com/*"
+      ],
+      "js": [
+        "fc-console-1.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }

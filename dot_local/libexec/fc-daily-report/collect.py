@@ -730,6 +730,31 @@ def lookup_task_names(run, config):
     save(run / "screen.json", screen)
 
 
+def lookup_customer_names(run, config):
+    screen = read(run / "screen.json")
+    wanted = sorted(
+        {
+            s["fc_customer"]
+            for s in (screen or {}).get("spans", [])
+            if s.get("fc_customer")
+        }
+    )
+    if not wanted:
+        return
+    ids = ", ".join(sql_literal(customer) for customer in wanted)
+    result = transport(config).call(
+        "run_sql",
+        {
+            "query": "SELECT x.source_id, x.name, x.company_id FROM mirror_fc_customer x "
+            f"WHERE x.source_id IN ({ids})"
+        },
+    )
+    screen["customer_names"] = {
+        row["source_id"]: row for row in sql_rows(result)
+    }
+    save(run / "screen.json", screen)
+
+
 def activity_index(sources, person, bounds):
     rows = deduplicate(
         [row for source in sources.values() for row in source.get("rows", [])]
@@ -1004,6 +1029,10 @@ def collect(args):
             lookup_task_names(run, config)
         except (OSError, ValueError, RuntimeError, LookupError) as exc:
             sources["screen"]["task_names_error"] = redact(str(exc))
+        try:
+            lookup_customer_names(run, config)
+        except (OSError, ValueError, RuntimeError, LookupError) as exc:
+            sources["screen"]["customer_names_error"] = redact(str(exc))
     if args.skip_browser:
         sources.setdefault("browser", {"status": "skipped", "rows": []})
     if args.skip_linear:

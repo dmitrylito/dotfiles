@@ -164,10 +164,10 @@ def keys_of(segment):
         return ["idle"]
     keys = []
     if segment.get("site"):
-        keys += [
-            f"page:{segment['site']}|{segment['title']}",
-            f"site:{segment['site']}",
-        ]
+        keys.append(f"page:{segment['site']}|{segment['title']}")
+        if segment.get("fc_customer"):
+            keys.append(f"fc_customer:{segment['fc_customer']}")
+        keys.append(f"site:{segment['site']}")
     if segment.get("profile"):
         keys.append(f"profile:{segment['profile']}")
     return keys + [f"app:{segment['class']}"]
@@ -179,7 +179,10 @@ def review_key(segment):
     if segment["kind"] == "terminal":
         return next((k for k in keys if k.startswith("project:")), keys[-1])
     if segment["kind"] == "browser":
-        return next(k for k in keys if k.startswith("site:"))
+        return next(
+            (k for k in keys if k.startswith("fc_customer:")),
+            next(k for k in keys if k.startswith("site:")),
+        )
     return keys[-1] if segment["kind"] == "watching" else keys[0]
 
 
@@ -263,6 +266,7 @@ def inferred(segment, start, end, prompts):
 
 
 def build_segments(screen, agents, bounds):
+    customer_names = screen.get("customer_names") or {}
     start, cutoff = ts(bounds["start"]), ts(bounds["cutoff"])
     screen_host = (screen.get("host") or "").lower()
     sessions = {
@@ -293,6 +297,9 @@ def build_segments(screen, agents, bounds):
             "url": span.get("url"),
             "profile": span.get("profile"),
             "site": site,
+            "fc_customer": customer_names.get(span.get("fc_customer"), {}).get(
+                "name", span.get("fc_customer")
+            ),
         }
         if span["class"] in TERMINAL_CLASSES:
             segment["kind"] = "terminal"
@@ -402,7 +409,10 @@ def label_of(segment, sessions):
             return f"{segment['host']} {session_label(session)}"
         return f"{segment['host']} terminal: {segment.get('pane_title') or segment['title']}"
     if segment["kind"] == "browser":
-        return f"{segment['site']}: {segment['title']}"[:120]
+        customer = (
+            f" [{segment['fc_customer']}]" if segment.get("fc_customer") else ""
+        )
+        return f"{segment['site']}{customer}: {segment['title']}"[:120]
     return segment["class"]
 
 
@@ -694,10 +704,11 @@ def build_records(segments):
                 found.append((kind, match[1]))
         for kind, identity in found[:1]:
             record = records.setdefault(
-                (kind, identity),
+                (kind, identity, segment.get("fc_customer")),
                 {
                     "type": kind,
                     "id": identity,
+                    "fc_customer": segment.get("fc_customer"),
                     "url": url,
                     "seconds": 0.0,
                     "titles": defaultdict(float),
@@ -721,6 +732,29 @@ def build_records(segments):
             }
         )
     return sorted(listed, key=lambda r: -r["seconds"])
+
+
+def build_fc_customers(segments):
+    customers = defaultdict(
+        lambda: {"seconds": 0.0, "titles": defaultdict(float)}
+    )
+    for segment in segments:
+        if not segment.get("fc_customer"):
+            continue
+        entry = customers[segment["fc_customer"]]
+        entry["seconds"] += segment["end"] - segment["start"]
+        entry["titles"][segment["title"]] += segment["end"] - segment["start"]
+    return sorted(
+        (
+            {
+                "customer": name,
+                "seconds": round(entry["seconds"]),
+                "titles": top_titles(entry["titles"]),
+            }
+            for name, entry in customers.items()
+        ),
+        key=lambda c: -c["seconds"],
+    )
 
 
 def build_review(segments):
@@ -961,6 +995,7 @@ def build(run, categories_path=CATEGORY_FILE):
         "scheduled_meetings": scheduled,
         "tasks": build_tasks(rows, segments, screen.get("task_names")),
         "records": build_records(segments),
+        "fc_customers": build_fc_customers(segments),
         "review": build_review(segments),
         "away": away,
         "blocks": build_blocks(segments, zone),
