@@ -17,6 +17,7 @@ import json
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -400,6 +401,8 @@ def collect_browser(bounds, person, config):
         "--timeout-seconds",
         str(config["timeout_seconds"]),
     ]
+    if is_local_host(config["browser_host"]):
+        command.append("--local")
     result = subprocess.run(
         command,
         capture_output=True,
@@ -556,6 +559,130 @@ with transaction.atomic():
     )
 
 
+def is_local_host(target):
+    short = target.split("@")[-1].split(".")[0].lower()
+    return short in {"localhost", socket.gethostname().split(".")[0].lower()}
+
+
+def ssh_command(target, remote):
+    if target.startswith("-"):
+        raise ValueError("SSH host must not start with a dash")
+    return [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "ConnectTimeout=8",
+        target,
+        remote,
+    ]
+
+
+def host_json(target, command, config, *, input=None):
+    if not is_local_host(target):
+        command = ssh_command(target, shlex.join(command))
+    result = subprocess.run(
+        command,
+        input=input,
+        capture_output=True,
+        text=True,
+        timeout=config["timeout_seconds"],
+        check=False,
+    )
+    if result.returncode:
+        detail = redact(result.stderr)[-config["error_chars"] :]
+        raise RuntimeError(f"{target}: exited {result.returncode}: {detail}")
+    if len(result.stdout.encode()) > config["max_response_bytes"]:
+        raise RuntimeError(f"{target}: response exceeds max_response_bytes")
+    return json.loads(result.stdout)
+
+
+def epoch(value):
+    return parse_when(value).timestamp()
+
+
+def collect_screen(bounds, config):
+    target = config["screen_host"]
+    # A remote command starts in the home directory; "~" would arrive quoted.
+    binary = Path(".local/bin/window-time")
+    command = [
+        str(Path.home() / binary if is_local_host(target) else binary),
+        "export",
+        f"@{epoch(bounds['start'])}",
+        "--until",
+        f"@{epoch(bounds['cutoff'])}",
+    ]
+    data = host_json(target, command, config)
+    return {
+        "status": "collected",
+        "host": data.get("host"),
+        "cutoff": bounds["cutoff"],
+        "counts": {
+            key: len(data.get(key, [])) for key in ["spans", "calls", "panes"]
+        },
+        "note": "focus time on one desktop; idle over the shell plugin timeout is excluded unless a call holds the mic",
+        "rows": [],
+        "data": data,
+    }
+
+
+def collect_agents(bounds, config):
+    script = (SCRIPT_DIR / "agent_sessions.py").read_text()
+    arguments = [
+        "--start",
+        bounds["start"],
+        "--end",
+        bounds["cutoff"],
+        "--prompt-chars",
+        str(config["agent_prompt_chars"]),
+    ]
+    sessions, errors, hosts = [], [], []
+    for target in config["agent_hosts"]:
+        try:
+            if is_local_host(target):
+                data = host_json(
+                    target,
+                    [sys.executable, str(SCRIPT_DIR / "agent_sessions.py")]
+                    + arguments,
+                    config,
+                )
+            else:
+                data = host_json(
+                    target,
+                    ["python3", "-I", "-"] + arguments,
+                    config,
+                    input=script,
+                )
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            subprocess.SubprocessError,
+        ) as exc:
+            errors.append(redact(str(exc)))
+            continue
+        hosts.append(data.get("host"))
+        sessions.extend(data.get("sessions", []))
+        errors.extend(
+            f"{data.get('host')}: {error}" for error in data.get("errors", [])
+        )
+    return {
+        "status": "collected"
+        if not errors
+        else "gap"
+        if not hosts
+        else "partial",
+        "hosts": hosts,
+        "errors": errors,
+        "cutoff": bounds["cutoff"],
+        "counts": {"sessions": len(sessions)},
+        "rows": [],
+        "data": {"sessions": sessions},
+    }
+
+
 def activity_index(sources, person, bounds):
     rows = deduplicate(
         [row for source in sources.values() for row in source.get("rows", [])]
@@ -704,6 +831,9 @@ def collect(args):
             "companion_checkout",
             "collector_workers",
             "runtime_host",
+            "screen_host",
+            "agent_hosts",
+            "agent_prompt_chars",
         ]
     }
     if existing:
@@ -762,6 +892,10 @@ def collect(args):
         jobs["task_audit"] = lambda: collect_task_audit(
             bounds, args.person, config
         )
+    if not args.skip_screen:
+        jobs["screen"] = lambda: collect_screen(bounds, config)
+    if not args.skip_agents:
+        jobs["agents"] = lambda: collect_agents(bounds, config)
     with ThreadPoolExecutor(max_workers=config["collector_workers"]) as pool:
         futures = {pool.submit(job): name for name, job in jobs.items()}
         for future in as_completed(futures):
@@ -784,6 +918,8 @@ def collect(args):
                     }
                 }
             for source, update in updates.items():
+                if "data" in update:
+                    save(run / f"{source}.json", update.pop("data"))
                 old = sources.get(source, {}).get("rows", [])
                 merged = {
                     (row["source_type"], str(row["id"])): row
@@ -914,13 +1050,24 @@ def main():
         "--transport", choices=["docker", "mcp"], default="mcp"
     )
     command.add_argument("--mcp-url", default="https://ops.dlco.us/mcp")
-    command.add_argument("--runtime-host", default="dlco")
+    command.add_argument(
+        "--runtime-host", default="dlco-1.chimera-pleco.ts.net"
+    )
     command.add_argument("--backend-container", default="ops-backend")
     command.add_argument("--browser-host", default="fcoffice")
     command.add_argument("--browser-profiles", nargs="*", default=[])
     command.add_argument("--skip-browser", action="store_true")
     command.add_argument("--skip-linear", action="store_true")
     command.add_argument("--skip-task-audit", action="store_true")
+    command.add_argument("--screen-host", default="fcoffice")
+    command.add_argument(
+        "--agent-hosts",
+        nargs="*",
+        default=["fcoffice", "dlco-1.chimera-pleco.ts.net"],
+    )
+    command.add_argument("--agent-prompt-chars", type=positive, default=300)
+    command.add_argument("--skip-screen", action="store_true")
+    command.add_argument("--skip-agents", action="store_true")
     command.add_argument(
         "--companion-container", default="fleetchaser-backend-1"
     )

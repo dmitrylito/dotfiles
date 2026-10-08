@@ -268,13 +268,16 @@ def source_queries(bounds, person, snippet_chars):
     join = "LEFT JOIN companies c ON c.id=x.company_id"
     span = f"x.timestamp >= {lower} AND x.timestamp < {upper}"
     short = lambda field: f"left(coalesce({field},''), {int(snippet_chars)})"
+    dialpad_time = lambda key: (
+        f"CASE WHEN x.raw_payload->>'{key}' ~ '^[0-9]+$' THEN to_timestamp((x.raw_payload->>'{key}')::bigint / 1000.0) END"
+    )
     queries = {
-        "call": f"SELECT {common}, x.dialpad_call_id, x.operator_email, x.direction, x.state, x.duration_seconds, {short('x.content_summary')} AS snippet, length(coalesce(x.transcript,''))>0 AS has_transcript, CASE WHEN length(coalesce(x.transcript,''))>0 THEN md5(x.transcript) END AS transcript_hash FROM calls x {join} WHERE {span} AND lower(x.operator_email)={who}",
+        "call": f"SELECT {common}, x.dialpad_call_id, x.operator_email, x.direction, x.state, x.duration_seconds, {dialpad_time('date_connected')} AS connected_at, {dialpad_time('date_ended')} AS ended_at, {short('x.content_summary')} AS snippet, length(coalesce(x.transcript,''))>0 AS has_transcript, CASE WHEN length(coalesce(x.transcript,''))>0 THEN md5(x.transcript) END AS transcript_hash FROM calls x {join} WHERE {span} AND lower(x.operator_email)={who}",
         "sms": f"SELECT {common}, x.direction, {short('x.message_text')} AS snippet, x.raw_payload->'target'->>'email' AS line_email FROM sms x {join} WHERE {span} AND lower(x.raw_payload->'target'->>'email')={who}",
         "email": f"SELECT {common}, x.message_id, x.rfc822_message_id, x.thread_id, x.subject AS title, x.from_addr, x.to_addr, x.mailbox, x.direction, x.event_type, x.is_draft, {short('x.content_summary')} AS snippet FROM emails x {join} WHERE {span} AND (lower(x.mailbox)={who} OR lower(x.from_addr) LIKE '%' || {who} || '%') AND NOT x.is_draft",
         "chat": f"SELECT {common}, x.sender_email, x.channel_id, {short('x.message_text')} AS snippet FROM chat_messages x {join} WHERE {span}",
         "task": f"SELECT x.id, x.fc_modified_at AS timestamp, x.company_id, c.name AS company, x.fc_task_id, x.name AS title, x.workflow_name, x.status_name, x.completed_at, x.synced_at FROM fc_tasks x {join} WHERE x.fc_modified_at >= {lower} AND x.fc_modified_at < {upper} AND coalesce(x.workflow_name,'') NOT IN ('Marketing','Test','UC Test','111')",
-        "calendar_event": f'SELECT x.id, x.start AS timestamp, x."end", x.summary AS title, x.calendar, x.organizer_email, x.attendees, x.status, x.synced_at FROM calendar_events x WHERE x.start < {sql_literal(bounds["end"])} AND (x."end" > {lower} OR (x."end" IS NULL AND x.start >= {lower})) AND (lower(x.calendar)={who} OR lower(x.organizer_email)={who} OR EXISTS(SELECT 1 FROM jsonb_array_elements(x.attendees) a WHERE lower(a->>\'email\')={who}))',
+        "calendar_event": f'SELECT x.id, x.start AS timestamp, x."end", x.summary AS title, x.calendar, x.organizer_email, x.attendees, x.status, x.raw_payload->>\'hangoutLink\' AS meet_link, x.synced_at FROM calendar_events x WHERE x.start < {sql_literal(bounds["end"])} AND (x."end" > {lower} OR (x."end" IS NULL AND x.start >= {lower})) AND (lower(x.calendar)={who} OR lower(x.organizer_email)={who} OR EXISTS(SELECT 1 FROM jsonb_array_elements(x.attendees) a WHERE lower(a->>\'email\')={who}))',
         "linear_local": f"SELECT x.id, x.occurred_at AS timestamp, x.linear_issue_id, x.actor, x.kind, {short('x.detail')} AS snippet FROM ops_linearhumanaction x WHERE x.occurred_at >= {lower} AND x.occurred_at < {upper}",
     }
     return queries
