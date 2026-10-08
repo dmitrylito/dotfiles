@@ -171,6 +171,14 @@ end
 
 local function qconsole_toggle()
 	qconsole_refit()
+	-- on_created_empty only fires for an empty scratchpad; with the herdr window
+	-- still there, restart the agent if it was exited.
+	for _, window in ipairs(hl.get_windows({ class = "org.omarchy.agent" })) do
+		if window.workspace and window.workspace.name == "special:scratchpad" then
+			hl.exec_cmd("herdr-agent --ensure")
+			break
+		end
+	end
 	hl.dispatch(hl.dsp.workspace.toggle_special("scratchpad"))
 	-- Re-read once Hyprland has committed the workspace visibility change. This
 	-- closes the focus-event race that leaves mixed-scale setups using stale

@@ -3,12 +3,16 @@
 # dedicated herdr session, in a terminal window. SUPER+S launches this when the
 # scratchpad is empty (see qconsole_refit in ~/.config/hypr/bindings.lua).
 #
-# Usage: herdr-agent [--inline]   --inline attaches in the current terminal
+# Usage: herdr-agent [--inline|--ensure]
+#          --inline  attach in the current terminal
+#          --ensure  only (re)start the agent; SUPER+S runs this when the
+#                    scratchpad already holds the herdr window
 # Env:   HERDR_AGENT_SESSION       herdr session name (default: scratchpad)
 #
 # The session outlives the window: closing it detaches, and the next launch
-# re-attaches to the same agent. A fresh session (or one whose workspaces were
-# all closed) gets one "Claude" workspace in ~/Work running omarchy-agent.
+# re-attaches to the same agent. If no pane is running an agent (it was exited),
+# omarchy-agent restarts in an idle shell pane, or in a new "Claude" workspace
+# in ~/Work when there is none.
 set -euo pipefail
 
 session="${HERDR_AGENT_SESSION:-scratchpad}"
@@ -22,10 +26,28 @@ if ! h workspace list >/dev/null 2>&1; then
   done
 fi
 
-if [[ $(h workspace list | jq '.result.workspaces | length') == 0 ]]; then
-  pane=$(h workspace create --cwd "$HOME/Work" --label Claude --focus | jq -r '.result.root_pane.pane_id')
+# herdr clears a pane's .agent about a second after the agent exits. Reuse a pane
+# sitting at its bare shell (foreground group == shell) so a closed agent restarts
+# in place; never type into a pane that is running something else.
+idle_shell_pane() {
+  local pane
+  for pane in $(h pane list | jq -r '.result.panes | sort_by(.focused | not)[].pane_id'); do
+    h pane process-info --pane "$pane" |
+      jq -e '.result.process_info | .foreground_process_group_id == .shell_pid' >/dev/null &&
+      { echo "$pane"; return; }
+  done
+  return 0
+}
+
+if ! h pane list | jq -e '.result.panes | any(.agent != null)' >/dev/null; then
+  pane=$(idle_shell_pane)
+  if [[ -z $pane ]]; then
+    pane=$(h workspace create --cwd "$HOME/Work" --label Claude --focus | jq -r '.result.root_pane.pane_id')
+  fi
   h pane run "$pane" omarchy-agent --inline >/dev/null
 fi
+
+[[ ${1:-} == --ensure ]] && exit 0
 
 # Only this client starts with the sidebar collapsed: it reads a copy of the real
 # config (so keys and theme still match) via HERDR_CONFIG_PATH, which the server
