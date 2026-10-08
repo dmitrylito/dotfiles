@@ -76,7 +76,7 @@ fc-daily-report categorize --run RUN_DIR --work site:console.fleetchaser.com pro
 fc-daily-report categorize --run RUN_DIR --day --personal 'page:www.google.com|g63 brabus - Google Search'
 ```
 
-Keys, most specific first: `page:<site>|<title>`, `path:<site>/<first path segment>`, `session:<host>/<id>`,
+Keys, most specific first: `page:<site>|<title>`, `path:<site>/<up to 3 path segments>` (longest first), `session:<host>/<id>`,
 `project:<cwd name>`, `site:<host>`, `profile:<Chromium profile>`,
 `terminal:<host>`, `watching:<title>`, `watching:<class>`, `idle`,
 `app:<class>`. Rules persist in `~/.config/fc-daily-report/categories.json`, so

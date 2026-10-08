@@ -1107,3 +1107,13 @@ def test_areas_are_exclusive_and_calls_own_their_span(timeline_module):
     }
     assert result == {"Support": 50 + 20, "Sales": 100, "Billing": 30}
     assert sum(result.values()) == 200
+
+
+def test_path_keys_go_from_specific_to_general(timeline_module):
+    url = "https://backend.dlco.us/admin/billing/invoice/caac/change/"
+    assert timeline_module.path_prefixes(url) == [
+        "admin/billing/invoice",
+        "admin/billing",
+        "admin",
+    ]
+    assert timeline_module.path_prefixes(None) == []

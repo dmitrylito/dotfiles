@@ -33,6 +33,7 @@ from zoneinfo import ZoneInfo
 
 UNCATEGORIZED = "uncategorized"
 UNASSIGNED_AREA = "Unassigned"
+PATH_KEY_DEPTH = 3
 AREA_ITEMS = 6
 CATEGORY_FILE = Path.home() / ".config/fc-daily-report/categories.json"
 DAY_CATEGORY_FILE = "categories.json"
@@ -170,8 +171,10 @@ def keys_of(segment):
     keys = []
     if segment.get("site"):
         keys.append(f"page:{segment['site']}|{segment['title']}")
-        if first := first_path(segment.get("url")):
-            keys.append(f"path:{segment['site']}/{first}")
+        keys += [
+            f"path:{segment['site']}/{prefix}"
+            for prefix in path_prefixes(segment.get("url"))
+        ]
         if segment.get("fc_customer"):
             keys.append(f"fc_customer:{segment['fc_customer']}")
         keys.append(f"site:{segment['site']}")
@@ -180,11 +183,12 @@ def keys_of(segment):
     return keys + [f"app:{segment['class']}"]
 
 
-def first_path(url):
+def path_prefixes(url, depth=PATH_KEY_DEPTH):
+    """URL path prefixes, longest first: admin/billing/invoice, admin/billing, admin."""
     if not url:
-        return None
-    parts = [part for part in urlsplit(url).path.split("/") if part]
-    return parts[0] if parts else None
+        return []
+    parts = [part for part in urlsplit(url).path.split("/") if part][:depth]
+    return ["/".join(parts[:n]) for n in range(len(parts), 0, -1)]
 
 
 def call_keys(call):
