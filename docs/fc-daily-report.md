@@ -15,7 +15,44 @@ fc-daily-report collect --date YYYY-MM-DD --mode work
 fc-daily-report documents --run RUN_DIR --ref call:123 --ref email:456
 fc-daily-report collect --date YYYY-MM-DD --run RUN_DIR
 fc-daily-report collect --date YYYY-MM-DD --run RUN_DIR --refresh
+fc-daily-report timeline --run RUN_DIR [--categories PATH]
 fc-daily-report import-gmail --run RUN_DIR --input -
+```
+
+## Measured time (`timeline.json`)
+
+Every collect also writes `timeline.json`, built offline from the run by
+`timeline.py`. Inputs:
+
+- `screen` — `window-time export` from `--screen-host` (default `fcoffice`, read
+  locally when that is this machine): focused-window spans, desktop
+  mic-in-use intervals, and the focused herdr pane with its Claude/Codex session.
+- `agents` — `agent_sessions.py` run on each `--agent-hosts` machine (default
+  `fcoffice` and `dlco-1.chimera-pleco.ts.net`, over SSH): session title, cwd,
+  branch, typed prompts and active intervals from `~/.claude/projects` and
+  `~/.codex/sessions`.
+- Ops Center rows: Dialpad calls with `connected_at`/`ended_at`, calendar events
+  with the Meet link, FC task audit (actor), live Linear history (actor).
+
+Output: totals by category, `work_seconds` (work screen time ∪ calls), terminal
+time per session (`herdr` when pane tracking covered it, else `prompt-inferred`:
+the session last prompted on that host), calls with the screen activity during
+each, call attempts, scheduled meetings that nothing measured, FC tasks and
+Linear issues touched (actions plus on-screen seconds from `taskId=` and
+`/issue/` URLs), chronological blocks and per-bucket summaries.
+
+Call time comes from Dialpad, so calls on any device count. Meet time is measured
+only when the desktop mic was in use, matched to the calendar event by the meeting
+code in the Meet tab title; otherwise the event appears under
+`scheduled_meetings`, not in totals. Screen idle over the omarchy shell plugin
+timeout is excluded unless a call holds the mic.
+
+Categories default to `work`; the `Personal`, `CER` and `BulkBid` browser
+profiles and Spotify are not. Override in
+`~/.config/fc-daily-report/categories.json`, merged over the defaults:
+
+```json
+{"profiles": {"CER": "work"}, "sites": {"youtube.com": "personal"}, "classes": {}}
 ```
 
 The default MCP transport reads Ops Center remotely on every device. An existing
@@ -44,10 +81,12 @@ New sessions pick up the connector; existing sessions are not interrupted.
 [Official Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
 Sources needing a runtime (live Linear and task audit) use local Docker when
-`ops-backend` is running, otherwise existing SSH trust for `--runtime-host dlco`.
+`ops-backend` is running, otherwise existing SSH trust for `--runtime-host`
+(default `dlco-1.chimera-pleco.ts.net`; the bare `dlco` alias does not resolve to it on fcoffice).
 Override that host if its alias differs; no SSH configuration or credentials are
 created. Browser history independently uses `--browser-host fcoffice`. Failed SSH
-sources remain gaps while remote Ops Center evidence remains available.
+sources remain gaps while remote Ops Center evidence remains available. A host that
+is this machine is read locally, without SSH.
 
 Gmail connector results pass through stdin before redacted persistence. Full
 thread messages are normalized recursively from connector and native Gmail MIME

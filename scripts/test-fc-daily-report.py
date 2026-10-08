@@ -464,3 +464,303 @@ def test_global_helpers_are_python_311_compatible():
 
     for path in SCRIPTS.glob("*.py"):
         ast.parse(path.read_text(), filename=str(path), feature_version=(3, 11))
+
+
+def at(hour, minute=0):
+    from datetime import UTC, datetime
+
+    return datetime(2026, 10, 5, hour, minute, tzinfo=UTC).timestamp()
+
+
+def iso(hour, minute=0):
+    from datetime import UTC, datetime
+
+    return datetime(2026, 10, 5, hour, minute, tzinfo=UTC).isoformat()
+
+
+@pytest.fixture
+def timeline_module(collector):
+    import timeline
+
+    return timeline
+
+
+def test_timeline_measures_sessions_calls_and_tasks(
+    collector, timeline_module, tmp_path, bounds
+):
+    def span(start, end, cls, title, url=None, profile="Work"):
+        return {
+            "start": start,
+            "end": end,
+            "class": cls,
+            "title": title,
+            "url": url,
+            "profile": profile,
+        }
+
+    console = (
+        "https://console.fleetchaser.com/tasks/kanban/1?dialog=task&taskId=42"
+    )
+    collector.save(
+        tmp_path / "manifest.json",
+        {
+            "bounds": bounds,
+            "config": {"timeline_bucket_minutes": 30},
+        },
+    )
+    collector.save(
+        tmp_path / "screen.json",
+        {
+            "host": "fcoffice",
+            "spans": [
+                span(
+                    at(13), at(13, 10), "com.mitchellh.ghostty", "DLCO-1: ops"
+                ),
+                span(
+                    at(14),
+                    at(14, 30),
+                    "chromium",
+                    "Meet - abc-defg-hij - Chromium",
+                ),
+                span(
+                    at(15, 2),
+                    at(15, 6),
+                    "chromium",
+                    "(2) Fleet Chaser",
+                    console,
+                ),
+                span(
+                    at(16),
+                    at(16, 5),
+                    "chromium",
+                    "News",
+                    "https://x.test/",
+                    "Personal",
+                ),
+            ],
+            "calls": [
+                {"start": at(14), "end": at(14, 30), "apps": ["chromium"]},
+                {"start": at(15), "end": at(15, 10), "apps": ["chromium"]},
+            ],
+            "panes": [
+                {
+                    "start": at(13),
+                    "end": at(13, 5),
+                    "host": "dlco-1",
+                    "pane": "w1:p1",
+                    "agent": "claude",
+                    "agent_session": "s1",
+                    "title": "billing fix",
+                }
+            ],
+        },
+    )
+    collector.save(
+        tmp_path / "agents.json",
+        {
+            "sessions": [
+                {
+                    "agent": "claude",
+                    "host": "DLCO-1",
+                    "session_id": "s1",
+                    "title": "billing fix",
+                    "cwd": "/p/backend",
+                    "prompts": [{"at": at(12, 59), "text": "fix billing"}],
+                    "active": [[at(12, 59), at(13, 20)]],
+                },
+                {
+                    "agent": "codex",
+                    "host": "DLCO-1",
+                    "session_id": "s2",
+                    "title": "ops report",
+                    "cwd": "/p/ops-center",
+                    "prompts": [{"at": at(13, 7), "text": "report"}],
+                    "active": [[at(13, 7), at(13, 9)]],
+                },
+            ]
+        },
+    )
+    dialpad = {
+        "source_type": "call",
+        "id": 1,
+        "dialpad_call_id": "dp1",
+        "company": "Paragon",
+        "timestamp": iso(15),
+        "connected_at": iso(15),
+        "ended_at": iso(15, 10),
+    }
+    collector.save(
+        tmp_path / "sources.json",
+        {
+            "call": {"rows": [dialpad, dialpad | {"id": 2}]},
+            "calendar_event": {
+                "rows": [
+                    {
+                        "source_type": "calendar_event",
+                        "id": 7,
+                        "title": "Sync",
+                        "timestamp": iso(14),
+                        "end": iso(14, 30),
+                        "meet_link": "https://meet.google.com/abc-defg-hij",
+                    },
+                    {
+                        "source_type": "calendar_event",
+                        "id": 8,
+                        "title": "Site visit",
+                        "timestamp": iso(17),
+                        "end": iso(18),
+                    },
+                ]
+            },
+            "task_audit": {
+                "rows": [
+                    {
+                        "source_type": "task_audit",
+                        "id": "a1",
+                        "task_id": "42",
+                        "title": "INST: Paragon",
+                        "action": "t:u",
+                        "timestamp": iso(15, 5),
+                    }
+                ]
+            },
+        },
+    )
+    result = timeline_module.build(tmp_path, None)
+
+    sessions = {s["session_id"]: s for s in result["terminal"]["sessions"]}
+    assert sessions["s1"]["focus_seconds"] == 7 * 60
+    assert sessions["s2"]["focus_seconds"] == 3 * 60
+    assert result["terminal"]["attribution_seconds"] == {
+        "herdr": 300,
+        "prompt-inferred": 300,
+    }
+    calls = result["calls"]
+    assert [(c["kind"], round(c["seconds"])) for c in calls] == [
+        ("meet", 1800),
+        ("dialpad", 600),
+    ]
+    assert calls[0]["event"] == "Sync"
+    assert calls[1]["during"][0] == {
+        "label": "console.fleetchaser.com: Fleet Chaser",
+        "seconds": 240,
+    }
+    assert [e["title"] for e in result["scheduled_meetings"]] == ["Site visit"]
+    task = result["tasks"]["fc"][0]
+    assert (
+        task["fc_task_id"],
+        task["screen_seconds"],
+        len(task["actions"]),
+    ) == (
+        "42",
+        240,
+        1,
+    )
+    totals = result["totals"]
+    assert totals["by_category"] == {"work": 2640, "personal": 300}
+    assert totals["calls_seconds"] == 2400
+    assert totals["calls_off_screen_seconds"] == 360
+    assert totals["work_seconds"] == 3000
+    assert totals["scheduled_unmeasured_meeting_seconds"] == 3600
+
+
+def test_agent_sessions_keep_typed_prompts_only(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location(
+        "agent_sessions", SCRIPTS / "agent_sessions.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module.Path, "home", lambda: tmp_path)
+    claude = tmp_path / ".claude/projects/-p/abc.jsonl"
+    claude.parent.mkdir(parents=True)
+    claude.write_text(
+        "\n".join(
+            json.dumps(record)
+            for record in [
+                {"type": "ai-title", "aiTitle": "billing fix"},
+                {
+                    "type": "user",
+                    "timestamp": iso(13),
+                    "cwd": "/p",
+                    "origin": {"kind": "human"},
+                    "message": {"content": "fix the invoice"},
+                },
+                {
+                    "type": "user",
+                    "timestamp": iso(13, 1),
+                    "message": {"content": [{"type": "tool_result"}]},
+                },
+                {
+                    "type": "user",
+                    "timestamp": iso(13, 2),
+                    "origin": {"kind": "task-notification"},
+                    "message": {"content": "agent finished"},
+                },
+                {"type": "assistant", "timestamp": iso(13, 3)},
+            ]
+        )
+    )
+    rollout = tmp_path / ".codex/sessions/2026/10/05/rollout-x.jsonl"
+    rollout.parent.mkdir(parents=True)
+    rollout.write_text(
+        "\n".join(
+            json.dumps(record)
+            for record in [
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "id": "c1",
+                        "cwd": "/ops",
+                        "git": {"branch": "main"},
+                    },
+                },
+                {
+                    "type": "response_item",
+                    "timestamp": iso(14),
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "# AGENTS.md instructions",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "response_item",
+                    "timestamp": iso(14, 1),
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "log my day"}
+                        ],
+                    },
+                },
+            ]
+        )
+    )
+    (tmp_path / ".codex/session_index.jsonl").write_text(
+        json.dumps({"id": "c1", "thread_name": "daily log"})
+    )
+    start, end = at(0), at(23)
+    [claude_session] = module.claude_sessions(start, end, 300)
+    [codex_session] = module.codex_sessions(start, end, 300)
+    assert [p["text"] for p in claude_session["prompts"]] == ["fix the invoice"]
+    assert claude_session["title"] == "billing fix"
+    assert claude_session["active"] == [[at(13), at(13, 3)]]
+    assert [p["text"] for p in codex_session["prompts"]] == ["log my day"]
+    assert (codex_session["title"], codex_session["branch"]) == (
+        "daily log",
+        "main",
+    )
+
+
+def test_this_machine_is_read_without_ssh(collector, monkeypatch):
+    monkeypatch.setattr(collector.socket, "gethostname", lambda: "FCOFFICE")
+    assert collector.is_local_host("fcoffice.chimera-pleco.ts.net")
+    assert not collector.is_local_host("dlco-1.chimera-pleco.ts.net")
+    with pytest.raises(ValueError, match="dash"):
+        collector.ssh_command("-oProxyCommand=x", "true")

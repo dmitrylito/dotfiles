@@ -1,6 +1,7 @@
 """Collect reusable daily evidence without syncing or changing source records.
 
 Usage: fc-daily-report collect --date YYYY-MM-DD --mode work|timeline
+       fc-daily-report timeline --run DIR [--categories PATH]
        fc-daily-report documents --run DIR --ref call:123 --ref email:456
        fc-daily-report import-gmail --run DIR --input connector-response.json
 Installed globally by chezmoi under ~/.local/bin and ~/.local/libexec.
@@ -36,8 +37,11 @@ from evidence import (
     parse_when,
     redact,
     source_queries,
+    sql_literal,
     window,
 )
+from timeline import CATEGORY_FILE, task_ids
+from timeline import build as build_timeline
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_STATE = Path.home() / ".local/state/ops-center/daily-reports"
@@ -683,6 +687,32 @@ def collect_agents(bounds, config):
     }
 
 
+def lookup_task_names(run, config):
+    screen = read(run / "screen.json")
+    if not screen:
+        return
+    wanted = sorted(
+        {
+            task_id
+            for span in screen.get("spans", [])
+            if (task_id := task_ids(span.get("url")))
+        }
+    )
+    if not wanted:
+        return
+    ids = ", ".join(sql_literal(task_id) for task_id in wanted)
+    result = transport(config).call(
+        "run_sql",
+        {
+            "query": "SELECT x.fc_task_id, x.name AS title, c.name AS company, "
+            "x.workflow_name, x.status_name AS status FROM fc_tasks x "
+            f"LEFT JOIN companies c ON c.id=x.company_id WHERE x.fc_task_id IN ({ids})"
+        },
+    )
+    screen["task_names"] = {row["fc_task_id"]: row for row in sql_rows(result)}
+    save(run / "screen.json", screen)
+
+
 def activity_index(sources, person, bounds):
     rows = deduplicate(
         [row for source in sources.values() for row in source.get("rows", [])]
@@ -767,6 +797,9 @@ def write_index(run, manifest):
                 len(row["text"]) > manifest["config"]["snippet_chars"]
             )
         projected.append(preview)
+    timeline = None
+    if (run / "screen.json").exists() or (run / "agents.json").exists():
+        timeline = build_timeline(run, manifest["config"].get("categories"))
     save(
         run / "index.json",
         {
@@ -794,6 +827,8 @@ def write_index(run, manifest):
             if source["status"] != "collected"
         ],
         "index": str(run / "index.json"),
+        "timeline": str(run / "timeline.json") if timeline else None,
+        "totals": timeline["totals"] if timeline else None,
     }
 
 
@@ -834,6 +869,7 @@ def collect(args):
             "screen_host",
             "agent_hosts",
             "agent_prompt_chars",
+            "categories",
         ]
     }
     if existing:
@@ -943,12 +979,27 @@ def collect(args):
             "rows": [],
         },
     )
+    if sources.get("screen", {}).get("status") == "collected":
+        try:
+            lookup_task_names(run, config)
+        except (OSError, ValueError, RuntimeError, LookupError) as exc:
+            sources["screen"]["task_names_error"] = redact(str(exc))
     if args.skip_browser:
         sources.setdefault("browser", {"status": "skipped", "rows": []})
     if args.skip_linear:
         sources.setdefault("linear_live", {"status": "skipped", "rows": []})
     save(run / "sources.json", sources)
     return write_index(run, manifest)
+
+
+def timeline(args):
+    run = Path(args.run).expanduser()
+    result = build_timeline(run, args.categories)
+    return {
+        "run": str(run),
+        "timeline": str(run / "timeline.json"),
+        "totals": result["totals"],
+    }
 
 
 def documents(args):
@@ -1068,6 +1119,7 @@ def main():
     command.add_argument("--agent-prompt-chars", type=positive, default=300)
     command.add_argument("--skip-screen", action="store_true")
     command.add_argument("--skip-agents", action="store_true")
+    command.add_argument("--categories", default=str(CATEGORY_FILE))
     command.add_argument(
         "--companion-container", default="fleetchaser-backend-1"
     )
@@ -1089,6 +1141,9 @@ def main():
     command.add_argument(
         "--refresh-overlap-seconds", type=positive, default=300
     )
+    command = commands.add_parser("timeline")
+    command.add_argument("--run", required=True)
+    command.add_argument("--categories", default=str(CATEGORY_FILE))
     command = commands.add_parser("documents")
     command.add_argument("--run", required=True)
     command.add_argument("--ref", action="append", required=True)
@@ -1102,6 +1157,7 @@ def main():
     try:
         result = {
             "collect": collect,
+            "timeline": timeline,
             "documents": documents,
             "import-gmail": import_gmail,
         }[args.command](args)
