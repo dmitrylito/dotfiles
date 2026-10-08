@@ -177,4 +177,9 @@ executable_sync-media-homepage.sh
 .config/systemd/user/timers.target.wants/kuma-heartbeat.timer
 {{ end }}
 
+{{ if ne .chezmoi.hostname "DLCO-1" }}
+# Refreshes FC Installs hardware-swap tasks from the local fleetchaser DB (cron 08:00).
+.local/bin/fc-swap-tasks
+{{ end }}
+
 docker-appdata/homepage/

@@ -1,0 +1,155 @@
+#!/usr/bin/python3
+"""fc-swap-tasks — refresh the three hardware-swap tasks in the Fleet Chaser Installs workflow.
+
+Recounts, per customer, the vehicles that still have:
+  - an old (legacy `dvr`) camera installed            -> task 4280 "old camera: N total to replace"
+  - an ng_dvr camera whose SIM is IR3 on APN AMERICA  -> task 4281 "IR3 America(swap cam): N to replace"
+  - an ng_dvr camera whose SIM is IR3 on APN FC.USA   -> task 4282 "IR3 FC(swap sim): N to replace"
+and rewrites each task's name and description ("Customer: count" lines, highest first).
+
+Counts come from the local fleetchaser DB (container fleetchaser-db-1), a nightly prod copy
+restored by `import-db` (cron 05:00, usually done ~07:05). The script waits for today's
+"[Finish" line in ~/Logs/import_db.log before reading, and exits non-zero without touching the
+tasks if the import doesn't finish by the deadline or the queries return nothing.
+
+Task writes go through the ops-center container (ops-backend), which holds the FC API
+credentials. FC task descriptions must be a Quill Delta list ([{"insert": "...\n"}]); a plain
+string is stored but the UI shows it as empty.
+
+Usage:   fc-swap-tasks [--dry-run]
+Cron:    0 8 * * * ~/.local/bin/fc-swap-tasks >> ~/Logs/fc-swap-tasks.log 2>&1
+Config (env): FC_SWAP_WAIT_MINUTES (default 120), FC_SWAP_POLL_SECONDS (default 300).
+Chezmoi-managed: dot_local/bin/executable_fc-swap-tasks (DLCO-1 only).
+"""
+
+import datetime
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+IMPORT_LOG = Path.home() / "Logs" / "import_db.log"
+WAIT_MINUTES = int(os.environ.get("FC_SWAP_WAIT_MINUTES", "120"))
+POLL_SECONDS = int(os.environ.get("FC_SWAP_POLL_SECONDS", "300"))
+DB_CONTAINER = "fleetchaser-db-1"
+OPS_CONTAINER = "ops-backend"
+
+TASKS = {
+    "old": (4280, "old camera: {total} total to replace"),
+    "america": (4281, "IR3 America(swap cam): {total} to replace"),
+    "fcusa": (4282, "IR3 FC(swap sim): {total} to replace"),
+}
+
+SQL = r"""
+with ir3 as (
+  select s.iccid, s.apn from sim_sim s
+  where exists (
+    select 1 from jsonb_array_elements(s.imsis) m,
+      jsonb_array_elements(m->'supplierIMSIList') sup,
+      regexp_split_to_table(sup->>'supplierName', '\s*,\s*') nm
+    where nm = 'IR3')
+), d as (
+  select 'old' cat, i.vehicle_id from dvr_camerainstall i where i.active
+  union all
+  select case ir3.apn when 'AMERICA' then 'america' when 'FC.USA' then 'fcusa' end, i.vehicle_id
+  from ng_dvr_camera c
+  join ir3 on ir3.iccid = c.sim_id and ir3.apn in ('AMERICA', 'FC.USA')
+  join ng_dvr_camerainstall i on i.camera_id = c.id and i.active
+)
+select d.cat, cu.name, count(distinct v.id) n
+from d
+join vehicle_vehicle v on v.id = d.vehicle_id and v.deleted is null
+join accounting_customer cu on cu.id = v.customer_id
+group by 1, 2
+order by 1, 3 desc, 2
+"""
+
+OPS_UPDATE = r"""
+import contextlib, json
+from crm.clients import fleetchaser
+out = []
+with contextlib.closing(fleetchaser.get_client()) as c:
+    for u in json.loads(%r):
+        fleetchaser.update_task(c, u["id"], name=u["name"], description=[{"insert": u["text"]}])
+        t = fleetchaser.fetch_task(c, u["id"])
+        d = t.get("description")
+        text = "".join(op.get("insert", "") for op in d) if isinstance(d, list) else None
+        out.append({"id": u["id"], "name_ok": t.get("name") == u["name"], "text_ok": text == u["text"]})
+print("@@JSON@@" + json.dumps(out))
+"""
+
+
+def log(msg: str) -> None:
+    print(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {msg}", flush=True)
+
+
+def import_finished_today() -> bool:
+    today = datetime.date.today().isoformat()
+    try:
+        lines = IMPORT_LOG.read_text(errors="replace").splitlines()
+    except FileNotFoundError:
+        return False
+    started = any(l.startswith(today) and "[Start" in l for l in lines)
+    finished = any(l.startswith(today) and "[Finish" in l for l in lines)
+    return started and finished
+
+
+def wait_for_import() -> None:
+    deadline = time.monotonic() + WAIT_MINUTES * 60
+    while not import_finished_today():
+        if time.monotonic() >= deadline:
+            sys.exit(f"import-db has not finished today after {WAIT_MINUTES} min; tasks left unchanged")
+        log(f"waiting for import-db to finish (poll {POLL_SECONDS}s)")
+        time.sleep(POLL_SECONDS)
+
+
+def counts() -> dict[str, list[tuple[str, int]]]:
+    proc = subprocess.run(
+        ["docker", "exec", "-i", DB_CONTAINER, "psql", "-U", "postgres", "-d", "fleetchaser",
+         "-v", "ON_ERROR_STOP=1", "-At", "-F", "\t"],
+        input=SQL, capture_output=True, text=True,
+    )
+    if proc.returncode:
+        sys.exit(f"psql failed: {proc.stderr.strip()[-2000:]}")
+    rows: dict[str, list[tuple[str, int]]] = {key: [] for key in TASKS}
+    for line in proc.stdout.splitlines():
+        cat, name, n = line.split("\t")
+        rows[cat].append((name, int(n)))
+    if not rows["old"] and not rows["america"] and not rows["fcusa"]:
+        sys.exit("queries returned no rows; tasks left unchanged")
+    return rows
+
+
+def main() -> None:
+    dry_run = "--dry-run" in sys.argv[1:]
+    if not dry_run:
+        wait_for_import()
+    rows = counts()
+    updates = []
+    for key, (task_id, title) in TASKS.items():
+        total = sum(n for _, n in rows[key])
+        text = "".join(f"{name}: {n}\n" for name, n in rows[key]) or "None remaining\n"
+        updates.append({"id": task_id, "name": title.format(total=total), "text": text})
+        log(f"{task_id} {title.format(total=total)} ({len(rows[key])} customers)")
+    if dry_run:
+        for u in updates:
+            print(f"\n== {u['name']}\n{u['text']}", end="")
+        return
+    proc = subprocess.run(
+        ["docker", "exec", "-i", OPS_CONTAINER, "python", "manage.py", "shell"],
+        input=OPS_UPDATE % json.dumps(updates), capture_output=True, text=True,
+    )
+    marker = [l for l in proc.stdout.splitlines() if l.startswith("@@JSON@@")]
+    if proc.returncode or not marker:
+        sys.exit(f"task update failed: {proc.stderr.strip()[-2000:]}")
+    result = json.loads(marker[-1][len("@@JSON@@"):])
+    bad = [r for r in result if not (r["name_ok"] and r["text_ok"])]
+    if bad:
+        sys.exit(f"readback mismatch: {bad}")
+    log("updated and verified tasks " + ", ".join(str(r["id"]) for r in result))
+
+
+if __name__ == "__main__":
+    main()
