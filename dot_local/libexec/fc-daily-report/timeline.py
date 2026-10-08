@@ -17,8 +17,8 @@ Categories are Dmitry's own end-of-day decisions: everything starts
 "uncategorized" and `fc-daily-report review` / `categorize` record rules keyed by
 page, session, project, site, profile, app, watching or idle. Persistent rules
 live in CATEGORY_FILE; `--day` rules in the run's categories.json win for that
-day. Away is only time behind the omarchy lock screen (window-time's locks
-table). Any other time without input is idle, from window-time's idle table: with
+day. Away is time with every display off or the omarchy lock screen up
+(window-time's displays_off and locks tables). Any other time without input is idle, from window-time's idle table: with
 a window holding the screen awake it is "watching". Gaps in older data without
 idle rows count as idle unless locked.
 """
@@ -441,6 +441,16 @@ def finish_segments(segments, sessions, rules):
         segment["review_key"] = review_key(segment)
 
 
+def merge(intervals):
+    merged = []
+    for a, b in sorted(intervals):
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return merged
+
+
 def subtract(start, end, cuts):
     pieces, cursor = [], start
     for a, b in sorted(cuts):
@@ -457,11 +467,11 @@ def subtract(start, end, cuts):
 def idle_segments(screen, spans, bounds, calls=()):
     """Watching and idle segments, plus away (locked) periods. Call time is never idle."""
     start, cutoff = ts(bounds["start"]), ts(bounds["cutoff"])
-    locks = [
+    locks = merge(
         (max(row["start"], start), min(row["end"], cutoff))
         for row in screen.get("locks", [])
         if min(row["end"], cutoff) > max(row["start"], start)
-    ]
+    )
     away = [{"start": a, "end": b, "seconds": round(b - a)} for a, b in locks]
     busy = [(c["start"], c["end"]) for c in calls]
     segments = []

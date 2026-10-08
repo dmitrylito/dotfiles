@@ -22,14 +22,14 @@
 # `panes` (the focused herdr pane and its Claude/Codex session id, polled every
 # HERDR_POLL_SECONDS while a herdr terminal has focus; remote hosts over SSH) and
 # `idle` (no input, with the window that was holding the screen awake, if any,
-# e.g. a video or Meet tab) and `locks` (the omarchy lock screen was up: the
-# only time counted as away).
+# e.g. a video or Meet tab), `locks` (the omarchy lock screen was up) and
+# `displays_off` (every display powered off, DPMS). Locked or displays off is away.
 # Browser URLs come from the window-time Chromium extension when it is loaded
 # (`url_source` = tab: the active tab's exact URL, a new span per navigation or FC
 # console customer switch, `fc_customer` = the console's customer id);
 # otherwise from History, matched by title (`url_source` = history).
 #   window-time tab                   Chromium native-messaging host (the extension)
-#   window-time import-locks [SINCE]  backfill `locks` from the omarchy shell journal
+#   window-time import-locks [SINCE]  backfill `locks` and `displays_off` from the journal
 # Idle reports come from the dmitrylito.window-time omarchy shell plugin; without
 # it, time away from the keyboard counts toward whichever window had focus.
 # Idle is ignored while a CALL_APPS process records the microphone (a Meet or
@@ -70,6 +70,9 @@ LOCK_POLL_SECONDS = 5
 LOCK_COMMAND = ["qs", "-p", "/usr/share/omarchy/shell", "ipc", "call", "lock", "isLocked"]
 # omarchy-shell logs "omarchy lock <ISO time> lock-requested|unlocked" (debug level).
 LOCK_JOURNAL_EVENT = re.compile(r"omarchy lock (?P<at>\S+) (?P<event>lock-requested|unlocked)$")
+# The owed wallpaper daemon logs "policy pause=1 ... reason=dpms-off" when the displays
+# go off and "pause=0 ... reason=visible" when anything is visible again.
+DISPLAY_JOURNAL_EVENT = re.compile(r"policy pause=(?P<pause>[01]) \S+ reason=(?P<reason>\S+)")
 MIN_SPAN_SECONDS = 1.0
 
 # application.process.binary of PipeWire capture streams that mean "on a call".
@@ -146,6 +149,12 @@ create table if not exists locks (
     end real not null
 );
 create index if not exists locks_start on locks (start);
+create table if not exists displays_off (
+    id integer primary key,
+    start real not null,
+    end real not null
+);
+create index if not exists displays_off_start on displays_off (start);
 """
 
 
@@ -269,6 +278,13 @@ def lock_state():
     except (subprocess.TimeoutExpired, OSError):
         return None
     return {"true": True, "false": False}.get(result.stdout.strip())
+
+
+def displays_off(signature):
+    monitors = [m for m in hyprctl_json(signature, "monitors", "all") or [] if not m.get("disabled")]
+    if not monitors:
+        return None
+    return not any(m.get("dpmsStatus", True) for m in monitors)
 
 
 def inhibiting_window(signature):
@@ -438,6 +454,8 @@ class Tracker:
         self.idle_inhibitor = None
         self.locked = False
         self.lock_id = None
+        self.dark = False
+        self.dark_id = None
         self.signature = None
         self.span_url = self.span_url_source = None
         self.span_tab = None
@@ -449,22 +467,28 @@ class Tracker:
 
     @property
     def away(self):
-        return self.locked or self.idle_away
+        return self.locked or self.dark or self.idle_away
+
+    def track_period(self, table, attr, id_attr, state, now):
+        """Keep `table` rows in step with a boolean; returns whether it changed."""
+        current, row = getattr(self, attr), getattr(self, id_attr)
+        if state is None or state == current:
+            if row is not None:
+                self.db.execute(f"update {table} set end = ? where id = ?", (now, row))
+            return False
+        if state:
+            row = self.db.execute(f"insert into {table} (start, end) values (?, ?)", (now, now)).lastrowid
+        else:
+            self.db.execute(f"update {table} set end = ? where id = ?", (now, row))
+            row = None
+        setattr(self, attr, state)
+        setattr(self, id_attr, row)
+        return True
 
     def poll_lock(self, now):
-        state = lock_state()
-        if state is None or state == self.locked:
-            if self.lock_id is not None:
-                self.db.execute("update locks set end = ? where id = ?", (now, self.lock_id))
-                self.db.commit()
-            return
         was_away = self.away
-        self.locked = state
-        if state:
-            self.lock_id = self.db.execute("insert into locks (start, end) values (?, ?)", (now, now)).lastrowid
-        else:
-            self.db.execute("update locks set end = ? where id = ?", (now, self.lock_id))
-            self.lock_id = None
+        self.track_period("locks", "locked", "lock_id", lock_state(), now)
+        self.track_period("displays_off", "dark", "dark_id", displays_off(self.signature), now)
         self.db.commit()
         if self.away and not was_away:
             self.close(now)
@@ -716,9 +740,10 @@ def watch(_args):
         tracker.end_call(time.time())
         tracker.input_idle = False
         tracker.sync_idle(time.time())
-        if tracker.lock_id is not None:
-            db.execute("update locks set end = ? where id = ?", (time.time(), tracker.lock_id))
-            db.commit()
+        for table, row in (("locks", tracker.lock_id), ("displays_off", tracker.dark_id)):
+            if row is not None:
+                db.execute(f"update {table} set end = ? where id = ?", (time.time(), row))
+        db.commit()
         if audio:
             audio.terminate()
         CONTROL_SOCKET.unlink(missing_ok=True)
@@ -869,8 +894,9 @@ def export(args):
     ]
     locks = [
         {"start": max(start, since), "end": min(end, until)}
+        for table in ("locks", "displays_off")
         for start, end in db.execute(
-            "select start, end from locks where end > ? and start < ? order by start", (since, until)
+            f"select start, end from {table} where end > ? and start < ? order by start", (since, until)
         )
     ]
     db.row_factory = sqlite3.Row
@@ -898,30 +924,63 @@ def export(args):
     print()
 
 
-def import_locks(args):
-    since = parse_since(args.since).timestamp()
+def journal_periods(since, starts, ends, *journal_args, timestamp=None):
     result = subprocess.run(
-        ["journalctl", "--user", "--no-pager", "-o", "cat", "--since", f"@{int(since)}", "-t", "omarchy-shell"],
+        ["journalctl", "--user", "--no-pager", "-o", "short-unix", "--since", f"@{int(since)}", *journal_args],
         capture_output=True, text=True, check=False,
     )
     periods, start = [], None
     for line in result.stdout.splitlines():
-        if not (match := LOCK_JOURNAL_EVENT.search(line.strip())):
+        at, _, message = line.partition(" ")
+        event = starts(message), ends(message)
+        if event == (False, False):
             continue
-        at = datetime.fromisoformat(match["at"].replace("Z", "+00:00")).timestamp()
-        if match["event"] == "lock-requested" and start is None:
+        at = timestamp(message) if timestamp else float(at)
+        if event[0] and start is None:
             start = at
-        elif match["event"] == "unlocked" and start is not None:
+        elif event[1] and start is not None:
             periods.append((start, at))
             start = None
+    return periods
+
+
+def import_locks(args):
+    since = parse_since(args.since).timestamp()
+
+    def lock_event(message, wanted):
+        match = LOCK_JOURNAL_EVENT.search(message.strip())
+        return bool(match and match["event"] == wanted)
+
+    def display_event(message, pause, reasons):
+        match = DISPLAY_JOURNAL_EVENT.search(message)
+        return bool(match and match["pause"] == pause and match["reason"] in reasons)
+
+    sources = {
+        "locks": journal_periods(
+            since,
+            lambda m: lock_event(m, "lock-requested"),
+            lambda m: lock_event(m, "unlocked"),
+            "-t", "omarchy-shell",
+            timestamp=lambda m: datetime.fromisoformat(
+                LOCK_JOURNAL_EVENT.search(m.strip())["at"].replace("Z", "+00:00")
+            ).timestamp(),
+        ),
+        "displays_off": journal_periods(
+            since,
+            lambda m: display_event(m, "1", {"dpms-off"}),
+            lambda m: display_event(m, "0", {"visible"}) or display_event(m, "1", {"locked"}),
+            "-g", "policy pause=",
+        ),
+    }
     db = connect_db()
-    added = 0
-    for start, end in periods:
-        if not db.execute("select 1 from locks where start < ? and end > ?", (end, start)).fetchone():
-            db.execute("insert into locks (start, end) values (?, ?)", (start, end))
-            added += 1
+    for table, periods in sources.items():
+        added = 0
+        for start, end in periods:
+            if not db.execute(f"select 1 from {table} where start < ? and end > ?", (end, start)).fetchone():
+                db.execute(f"insert into {table} (start, end) values (?, ?)", (start, end))
+                added += 1
+        print(f"window-time: {table}: {added} periods added, {len(periods) - added} already known")
     db.commit()
-    print(f"window-time: {added} lock periods added, {len(periods) - added} already known")
     return 0
 
 

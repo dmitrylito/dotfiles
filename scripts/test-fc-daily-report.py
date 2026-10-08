@@ -1117,3 +1117,21 @@ def test_path_keys_go_from_specific_to_general(timeline_module):
         "admin",
     ]
     assert timeline_module.path_prefixes(None) == []
+
+
+def test_displays_off_and_lock_overlap_count_once(timeline_module, bounds):
+    screen = {
+        "spans": [
+            {"start": at(13), "end": at(13, 10), "class": "x", "title": "x"},
+            {"start": at(14), "end": at(14, 5), "class": "x", "title": "x"},
+        ],
+        "idle": [{"start": at(13, 10), "end": at(14)}],
+        "locks": [
+            {"start": at(13, 15), "end": at(13, 58)},
+            {"start": at(13, 30), "end": at(14)},
+        ],
+    }
+    spans = screen["spans"]
+    segments, away = timeline_module.idle_segments(screen, spans, bounds)
+    assert [a["seconds"] for a in away] == [45 * 60]
+    assert sum(s["end"] - s["start"] for s in segments) == 5 * 60
