@@ -15,10 +15,12 @@
 #   window-time idle SECONDS          tell the tracker input stopped SECONDS ago
 #   window-time active                tell the tracker input is back
 #
-# SINCE: today (default), yesterday, week, 30m / 2h / 3d, or YYYY-MM-DD[ HH:MM].
+# SINCE: today (default), yesterday, week, 30m / 2h / 3d, YYYY-MM-DD[ HH:MM], or @EPOCH.
 #
-# Data lives in $XDG_DATA_HOME/window-time/window-time.db: `spans` (focus) and
-# `calls` (a CALL_APPS process recording the mic, tracked whatever has focus).
+# Data lives in $XDG_DATA_HOME/window-time/window-time.db: `spans` (focus),
+# `calls` (a CALL_APPS process recording the mic, tracked whatever has focus) and
+# `panes` (the focused herdr pane and its Claude/Codex session id, polled every
+# HERDR_POLL_SECONDS while a herdr terminal has focus; remote hosts over SSH).
 # Idle reports come from the dmitrylito.window-time omarchy shell plugin; without
 # it, time away from the keyboard counts toward whichever window had focus.
 # Idle is ignored while a CALL_APPS process records the microphone (a Meet or
@@ -26,7 +28,7 @@
 #
 # URL lookup is a best guess: Chromium writes History a few seconds late, and only
 # keeps the latest title per URL, so a title shared by several pages (or one that
-# changed since) maps to the most recently visited match, or to nothing.
+# changed since) maps to the last matching visit before the span ended, or to nothing.
 # /usr/bin/python3 on purpose: stdlib only, and the mise shim is not wanted here.
 
 import argparse
@@ -39,6 +41,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -62,6 +65,17 @@ BROWSER_DATA_DIRS = {
     "chromium": Path.home() / ".config/chromium",
     "google-chrome": Path.home() / ".config/google-chrome",
 }
+CHROMIUM_EPOCH_OFFSET = 11_644_473_600
+
+HERDR_POLL_SECONDS = 5
+HERDR_SNAPSHOT_TIMEOUT = 5
+# Terminal windows attached to herdr are titled "<host>: <workspace>". The title's
+# host (lowercased) -> SSH target for hosts other than this one.
+HERDR_REMOTES = {"dlco-1": "dlco-1.chimera-pleco.ts.net"}
+HERDR_TERMINAL_CLASSES = {"com.mitchellh.ghostty", "org.omarchy.terminal"}
+# The SUPER+S scratchpad (herdr-agent) runs its own herdr session.
+HERDR_SESSION_BY_CLASS = {"org.omarchy.agent": "scratchpad"}
+HERDR_TITLE_HOST = re.compile(r"^(?P<host>[\w.-]+): ")
 BROWSER_TITLE_SUFFIX = re.compile(r" - (Chromium|Google Chrome)$")
 WEBAPP_CLASS = re.compile(r"^chrome-(?P<host>.+?)__(?P<path>.*)-(?P<profile>Default|Profile_\d+)$")
 
@@ -87,6 +101,20 @@ create table if not exists calls (
     apps text not null
 );
 create index if not exists calls_start on calls (start);
+create table if not exists panes (
+    id integer primary key,
+    start real not null,
+    end real not null,
+    host text not null,
+    session text,
+    workspace text,
+    pane text not null,
+    agent text,
+    agent_session text,
+    cwd text,
+    title text
+);
+create index if not exists panes_start on panes (start);
 """
 
 
@@ -110,21 +138,27 @@ def profile_names(data_dir):
     return {directory: info.get("name") or directory for directory, info in cache.items()}
 
 
-def latest_visit(history, title):
+def chromium_time(epoch):
+    return int((epoch + CHROMIUM_EPOCH_OFFSET) * 1_000_000)
+
+
+def latest_visit(history, title, before):
     # immutable=1: Chromium holds an exclusive lock on History while it runs.
+    # Single-page apps give many pages one title ("Fleet Chaser"), so the visit
+    # nearest before the span's end beats the title's most recent visit overall.
     uri = f"file:{quote(str(history))}?immutable=1"
     try:
         with sqlite3.connect(uri, uri=True) as db:
             return db.execute(
-                "select url, last_visit_time from urls where title = ? "
-                "order by last_visit_time desc limit 1",
-                (title,),
+                "select u.url, v.visit_time from visits v join urls u on u.id = v.url "
+                "where u.title = ? and v.visit_time <= ? order by v.visit_time desc limit 1",
+                (title, chromium_time(before)),
             ).fetchone()
     except sqlite3.Error:
         return None
 
 
-def resolve_url(cls, title):
+def resolve_url(cls, title, before):
     """Return (profile name, url) for a browser window, or (None, None)."""
     if webapp := WEBAPP_CLASS.match(cls):
         wanted = webapp["profile"].replace("_", " ")
@@ -140,7 +174,7 @@ def resolve_url(cls, title):
             history = data_dir / directory / "History"
             if not history.exists():
                 continue
-            if (hit := latest_visit(history, title)) and hit[1] > best[2]:
+            if (hit := latest_visit(history, title, before)) and hit[1] > best[2]:
                 best = (names.get(directory, directory), hit[0], hit[1])
     if best[1] is None and webapp:
         names = {}
@@ -185,6 +219,100 @@ def connect_hyprland():
     return None, None
 
 
+def herdr_target(cls, title):
+    """Return (host, ssh target or None, herdr session or None) for a herdr window."""
+    local = socket.gethostname().lower()
+    if cls in HERDR_SESSION_BY_CLASS:
+        return local, None, HERDR_SESSION_BY_CLASS[cls]
+    if cls not in HERDR_TERMINAL_CLASSES or not (match := HERDR_TITLE_HOST.match(title)):
+        return None
+    host = match["host"].lower()
+    if host == local:
+        return local, None, None
+    if host in HERDR_REMOTES:
+        return host, HERDR_REMOTES[host], None
+    return None
+
+
+def herdr_focus(target):
+    host, ssh_target, session = target
+    command = ["herdr"] + (["--session", session] if session else []) + ["api", "snapshot"]
+    if ssh_target:
+        command = [
+            "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+            "-o", "ControlMaster=auto", "-o", "ControlPersist=300",
+            "-o", f"ControlPath={RUNTIME_DIR}/window-time-ssh-%C",
+            ssh_target, " ".join(command),
+        ]
+    try:
+        # HERDR_* (set inside a herdr pane) would point herdr at that pane's server.
+        env = {key: value for key, value in os.environ.items() if not key.startswith("HERDR_")}
+        result = subprocess.run(command, capture_output=True, text=True, timeout=HERDR_SNAPSHOT_TIMEOUT, env=env)
+        snapshot = json.loads(result.stdout)["result"]["snapshot"]
+    except (subprocess.TimeoutExpired, ValueError, KeyError, OSError):
+        return None
+    pane = next((p for p in snapshot.get("panes", []) if p.get("pane_id") == snapshot.get("focused_pane_id")), None)
+    if pane is None:
+        return None
+    workspace = next(
+        (w.get("label") for w in snapshot.get("workspaces", []) if w.get("workspace_id") == pane.get("workspace_id")),
+        None,
+    )
+    return {
+        "host": host,
+        "session": session or "default",
+        "workspace": workspace,
+        "pane": pane["pane_id"],
+        "agent": pane.get("agent"),
+        "agent_session": (pane.get("agent_session") or {}).get("value"),
+        "cwd": pane.get("foreground_cwd") or pane.get("cwd"),
+        "title": pane.get("terminal_title_stripped") or pane.get("terminal_title"),
+    }
+
+
+class HerdrWatcher(threading.Thread):
+    """Records which herdr pane has focus inside the focused terminal window."""
+
+    KEY = ("host", "session", "pane", "agent", "agent_session")
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.target = self.title = None
+        self.wake = threading.Event()
+
+    def follow(self, target, title=None):
+        # A new window title often means another herdr workspace: poll at once.
+        if (target, title) != (self.target, self.title):
+            self.target, self.title = target, title
+            self.wake.set()
+
+    def run(self):
+        db = connect_db()
+        row_id = key = None
+        while True:
+            self.wake.clear()
+            now = time.time()
+            focus = herdr_focus(self.target) if self.target else None
+            new_key = tuple(focus[k] for k in self.KEY) if focus else None
+            if row_id is not None and new_key != key:
+                db.execute("update panes set end = ? where id = ?", (now, row_id))
+                row_id = None
+            if focus and row_id is None:
+                row_id = db.execute(
+                    "insert into panes (start, end, host, session, workspace, pane, agent, agent_session, cwd, title)"
+                    " values (:start, :start, :host, :session, :workspace, :pane, :agent, :agent_session, :cwd, :title)",
+                    focus | {"start": now},
+                ).lastrowid
+            elif focus:
+                db.execute(
+                    "update panes set end = ?, cwd = ?, title = ? where id = ?",
+                    (now, focus["cwd"], focus["title"], row_id),
+                )
+            db.commit()
+            key = new_key
+            self.wake.wait(HERDR_POLL_SECONDS)
+
+
 def clean_title(title):
     return TITLE_SPINNER.sub("", title).strip()
 
@@ -212,7 +340,6 @@ class Tracker:
         self.input_idle = False
         self.in_call = False
         self.call_id = None
-        self.url_resolved = False
 
     @property
     def away(self):
@@ -234,23 +361,22 @@ class Tracker:
             (now, now, self.cls, self.title),
         )
         self.db.commit()
-        self.span_id, self.span_start, self.url_resolved = cur.lastrowid, now, False
+        self.span_id, self.span_start = cur.lastrowid, now
 
     def close(self, end):
         if self.span_id is None:
             return
         self.db.execute("update spans set end = ? where id = ?", (max(end, self.span_start), self.span_id))
         self.db.commit()
-        self.resolve()
+        self.resolve(end)
         self.span_id = None
 
-    def resolve(self):
-        if self.span_id is None or self.url_resolved or not is_browser(self.cls):
+    def resolve(self, before):
+        if self.span_id is None or not is_browser(self.cls):
             return
-        profile, url = resolve_url(self.cls, self.title)
+        profile, url = resolve_url(self.cls, self.title, before)
         self.db.execute("update spans set profile = ?, url = ? where id = ?", (profile, url, self.span_id))
         self.db.commit()
-        self.url_resolved = url is not None
 
     def update_call(self, now):
         apps = call_apps()
@@ -277,7 +403,7 @@ class Tracker:
         if self.span_id is not None:
             self.db.execute("update spans set end = ? where id = ?", (now, self.span_id))
             self.db.commit()
-            self.resolve()
+            self.resolve(now)
 
     def set_call(self, in_call, now):
         was_away = self.away
@@ -329,6 +455,8 @@ def watch(_args):
     control = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     control.bind(str(CONTROL_SOCKET))
     audio = audio_events()
+    herdr = HerdrWatcher()
+    herdr.start()
     try:
         while True:
             hypr, window = connect_hyprland()
@@ -370,7 +498,9 @@ def watch(_args):
                     tracker.checkpoint(now)
                     next_checkpoint = now + CHECKPOINT_SECONDS
                     audio = audio or audio_events()
+                herdr.follow(None if tracker.away else herdr_target(tracker.cls, tracker.title), tracker.title)
             hypr.close()
+            herdr.follow(None)
             tracker.close(time.time())
             tracker.cls = tracker.title = ""
             time.sleep(1)
@@ -396,6 +526,8 @@ def parse_since(text):
     midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     if text == "today":
         return midnight
+    if text.startswith("@"):
+        return datetime.fromtimestamp(float(text[1:]))
     if text == "yesterday":
         return midnight - timedelta(days=1)
     if text == "week":
@@ -421,7 +553,7 @@ def load_spans(db, since, min_seconds):
         if end - start < min_seconds:
             continue
         if url is None and is_browser(cls):
-            profile, url = resolve_url(cls, title)
+            profile, url = resolve_url(cls, title, end)
             if url is not None:
                 db.execute("update spans set profile = ?, url = ? where id = ?", (profile, url, id_))
         spans.append((max(start, since), end, cls, clean_title(title), profile, url))
@@ -496,7 +628,19 @@ def export(args):
             "select start, end, apps from calls where end > ? and start < ? order by start", (since, until)
         )
     ]
-    json.dump({"host": socket.gethostname(), "since": since, "until": until, "spans": spans, "calls": calls}, sys.stdout)
+    db.row_factory = sqlite3.Row
+    panes = [
+        dict(row) | {"start": max(row["start"], since), "end": min(row["end"], until)}
+        for row in db.execute(
+            "select start, end, host, session, workspace, pane, agent, agent_session, cwd, title from panes"
+            " where end > ? and start < ? order by start",
+            (since, until),
+        )
+    ]
+    json.dump(
+        {"host": socket.gethostname(), "since": since, "until": until, "spans": spans, "calls": calls, "panes": panes},
+        sys.stdout,
+    )
     print()
 
 
