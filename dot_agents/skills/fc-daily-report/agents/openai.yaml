@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fleet Chaser Daily Report"
+  short_description: "Reconstruct my day or draft a work report"
+  default_prompt: "Use $fc-daily-report to reconstruct what I spent my day on, in chronological activity windows, using cached evidence where available."

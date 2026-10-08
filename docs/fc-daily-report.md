@@ -1,8 +1,11 @@
 # Global daily-report evidence command
 
 `fc-daily-report` is managed here, available from any working directory. The
-Fleet Chaser shared daily-report skill in ops-center supplies interpretation and
-report formatting; this repository owns the executable, adapters and fixtures.
+daily-report skill (interpretation and report formatting) is installed globally from
+`dot_agents/skills/fc-daily-report`, linked into `~/.claude/skills` and
+`~/.codex/skills` on every machine. The team's copy lives in ops-center
+(`.agents/skills/fc-daily-report`); keep the two in step when either changes. This
+repository owns the executable, adapters and fixtures.
 
 Sources: `dot_local/bin/executable_fc-daily-report` launches the standard-library
 Python package in `dot_local/libexec/fc-daily-report/`. Targets are
