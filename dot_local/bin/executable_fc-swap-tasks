@@ -2,7 +2,7 @@
 """fc-swap-tasks — refresh the three hardware-swap tasks in the Fleet Chaser Installs workflow.
 
 Recounts, per customer, the vehicles that still have:
-  - an old (legacy `dvr`) camera installed            -> task 4280 "old camera: N total to replace"
+  - an old (legacy `dvr`) camera installed            -> task 4280 "Old cameras: N to replace"
   - an ng_dvr camera whose SIM is IR3 on APN AMERICA  -> task 4281 "IR3 America(swap cam): N to replace"
   - an ng_dvr camera whose SIM is IR3 on APN FC.USA   -> task 4282 "IR3 FC(swap sim): N to replace"
 and rewrites each task's name and description ("Customer: count" lines, highest first).
@@ -37,7 +37,7 @@ DB_CONTAINER = "fleetchaser-db-1"
 OPS_CONTAINER = "ops-backend"
 
 TASKS = {
-    "old": (4280, "old camera: {total} total to replace"),
+    "old": (4280, "Old cameras: {total} to replace"),
     "america": (4281, "IR3 America(swap cam): {total} to replace"),
     "fcusa": (4282, "IR3 FC(swap sim): {total} to replace"),
 }
