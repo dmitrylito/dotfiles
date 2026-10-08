@@ -47,15 +47,17 @@ code in the Meet tab title; otherwise the event appears under
 `scheduled_meetings`, not in totals. Screen idle over the omarchy shell plugin
 timeout is excluded unless a call holds the mic.
 
-Idle is input-only (keyboard/mouse, two minutes, from the omarchy shell plugin).
-window-time records each idle period with the window that was holding the screen
-awake: those become `watching` segments; idle periods up to ten minutes become
-`short idle`; longer ones are listed under `away`. Calls keep counting through
-idle from the desktop microphone. Browser spans carry the active tab's exact URL
-from the window-time Chromium extension (`url_source: tab`) once Chromium has
-restarted with it; older spans keep the History title match (`history`).
-`records` lists what was on screen by record: FC tasks, vehicles and devices,
-admin objects, HubSpot records, Gmail threads, Google docs and Linear issues.
+Away is only time behind the omarchy lock screen: window-time polls the lock state
+every five seconds (`locks`; `window-time import-locks` backfills from the shell
+journal). Any other time without input (keyboard/mouse, two minutes, from the
+omarchy shell plugin) is `idle`, whatever its length, or `watching` when a window
+was holding the screen awake. Call time is never idle: calls keep counting through
+idle from the desktop microphone, and Dialpad calls off the desktop are subtracted
+from idle. Browser spans carry the active tab's exact URL from the window-time
+Chromium extension (`url_source: tab`); older spans keep the History title match
+(`history`). `records` lists what was on screen by record: FC tasks, vehicles and
+devices, admin objects, HubSpot records, Gmail threads, Google docs and Linear
+issues.
 
 Nothing is categorized automatically. Everything starts `uncategorized`; Dmitry
 decides at the end of the day:
@@ -69,14 +71,19 @@ fc-daily-report categorize --run RUN_DIR --day --personal 'page:www.google.com|g
 
 Keys, most specific first: `page:<site>|<title>`, `session:<host>/<id>`,
 `project:<cwd name>`, `site:<host>`, `profile:<Chromium profile>`,
-`terminal:<host>`, `watching:<title>`, `watching:<class>`, `idle:short`,
+`terminal:<host>`, `watching:<title>`, `watching:<class>`, `idle`,
 `app:<class>`. Rules persist in `~/.config/fc-daily-report/categories.json`, so
 later days start pre-sorted; `--day` writes the run's own `categories.json`,
 which wins for that day only. `work_seconds` is work-categorized time plus calls.
 
-FC task actions come from the companion audit on DLCO-1, a copy of production
-restored daily at 05:00 (`import-db`); the current day's actions appear the next
-morning. Until then today's tasks show on-screen time and unattributed changes.
+FC tasks come from the FC backend API (`fc_api.py`): tasks modified on the day,
+their current state, and the audit entries Dmitry created that day, read at collect
+time (the audit log keeps every change with its time, so no polling is needed). It
+uses his console session: `fc-daily-report fc-token` stores the console's refresh
+token (`localStorage.getItem('refresh')` on console.fleetchaser.com) in
+`~/.local/state/fc-daily-report/fc-api.json` (0600) per machine and refreshes it.
+Without a token the source is a gap and the companion audit on DLCO-1 (production
+restored daily at 05:00) supplies earlier days.
 
 The default MCP transport reads Ops Center remotely on every device. An existing
 `OPS_CENTER_MCP_API_KEY` from the encrypted shared secrets page is read from the

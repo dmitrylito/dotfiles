@@ -3,6 +3,7 @@
 Usage: fc-daily-report collect --date YYYY-MM-DD --mode work|timeline
        fc-daily-report timeline --run DIR [--categories PATH]
        fc-daily-report review --run DIR [--text]
+       fc-daily-report fc-token < refresh-token   (FC API access; see fc_api.py)
        fc-daily-report categorize --run DIR --work KEY... --personal KEY...
                                   [--set KEY=CATEGORY] [--day]
        fc-daily-report documents --run DIR --ref call:123 --ref email:456
@@ -34,6 +35,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from zoneinfo import ZoneInfo
 
+import fc_api
 from evidence import (
     deduplicate,
     normalize_gmail,
@@ -879,6 +881,7 @@ def collect(args):
             "agent_hosts",
             "agent_prompt_chars",
             "categories",
+            "fc_api_base",
         ]
     }
     if existing:
@@ -941,6 +944,8 @@ def collect(args):
         jobs["screen"] = lambda: collect_screen(bounds, config)
     if not args.skip_agents:
         jobs["agents"] = lambda: collect_agents(bounds, config)
+    if not args.skip_fc_api:
+        jobs["fc_api"] = lambda: fc_api.collect(bounds, config)
     with ThreadPoolExecutor(max_workers=config["collector_workers"]) as pool:
         futures = {pool.submit(job): name for name, job in jobs.items()}
         for future in as_completed(futures):
@@ -1009,6 +1014,18 @@ def timeline(args):
         "timeline": str(run / "timeline.json"),
         "totals": result["totals"],
     }
+
+
+def fc_token(_args):
+    import getpass
+
+    refresh = (
+        getpass.getpass("FC console refresh token: ")
+        if sys.stdin.isatty()
+        else sys.stdin.read()
+    )
+    fc_api.set_refresh(refresh)
+    return {"stored": str(fc_api.TOKEN_FILE)}
 
 
 def review(args):
@@ -1186,6 +1203,8 @@ def main():
     command.add_argument("--skip-screen", action="store_true")
     command.add_argument("--skip-agents", action="store_true")
     command.add_argument("--categories", default=str(CATEGORY_FILE))
+    command.add_argument("--fc-api-base", default=fc_api.API_BASE)
+    command.add_argument("--skip-fc-api", action="store_true")
     command.add_argument(
         "--companion-container", default="fleetchaser-backend-1"
     )
@@ -1207,6 +1226,7 @@ def main():
     command.add_argument(
         "--refresh-overlap-seconds", type=positive, default=300
     )
+    commands.add_parser("fc-token")
     command = commands.add_parser("timeline")
     command.add_argument("--run", required=True)
     command.add_argument("--categories", default=str(CATEGORY_FILE))
@@ -1239,6 +1259,7 @@ def main():
             "collect": collect,
             "timeline": timeline,
             "review": review,
+            "fc-token": fc_token,
             "categorize": categorize,
             "documents": documents,
             "import-gmail": import_gmail,

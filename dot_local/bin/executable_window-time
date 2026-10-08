@@ -21,12 +21,14 @@
 # `calls` (a CALL_APPS process recording the mic, tracked whatever has focus) and
 # `panes` (the focused herdr pane and its Claude/Codex session id, polled every
 # HERDR_POLL_SECONDS while a herdr terminal has focus; remote hosts over SSH) and
-# `idle` (time away, with the window that was holding the screen awake, if any,
-# e.g. a video or Meet tab).
+# `idle` (no input, with the window that was holding the screen awake, if any,
+# e.g. a video or Meet tab) and `locks` (the omarchy lock screen was up: the
+# only time counted as away).
 # Browser URLs come from the window-time Chromium extension when it is loaded
 # (`url_source` = tab: the active tab's exact URL, a new span per navigation);
 # otherwise from History, matched by title (`url_source` = history).
 #   window-time tab                   Chromium native-messaging host (the extension)
+#   window-time import-locks [SINCE]  backfill `locks` from the omarchy shell journal
 # Idle reports come from the dmitrylito.window-time omarchy shell plugin; without
 # it, time away from the keyboard counts toward whichever window had focus.
 # Idle is ignored while a CALL_APPS process records the microphone (a Meet or
@@ -63,6 +65,10 @@ CHECKPOINT_SECONDS = 15
 # window title and the extension race); later, a different URL starts a new span.
 TAB_SETTLE_SECONDS = 2
 TAB_MEMORY = 500
+LOCK_POLL_SECONDS = 5
+LOCK_COMMAND = ["qs", "-p", "/usr/share/omarchy/shell", "ipc", "call", "lock", "isLocked"]
+# omarchy-shell logs "omarchy lock <ISO time> lock-requested|unlocked" (debug level).
+LOCK_JOURNAL_EVENT = re.compile(r"omarchy lock (?P<at>\S+) (?P<event>lock-requested|unlocked)$")
 MIN_SPAN_SECONDS = 1.0
 
 # application.process.binary of PipeWire capture streams that mean "on a call".
@@ -133,6 +139,12 @@ create table if not exists idle (
     inhibitor_title text
 );
 create index if not exists idle_start on idle (start);
+create table if not exists locks (
+    id integer primary key,
+    start real not null,
+    end real not null
+);
+create index if not exists locks_start on locks (start);
 """
 
 
@@ -236,6 +248,14 @@ def hyprctl_json(signature, *args):
         return json.loads(result.stdout or "null")
     except (subprocess.TimeoutExpired, ValueError, OSError):
         return None
+
+
+def lock_state():
+    try:
+        result = subprocess.run(LOCK_COMMAND, capture_output=True, text=True, timeout=2)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return {"true": True, "false": False}.get(result.stdout.strip())
 
 
 def inhibiting_window(signature):
@@ -403,13 +423,39 @@ class Tracker:
         self.call_id = None
         self.idle_id = None
         self.idle_inhibitor = None
+        self.locked = False
+        self.lock_id = None
         self.signature = None
         self.span_url = self.span_url_source = None
         self.tabs = {}
 
     @property
-    def away(self):
+    def idle_away(self):
         return self.input_idle and not self.in_call
+
+    @property
+    def away(self):
+        return self.locked or self.idle_away
+
+    def poll_lock(self, now):
+        state = lock_state()
+        if state is None or state == self.locked:
+            if self.lock_id is not None:
+                self.db.execute("update locks set end = ? where id = ?", (now, self.lock_id))
+                self.db.commit()
+            return
+        was_away = self.away
+        self.locked = state
+        if state:
+            self.lock_id = self.db.execute("insert into locks (start, end) values (?, ?)", (now, now)).lastrowid
+        else:
+            self.db.execute("update locks set end = ? where id = ?", (now, self.lock_id))
+            self.lock_id = None
+        self.db.commit()
+        if self.away and not was_away:
+            self.close(now)
+        elif was_away and not self.away:
+            self.open(now)
 
     def focus(self, cls, title, now):
         title = clean_title(title)
@@ -523,12 +569,12 @@ class Tracker:
         self.db.commit()
 
     def sync_idle(self, now, start=None):
-        if self.away and self.idle_id is None:
+        if self.idle_away and self.idle_id is None:
             start = now if start is None else start
             self.idle_id = self.db.execute("insert into idle (start, end) values (?, ?)", (start, now)).lastrowid
             self.idle_inhibitor = None
             self.note_inhibitor()
-        elif not self.away and self.idle_id is not None:
+        elif not self.idle_away and self.idle_id is not None:
             self.db.execute("update idle set end = ? where id = ?", (now, self.idle_id))
             self.db.commit()
             self.idle_id = None
@@ -544,8 +590,9 @@ class Tracker:
 
     def go_idle(self, seconds, now):
         self.update_call(now)
+        was_away = self.away
         self.input_idle = True
-        if self.away:
+        if self.away and not was_away:
             self.close(now - seconds)
         self.sync_idle(now, now - seconds)
 
@@ -553,7 +600,7 @@ class Tracker:
         was_away = self.away
         self.input_idle = False
         self.sync_idle(now)
-        if was_away:
+        if was_away and not self.away:
             self.open(now)
 
     def handle_event(self, line, now):
@@ -598,12 +645,18 @@ def watch(_args):
             tracker.address = (window.get("address") or "").removeprefix("0x")
             tracker.focus(window.get("class", ""), window.get("title", ""), now)
             tracker.update_call(now)
+            tracker.poll_lock(now)
             buffer = b""
             next_checkpoint = now + CHECKPOINT_SECONDS
+            next_lock_poll = now + LOCK_POLL_SECONDS
             while True:
                 sources = [hypr, control] + ([audio.stdout] if audio else [])
-                ready, _, _ = select.select(sources, [], [], max(0, next_checkpoint - time.time()))
+                wait = min(next_checkpoint, next_lock_poll) - time.time()
+                ready, _, _ = select.select(sources, [], [], max(0, wait))
                 now = time.time()
+                if now >= next_lock_poll:
+                    tracker.poll_lock(now)
+                    next_lock_poll = now + LOCK_POLL_SECONDS
                 if audio and audio.stdout in ready:
                     events = os.read(audio.stdout.fileno(), 65536)
                     if not events:
@@ -646,6 +699,9 @@ def watch(_args):
         tracker.end_call(time.time())
         tracker.input_idle = False
         tracker.sync_idle(time.time())
+        if tracker.lock_id is not None:
+            db.execute("update locks set end = ? where id = ?", (time.time(), tracker.lock_id))
+            db.commit()
         if audio:
             audio.terminate()
         CONTROL_SOCKET.unlink(missing_ok=True)
@@ -793,6 +849,12 @@ def export(args):
             "select start, end, apps from calls where end > ? and start < ? order by start", (since, until)
         )
     ]
+    locks = [
+        {"start": max(start, since), "end": min(end, until)}
+        for start, end in db.execute(
+            "select start, end from locks where end > ? and start < ? order by start", (since, until)
+        )
+    ]
     db.row_factory = sqlite3.Row
     panes = [
         dict(row) | {"start": max(row["start"], since), "end": min(row["end"], until)}
@@ -811,10 +873,38 @@ def export(args):
             "calls": calls,
             "panes": panes,
             "idle": idle,
+            "locks": locks,
         },
         sys.stdout,
     )
     print()
+
+
+def import_locks(args):
+    since = parse_since(args.since).timestamp()
+    result = subprocess.run(
+        ["journalctl", "--user", "--no-pager", "-o", "cat", "--since", f"@{int(since)}", "-t", "omarchy-shell"],
+        capture_output=True, text=True, check=False,
+    )
+    periods, start = [], None
+    for line in result.stdout.splitlines():
+        if not (match := LOCK_JOURNAL_EVENT.search(line.strip())):
+            continue
+        at = datetime.fromisoformat(match["at"].replace("Z", "+00:00")).timestamp()
+        if match["event"] == "lock-requested" and start is None:
+            start = at
+        elif match["event"] == "unlocked" and start is not None:
+            periods.append((start, at))
+            start = None
+    db = connect_db()
+    added = 0
+    for start, end in periods:
+        if not db.execute("select 1 from locks where start < ? and end > ?", (end, start)).fetchone():
+            db.execute("insert into locks (start, end) values (?, ?)", (start, end))
+            added += 1
+    db.commit()
+    print(f"window-time: {added} lock periods added, {len(periods) - added} already known")
+    return 0
 
 
 def tab_host(_args):
@@ -850,6 +940,9 @@ def main():
     idle_parser.add_argument("seconds", type=float)
     idle_parser.set_defaults(func=lambda a: send_control(f"idle {a.seconds}"))
     commands.add_parser("active", help="input is back").set_defaults(func=lambda a: send_control("active"))
+    locks_parser = commands.add_parser("import-locks", help="backfill lock periods from the journal")
+    locks_parser.add_argument("since", nargs="?", default="week")
+    locks_parser.set_defaults(func=import_locks)
     # Chromium appends the caller's origin (and on some builds a window id) to the command line.
     tab_parser = commands.add_parser("tab", help="Chromium native-messaging host for the extension")
     tab_parser.add_argument("origin", nargs="*")

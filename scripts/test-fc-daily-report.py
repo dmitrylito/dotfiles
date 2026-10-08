@@ -670,7 +670,12 @@ def test_timeline_measures_sessions_calls_and_tasks(
         1,
     )
     totals = result["totals"]
-    assert totals["by_category"] == {"work": 2640, "personal": 300}
+    assert totals["by_category"] == {
+        "work": 2640,
+        "personal": 300,
+        "uncategorized": 7800,
+    }
+    assert totals["idle_seconds"] == 7800
     assert totals["calls_seconds"] == 2400
     assert totals["calls_off_screen_seconds"] == 360
     assert totals["work_seconds"] == 3000
@@ -679,11 +684,11 @@ def test_timeline_measures_sessions_calls_and_tasks(
         ("fc_task", "42", 240)
     ]
     assert timeline_module.build(tmp_path, None)["totals"]["by_category"] == {
-        "uncategorized": 2940
+        "uncategorized": 10740
     }
 
 
-def test_idle_rows_gaps_and_end_of_day_rules(
+def test_idle_watching_locks_and_end_of_day_rules(
     collector, timeline_module, tmp_path, bounds
 ):
     from argparse import Namespace
@@ -730,6 +735,7 @@ def test_idle_rows_gaps_and_end_of_day_rules(
                     "https://docs.google.com/document/d/abc/edit",
                 ),
             ],
+            "locks": [{"start": at(13, 45), "end": at(14, 55)}],
             "idle": [
                 {
                     "start": at(13, 10),
@@ -745,9 +751,9 @@ def test_idle_rows_gaps_and_end_of_day_rules(
     assert (
         totals["screen_seconds"],
         totals["watching_seconds"],
-        totals["short_idle_seconds"],
-    ) == (1800, 600, 300)
-    assert [a["seconds"] for a in result["away"]] == [80 * 60]
+        totals["idle_seconds"],
+    ) == (1800, 600, 900)
+    assert [a["seconds"] for a in result["away"]] == [70 * 60]
     assert result["records"][0]["type"] == "google_doc"
 
     rules = tmp_path / "rules.json"
@@ -756,12 +762,12 @@ def test_idle_rows_gaps_and_end_of_day_rules(
             run=str(tmp_path),
             categories=str(rules),
             day=False,
-            work=["site:docs.google.com", "watching:chromium", "idle:short"],
+            work=["site:docs.google.com", "watching:chromium", "idle"],
             personal=["app:spotify"],
             set=[],
         )
     )
-    assert outcome["totals"]["by_category"] == {"work": 2100, "personal": 600}
+    assert outcome["totals"]["by_category"] == {"work": 2700, "personal": 600}
     assert outcome["still_uncategorized"] == []
     collector.categorize(
         Namespace(
@@ -774,7 +780,7 @@ def test_idle_rows_gaps_and_end_of_day_rules(
         )
     )
     day = timeline_module.build(tmp_path, rules)["totals"]["by_category"]
-    assert day == {"work": 1500, "personal": 1200}
+    assert day == {"work": 2100, "personal": 1200}
     assert json.loads(rules.read_text())["rules"]["watching:chromium"] == "work"
 
 
@@ -878,3 +884,69 @@ def test_this_machine_is_read_without_ssh(collector, monkeypatch):
     assert not collector.is_local_host("dlco-1.chimera-pleco.ts.net")
     with pytest.raises(ValueError, match="dash"):
         collector.ssh_command("-oProxyCommand=x", "true")
+
+
+def test_fc_api_keeps_own_actions_inside_the_day(collector, bounds, tmp_path):
+    import base64
+
+    import fc_api
+
+    def jwt(payload):
+        body = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+        return f"x.{body.rstrip('=')}.y"
+
+    class FakeApi:
+        def __init__(self):
+            self.listed = []
+
+        def access(self):
+            return jwt({"employee_id": 7, "exp": 9999999999})
+
+        def pages(self, endpoint, params, page_size, max_pages):
+            self.listed.append((endpoint, params.get("modified_date")))
+            if endpoint == "tasks/task/":
+                yield {
+                    "id": 42,
+                    "name": "INST: Paragon",
+                    "display_number": 9,
+                    "status": {"name": "Ready"},
+                    "workflow": {"name": "Installs"},
+                    "company": {"name": "Paragon"},
+                }
+                return
+            yield from [
+                {
+                    "id": 3,
+                    "created": iso(16),
+                    "action": "t:u",
+                    "created_by": {"id": 7, "full_name": "Dmitry"},
+                },
+                {
+                    "id": 2,
+                    "created": iso(15),
+                    "action": "t:m",
+                    "created_by": {"id": 8, "full_name": "Vlad"},
+                },
+                {
+                    "id": 1,
+                    "created": "2026-10-04T12:00:00Z",
+                    "action": "t:c",
+                    "created_by": {"id": 7, "full_name": "Dmitry"},
+                },
+            ]
+
+    api = FakeApi()
+    result = fc_api.collect(
+        bounds, {"timeout_seconds": 5, "page_size": 100, "max_pages": 3}, api
+    )
+    assert [d for e, d in api.listed if e == "tasks/task/"] == ["2026-10-05"]
+    states = [r for r in result["rows"] if r["source_type"] == "fc_task_state"]
+    actions = [r for r in result["rows"] if r["source_type"] == "task_audit"]
+    assert states[0]["title"] == "9 - INST: Paragon"
+    assert (states[0]["status"], states[0]["company"]) == ("Ready", "Paragon")
+    assert [(a["id"], a["action"]) for a in actions] == [("3", "t:u")]
+
+    fc_api.set_refresh(jwt({"exp": 1}), tmp_path / "token.json")
+    assert json.loads((tmp_path / "token.json").read_text())["access"] is None
+    with pytest.raises(LookupError, match="fc-token"):
+        fc_api.FCApi(path=tmp_path / "missing.json")

@@ -17,10 +17,10 @@ Categories are Dmitry's own end-of-day decisions: everything starts
 "uncategorized" and `fc-daily-report review` / `categorize` record rules keyed by
 page, session, project, site, profile, app, watching or idle. Persistent rules
 live in CATEGORY_FILE; `--day` rules in the run's categories.json win for that
-day. Idle comes from window-time's idle table (input-only): an idle period with
-an inhibiting window is "watching", a short one (<= SHORT_IDLE_SECONDS) is "short
-idle", longer is away. Gaps in older data without idle rows are inferred the same
-way.
+day. Away is only time behind the omarchy lock screen (window-time's locks
+table). Any other time without input is idle, from window-time's idle table: with
+a window holding the screen awake it is "watching". Gaps in older data without
+idle rows count as idle unless locked.
 """
 
 import json
@@ -34,7 +34,6 @@ from zoneinfo import ZoneInfo
 UNCATEGORIZED = "uncategorized"
 CATEGORY_FILE = Path.home() / ".config/fc-daily-report/categories.json"
 DAY_CATEGORY_FILE = "categories.json"
-SHORT_IDLE_SECONDS = 600
 MIN_GAP_SECONDS = 100
 MIN_RECORD_SECONDS = 5
 RECORD_PATTERNS = [
@@ -162,7 +161,7 @@ def keys_of(segment):
     if kind == "watching":
         return [f"watching:{segment['title']}", f"watching:{segment['class']}"]
     if kind == "idle":
-        return ["idle:short"]
+        return ["idle"]
     keys = []
     if segment.get("site"):
         keys += [
@@ -325,51 +324,57 @@ def finish_segments(segments, sessions, rules):
         segment["review_key"] = review_key(segment)
 
 
-def idle_segments(screen, spans, bounds):
-    """Watching and short-idle segments, plus away periods, from idle rows and gaps."""
+def subtract(start, end, cuts):
+    pieces, cursor = [], start
+    for a, b in sorted(cuts):
+        if b <= cursor or a >= end:
+            continue
+        if a > cursor:
+            pieces.append((cursor, a))
+        cursor = max(cursor, b)
+    if cursor < end:
+        pieces.append((cursor, end))
+    return pieces
+
+
+def idle_segments(screen, spans, bounds, calls=()):
+    """Watching and idle segments, plus away (locked) periods. Call time is never idle."""
     start, cutoff = ts(bounds["start"]), ts(bounds["cutoff"])
-    segments, away = [], []
+    locks = [
+        (max(row["start"], start), min(row["end"], cutoff))
+        for row in screen.get("locks", [])
+        if min(row["end"], cutoff) > max(row["start"], start)
+    ]
+    away = [{"start": a, "end": b, "seconds": round(b - a)} for a, b in locks]
+    busy = [(c["start"], c["end"]) for c in calls]
+    segments = []
 
     def add(a, b, inhibitor_class=None, inhibitor_title=None, inferred=False):
-        if inhibitor_class:
-            title = UNREAD_PREFIX.sub(
-                "", BROWSER_SUFFIX.sub("", inhibitor_title or "")
-            )
-            segments.append(
-                {
-                    "start": a,
-                    "end": b,
-                    "kind": "watching",
-                    "class": inhibitor_class,
-                    "title": title,
-                    "site": None,
-                    "url": None,
-                    "profile": None,
-                }
-            )
-        elif b - a <= SHORT_IDLE_SECONDS:
-            segments.append(
-                {
-                    "start": a,
-                    "end": b,
-                    "kind": "idle",
-                    "class": "idle",
-                    "title": "short idle",
-                    "site": None,
-                    "url": None,
-                    "profile": None,
-                    "inferred": inferred,
-                }
-            )
-        else:
-            away.append(
-                {
-                    "start": a,
-                    "end": b,
-                    "seconds": round(b - a),
-                    "inferred": inferred,
-                }
-            )
+        for piece_start, piece_end in subtract(a, b, locks + busy):
+            base = {
+                "start": piece_start,
+                "end": piece_end,
+                "site": None,
+                "url": None,
+                "profile": None,
+                "inferred": inferred,
+            }
+            if inhibitor_class:
+                title = UNREAD_PREFIX.sub(
+                    "", BROWSER_SUFFIX.sub("", inhibitor_title or "")
+                )
+                segments.append(
+                    base
+                    | {
+                        "kind": "watching",
+                        "class": inhibitor_class,
+                        "title": title,
+                    }
+                )
+            else:
+                segments.append(
+                    base | {"kind": "idle", "class": "idle", "title": "idle"}
+                )
 
     rows = []
     for row in screen.get("idle", []):
@@ -377,7 +382,7 @@ def idle_segments(screen, spans, bounds):
         if b > a:
             rows.append((a, b))
             add(a, b, row.get("inhibitor_class"), row.get("inhibitor_title"))
-    covered = sorted([(s["start"], s["end"]) for s in spans] + rows)
+    covered = sorted([(s["start"], s["end"]) for s in spans] + rows + locks)
     reach = None
     for a, b in covered:
         if reach is not None and a - reach >= MIN_GAP_SECONDS:
@@ -390,7 +395,7 @@ def label_of(segment, sessions):
     if segment["kind"] == "watching":
         return f"watching: {segment['title'] or segment['class']}"[:120]
     if segment["kind"] == "idle":
-        return "short idle"
+        return "idle"
     if segment["kind"] == "terminal":
         session = sessions.get(segment.get("session"))
         if session:
@@ -506,6 +511,11 @@ def build_calls(rows, screen, segments, bounds):
         for e in events
         if e["ref"] not in matched
     ]
+    calls.sort(key=lambda c: c["start"])
+    return calls, attempts, scheduled
+
+
+def attach_during(calls, segments):
     for call in calls:
         call["seconds"] = call["end"] - call["start"]
         during = defaultdict(float)
@@ -520,8 +530,6 @@ def build_calls(rows, screen, segments, bounds):
             {"label": label, "seconds": round(seconds)}
             for label, seconds in sorted(during.items(), key=lambda i: -i[1])
         ][:TOP_DURING_CALL]
-    calls.sort(key=lambda c: c["start"])
-    return calls, attempts, scheduled
 
 
 def build_terminal(segments, sessions):
@@ -596,13 +604,27 @@ def build_tasks(rows, segments, task_names):
             },
         )
 
+    seen_actions = set()
     for row in rows:
         if row.get("source_type") == "task_audit" and row.get("task_id"):
+            if row["id"] in seen_actions:
+                continue
+            seen_actions.add(row["id"])
             task = fc_task(row["task_id"])
             task["title"] = task["title"] or row.get("title")
             task["actions"].append(
-                {"at": ts(row.get("timestamp")), "action": row.get("action")}
+                {
+                    "at": ts(row.get("timestamp")),
+                    "action": row.get("action"),
+                    "description": row.get("description"),
+                }
             )
+        elif row.get("source_type") == "fc_task_state":
+            task = fc_task(row["fc_task_id"])
+            task["title"] = row.get("title") or task["title"]
+            task["company"] = row.get("company") or task["company"]
+            task["status"] = row.get("status") or task["status"]
+            task["workflow"] = row.get("workflow")
         elif row.get("source_type") == "task" and row.get("fc_task_id"):
             task = fc_task(row["fc_task_id"])
             task["title"] = task["title"] or row.get("title")
@@ -857,10 +879,11 @@ def build(run, categories_path=CATEGORY_FILE):
     ]
     rules = load_rules(categories_path, run / DAY_CATEGORY_FILE)
     focus, sessions = build_segments(screen, agents, bounds)
-    extra, away = idle_segments(screen, focus, bounds)
+    calls, attempts, scheduled = build_calls(rows, screen, focus, bounds)
+    extra, away = idle_segments(screen, focus, bounds, calls)
     segments = sorted(focus + extra, key=lambda s: s["start"])
     finish_segments(segments, sessions, rules)
-    calls, attempts, scheduled = build_calls(rows, screen, segments, bounds)
+    attach_during(calls, segments)
     by_category, by_kind, by_app = (
         defaultdict(float),
         defaultdict(float),
@@ -898,6 +921,7 @@ def build(run, categories_path=CATEGORY_FILE):
                 s.get("url_source") == "tab" for s in screen.get("spans", [])
             ),
             "idle_rows": bool(screen.get("idle")),
+            "lock_rows": bool(screen.get("locks")),
             "rules": len(rules),
         },
         "totals": {
@@ -909,7 +933,8 @@ def build(run, categories_path=CATEGORY_FILE):
                 )
             ),
             "watching_seconds": round(by_kind.get("watching", 0)),
-            "short_idle_seconds": round(by_kind.get("idle", 0)),
+            "idle_seconds": round(by_kind.get("idle", 0)),
+            "away_seconds": round(sum(a["seconds"] for a in away)),
             "by_category": {k: round(v) for k, v in by_category.items()},
             "uncategorized_seconds": round(by_category.get(UNCATEGORIZED, 0)),
             "calls_seconds": round(
