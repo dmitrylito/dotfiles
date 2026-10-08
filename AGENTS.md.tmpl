@@ -57,11 +57,12 @@ runbook. Read it before touching Docker, storage, or cleanup here.
 
 **Files for Dmitry go to the machine he is connected from.** This box is headless, so when
 you hand him a file (PDF, report, export), also `scp` it to `~/Downloads/` on his client and
-verify it landed. Find the client from tailscaled's SSH log — his herdr client polls
-`herdr api snapshot` every few seconds:
+verify it landed. Every shell has `$SSH_CLIENT_HOST` (Tailscale name of the latest SSH
+client, set in `.zshenv` from `~/.local/state/ssh-client.env`), so
+`scp <file> "$SSH_CLIENT_HOST:Downloads/"` works. If it is unset or an IP, or looks stale, check
+tailscaled's log — his herdr client runs `herdr api snapshot` every few seconds:
 `journalctl -u tailscaled --since -10min | grep -oP 'remote-ip=\K[0-9.]+' | sort | uniq -c`,
-then map the IP with `tailscale status` (e.g. `100.105.99.81` = `fcoffice`).
-`ssh -o BatchMode=yes <host>` works from here. If no client shows up, say so instead of guessing.
+then map the IP with `tailscale status`. If no client shows up, say so instead of guessing.
 {{- else if eq (.profile | lower) "omarchy" }}
 ## Omarchy desktop
 

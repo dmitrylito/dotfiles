@@ -31,6 +31,34 @@ if [[ -z "${XDG_RUNTIME_DIR:-}" && -d "/run/user/$(id -u)" ]]; then
   export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 fi
 
+# Shells started once by a server (herdr panes, the Claude daemon) never see the SSH_*
+# variables of later logins. Every SSH command (herdr's remote client runs one every few
+# seconds) records its client here, rewriting only on change; every shell exports the
+# latest as SSH_CLIENT_IP / SSH_CLIENT_HOST (Tailscale name, else the IP). .zshrc re-runs
+# _ssh_client_load before each prompt so open panes follow a switch between machines.
+_ssh_client_file="$XDG_STATE_HOME/ssh-client.env"
+if [[ -n "${SSH_CONNECTION:-}" ]]; then
+  _ssh_ip="${SSH_CONNECTION%% *}"
+  if [[ ! -r "$_ssh_client_file" || "${$(<"$_ssh_client_file")%%$'\n'*}" != "SSH_CLIENT_IP=$_ssh_ip" ]]; then
+    _ssh_host=""
+    if (( ${+commands[tailscale]} )); then
+      _ssh_host="$(tailscale whois "$_ssh_ip" 2>/dev/null | sed -n 's/^ *Name: *\([^.]*\).*/\1/p' | head -1)"
+    fi
+    mkdir -p "${_ssh_client_file:h}"
+    print -r -- "SSH_CLIENT_IP=$_ssh_ip"$'\n'"SSH_CLIENT_HOST=${_ssh_host:-$_ssh_ip}" >| "$_ssh_client_file.$$" \
+      && mv -f "$_ssh_client_file.$$" "$_ssh_client_file"
+  fi
+  unset _ssh_ip _ssh_host
+fi
+_ssh_client_load() {
+  [[ -r "$_ssh_client_file" ]] || return 0
+  local key value
+  while IFS='=' read -r key value; do
+    [[ "$key" == SSH_CLIENT_(IP|HOST) ]] && export "$key=$value"
+  done < "$_ssh_client_file"
+}
+_ssh_client_load
+
 export EDITOR="$HOME/.local/share/bob/nvim-bin/nvim"
 export VISUAL="$EDITOR"
 export PAGER="less"

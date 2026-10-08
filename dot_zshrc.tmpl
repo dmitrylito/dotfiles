@@ -77,6 +77,7 @@ source_if_exists "$HOME/Projects/fc-cli/zsh_completion.sh"
 source_if_exists "$HOME/.aliases"
 
 autoload -Uz add-zsh-hook
+(( ${+functions[_ssh_client_load]} )) && add-zsh-hook precmd _ssh_client_load
 source_if_exists "$XDG_CONFIG_HOME/zsh/keybindings.zsh"
 source_if_exists "$XDG_CONFIG_HOME/zsh/remote-session-cleanup.zsh"
 source_if_exists "$XDG_CONFIG_HOME/zsh/tools.zsh"
