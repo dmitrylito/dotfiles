@@ -20,7 +20,13 @@
 # Data lives in $XDG_DATA_HOME/window-time/window-time.db: `spans` (focus),
 # `calls` (a CALL_APPS process recording the mic, tracked whatever has focus) and
 # `panes` (the focused herdr pane and its Claude/Codex session id, polled every
-# HERDR_POLL_SECONDS while a herdr terminal has focus; remote hosts over SSH).
+# HERDR_POLL_SECONDS while a herdr terminal has focus; remote hosts over SSH) and
+# `idle` (time away, with the window that was holding the screen awake, if any,
+# e.g. a video or Meet tab).
+# Browser URLs come from the window-time Chromium extension when it is loaded
+# (`url_source` = tab: the active tab's exact URL, a new span per navigation);
+# otherwise from History, matched by title (`url_source` = history).
+#   window-time tab                   Chromium native-messaging host (the extension)
 # Idle reports come from the dmitrylito.window-time omarchy shell plugin; without
 # it, time away from the keyboard counts toward whichever window had focus.
 # Idle is ignored while a CALL_APPS process records the microphone (a Meet or
@@ -53,6 +59,10 @@ DB_PATH = DATA_DIR / "window-time.db"
 CONTROL_SOCKET = RUNTIME_DIR / "window-time.sock"
 
 CHECKPOINT_SECONDS = 15
+# A tab report arriving this soon after a span opened belongs to that span (the
+# window title and the extension race); later, a different URL starts a new span.
+TAB_SETTLE_SECONDS = 2
+TAB_MEMORY = 500
 MIN_SPAN_SECONDS = 1.0
 
 # application.process.binary of PipeWire capture streams that mean "on a call".
@@ -67,7 +77,7 @@ BROWSER_DATA_DIRS = {
 }
 CHROMIUM_EPOCH_OFFSET = 11_644_473_600
 
-HERDR_POLL_SECONDS = 5
+HERDR_POLL_SECONDS = 2
 HERDR_SNAPSHOT_TIMEOUT = 5
 # Terminal windows attached to herdr are titled "<host>: <workspace>". The title's
 # host (lowercased) -> SSH target for hosts other than this one.
@@ -115,6 +125,14 @@ create table if not exists panes (
     title text
 );
 create index if not exists panes_start on panes (start);
+create table if not exists idle (
+    id integer primary key,
+    start real not null,
+    end real not null,
+    inhibitor_class text,
+    inhibitor_title text
+);
+create index if not exists idle_start on idle (start);
 """
 
 
@@ -123,6 +141,8 @@ def connect_db():
     db = sqlite3.connect(DB_PATH, timeout=10)
     db.execute("pragma journal_mode=wal")
     db.executescript(SCHEMA)
+    if "url_source" not in {row[1] for row in db.execute("pragma table_info(spans)")}:
+        db.execute("alter table spans add column url_source text")
     return db
 
 
@@ -184,6 +204,47 @@ def resolve_url(cls, title, before):
     return best[0], best[1]
 
 
+def page_title(title):
+    return BROWSER_TITLE_SUFFIX.sub("", title)
+
+
+def profile_for_url(cls, url):
+    if webapp := WEBAPP_CLASS.match(cls):
+        wanted = webapp["profile"].replace("_", " ")
+        names = {}
+        for data_dir in BROWSER_DATA_DIRS.values():
+            names |= profile_names(data_dir)
+        return names.get(wanted, wanted)
+    best, best_time = None, -1
+    data_dir = BROWSER_DATA_DIRS.get(cls)
+    for directory, name in (profile_names(data_dir) if data_dir else {}).items():
+        uri = f"file:{quote(str(data_dir / directory / 'History'))}?immutable=1"
+        try:
+            with sqlite3.connect(uri, uri=True) as history:
+                row = history.execute("select last_visit_time from urls where url = ?", (url,)).fetchone()
+        except sqlite3.Error:
+            continue
+        if row and row[0] > best_time:
+            best, best_time = name, row[0]
+    return best
+
+
+def hyprctl_json(signature, *args):
+    env = os.environ | {"HYPRLAND_INSTANCE_SIGNATURE": signature or ""}
+    try:
+        result = subprocess.run(["hyprctl", "-j", *args], env=env, capture_output=True, text=True, timeout=3)
+        return json.loads(result.stdout or "null")
+    except (subprocess.TimeoutExpired, ValueError, OSError):
+        return None
+
+
+def inhibiting_window(signature):
+    for client in hyprctl_json(signature, "clients") or []:
+        if client.get("inhibitingIdle") and client.get("mapped") and not client.get("hidden"):
+            return client.get("class"), client.get("title")
+    return None, None
+
+
 def hypr_signatures():
     hypr = RUNTIME_DIR / "hypr"
     preferred = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
@@ -215,8 +276,8 @@ def connect_hyprland():
         except OSError:
             sock.close()
             continue
-        return sock, window
-    return None, None
+        return sock, window, signature
+    return None, None, None
 
 
 def herdr_target(cls, title):
@@ -340,6 +401,11 @@ class Tracker:
         self.input_idle = False
         self.in_call = False
         self.call_id = None
+        self.idle_id = None
+        self.idle_inhibitor = None
+        self.signature = None
+        self.span_url = self.span_url_source = None
+        self.tabs = {}
 
     @property
     def away(self):
@@ -362,6 +428,35 @@ class Tracker:
         )
         self.db.commit()
         self.span_id, self.span_start = cur.lastrowid, now
+        self.span_url = self.span_url_source = None
+        if is_browser(self.cls) and (url := self.tabs.get(page_title(self.title))):
+            self.set_tab_url(url)
+
+    def set_tab_url(self, url):
+        self.span_url, self.span_url_source = url, "tab"
+        self.db.execute(
+            "update spans set url = ?, url_source = 'tab', profile = ? where id = ?",
+            (url, profile_for_url(self.cls, url), self.span_id),
+        )
+        self.db.commit()
+
+    def tab(self, report, now):
+        title, url = report.get("title") or "", report.get("url")
+        if not url:
+            return
+        self.tabs.pop(title, None)
+        self.tabs[title] = url
+        while len(self.tabs) > TAB_MEMORY:
+            self.tabs.pop(next(iter(self.tabs)))
+        if self.span_id is None or not is_browser(self.cls) or page_title(self.title) != title:
+            return
+        if url == self.span_url:
+            return
+        if self.span_url_source == "tab" and now - self.span_start > TAB_SETTLE_SECONDS:
+            self.close(now)
+            self.open(now)
+        if self.span_id is not None and self.span_url != url:
+            self.set_tab_url(url)
 
     def close(self, end):
         if self.span_id is None:
@@ -374,8 +469,16 @@ class Tracker:
     def resolve(self, before):
         if self.span_id is None or not is_browser(self.cls):
             return
-        profile, url = resolve_url(self.cls, self.title, before)
-        self.db.execute("update spans set profile = ?, url = ? where id = ?", (profile, url, self.span_id))
+        if self.span_url_source == "tab":
+            # History is written a few seconds late, so the profile may only now be findable.
+            profile = profile_for_url(self.cls, self.span_url)
+            self.db.execute("update spans set profile = ? where id = ?", (profile, self.span_id))
+        else:
+            profile, url = resolve_url(self.cls, self.title, before)
+            self.db.execute(
+                "update spans set profile = ?, url = ?, url_source = ? where id = ?",
+                (profile, url, "history" if url else None, self.span_id),
+            )
         self.db.commit()
 
     def update_call(self, now):
@@ -404,6 +507,31 @@ class Tracker:
             self.db.execute("update spans set end = ? where id = ?", (now, self.span_id))
             self.db.commit()
             self.resolve(now)
+        if self.idle_id is not None:
+            self.db.execute("update idle set end = ? where id = ?", (now, self.idle_id))
+            self.note_inhibitor()
+
+    def note_inhibitor(self):
+        if self.idle_inhibitor is None:
+            cls, title = inhibiting_window(self.signature)
+            if cls:
+                self.idle_inhibitor = (cls, title)
+                self.db.execute(
+                    "update idle set inhibitor_class = ?, inhibitor_title = ? where id = ?",
+                    (cls, clean_title(title or ""), self.idle_id),
+                )
+        self.db.commit()
+
+    def sync_idle(self, now, start=None):
+        if self.away and self.idle_id is None:
+            start = now if start is None else start
+            self.idle_id = self.db.execute("insert into idle (start, end) values (?, ?)", (start, now)).lastrowid
+            self.idle_inhibitor = None
+            self.note_inhibitor()
+        elif not self.away and self.idle_id is not None:
+            self.db.execute("update idle set end = ? where id = ?", (now, self.idle_id))
+            self.db.commit()
+            self.idle_id = None
 
     def set_call(self, in_call, now):
         was_away = self.away
@@ -412,16 +540,19 @@ class Tracker:
             self.open(now)
         elif self.away and not was_away:
             self.close(now)
+        self.sync_idle(now)
 
     def go_idle(self, seconds, now):
         self.update_call(now)
         self.input_idle = True
         if self.away:
             self.close(now - seconds)
+        self.sync_idle(now, now - seconds)
 
     def go_active(self, now):
         was_away = self.away
         self.input_idle = False
+        self.sync_idle(now)
         if was_away:
             self.open(now)
 
@@ -459,7 +590,7 @@ def watch(_args):
     herdr.start()
     try:
         while True:
-            hypr, window = connect_hyprland()
+            hypr, window, tracker.signature = connect_hyprland()
             if hypr is None:
                 time.sleep(2)
                 continue
@@ -481,8 +612,14 @@ def watch(_args):
                     elif b"source-output" in events:
                         tracker.update_call(now)
                 if control in ready:
-                    message = control.recv(256).decode(errors="replace").split()
-                    if message[:1] == ["idle"] and len(message) == 2:
+                    raw = control.recv(65536).decode(errors="replace")
+                    message = raw.split()
+                    if raw.startswith("tab "):
+                        try:
+                            tracker.tab(json.loads(raw[4:]), now)
+                        except ValueError:
+                            pass
+                    elif message[:1] == ["idle"] and len(message) == 2:
                         tracker.go_idle(float(message[1]), now)
                     elif message[:1] == ["active"]:
                         tracker.go_active(now)
@@ -507,6 +644,8 @@ def watch(_args):
     finally:
         tracker.close(time.time())
         tracker.end_call(time.time())
+        tracker.input_idle = False
+        tracker.sync_idle(time.time())
         if audio:
             audio.terminate()
         CONTROL_SOCKET.unlink(missing_ok=True)
@@ -555,7 +694,9 @@ def load_spans(db, since, min_seconds):
         if url is None and is_browser(cls):
             profile, url = resolve_url(cls, title, end)
             if url is not None:
-                db.execute("update spans set profile = ?, url = ? where id = ?", (profile, url, id_))
+                db.execute(
+                    "update spans set profile = ?, url = ?, url_source = 'history' where id = ?", (profile, url, id_)
+                )
         spans.append((max(start, since), end, cls, clean_title(title), profile, url))
     db.commit()
     return spans
@@ -617,10 +758,34 @@ def export(args):
     since = parse_since(args.since).timestamp()
     until = parse_since(args.until).timestamp() if args.until else time.time()
     db = connect_db()
+    load_spans(db, since, args.min)
     spans = [
-        {"start": start, "end": min(end, until), "class": cls, "title": title, "profile": profile, "url": url}
-        for start, end, cls, title, profile, url in load_spans(db, since, args.min)
-        if start < until
+        {
+            "start": max(start, since),
+            "end": min(end, until),
+            "class": cls,
+            "title": clean_title(title),
+            "profile": profile,
+            "url": url,
+            "url_source": url_source,
+        }
+        for start, end, cls, title, profile, url, url_source in db.execute(
+            "select start, end, class, title, profile, url, url_source from spans"
+            " where end > ? and start < ? and end - start >= ? order by start",
+            (since, until, args.min),
+        )
+    ]
+    idle = [
+        {
+            "start": max(start, since),
+            "end": min(end, until),
+            "inhibitor_class": inhibitor_class,
+            "inhibitor_title": inhibitor_title,
+        }
+        for start, end, inhibitor_class, inhibitor_title in db.execute(
+            "select start, end, inhibitor_class, inhibitor_title from idle where end > ? and start < ? order by start",
+            (since, until),
+        )
     ]
     calls = [
         {"start": max(start, since), "end": min(end, until), "apps": apps.split(",")}
@@ -638,10 +803,29 @@ def export(args):
         )
     ]
     json.dump(
-        {"host": socket.gethostname(), "since": since, "until": until, "spans": spans, "calls": calls, "panes": panes},
+        {
+            "host": socket.gethostname(),
+            "since": since,
+            "until": until,
+            "spans": spans,
+            "calls": calls,
+            "panes": panes,
+            "idle": idle,
+        },
         sys.stdout,
     )
     print()
+
+
+def tab_host(_args):
+    # Chromium native messaging: 4-byte native-order length, then JSON, both ways.
+    while header := sys.stdin.buffer.read(4):
+        report = json.loads(sys.stdin.buffer.read(int.from_bytes(header, sys.byteorder)))
+        sent = send_control("tab " + json.dumps({"url": report.get("url"), "title": report.get("title")})) == 0
+        reply = json.dumps({"ok": sent}).encode()
+        sys.stdout.buffer.write(len(reply).to_bytes(4, sys.byteorder) + reply)
+        sys.stdout.buffer.flush()
+    return 0
 
 
 def main():
@@ -666,6 +850,10 @@ def main():
     idle_parser.add_argument("seconds", type=float)
     idle_parser.set_defaults(func=lambda a: send_control(f"idle {a.seconds}"))
     commands.add_parser("active", help="input is back").set_defaults(func=lambda a: send_control("active"))
+    # Chromium appends the caller's origin (and on some builds a window id) to the command line.
+    tab_parser = commands.add_parser("tab", help="Chromium native-messaging host for the extension")
+    tab_parser.add_argument("origin", nargs="*")
+    tab_parser.set_defaults(func=tab_host)
     args = parser.parse_args()
     sys.exit(args.func(args) or 0)
 

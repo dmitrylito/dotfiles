@@ -1,0 +1,6 @@
+#!/bin/sh
+# Chromium native-messaging host for the window-time extension
+# (~/.local/share/window-time/chromium-extension). Chromium runs it with the
+# caller's origin as an argument; `window-time tab` speaks the protocol and
+# forwards each report to the running tracker's control socket.
+exec "$HOME/.local/bin/window-time" tab "$@"

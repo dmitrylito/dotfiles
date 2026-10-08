@@ -3,8 +3,10 @@ import Quickshell
 import Quickshell.Wayland
 
 // Feeds idle state to the window-time tracker (~/.local/bin/window-time), so time
-// away from the keyboard is not counted toward the focused window. Inhibitors
-// (video playing) hold idle off, so watching something still counts.
+// away from the keyboard is not counted toward the focused window. Input only:
+// an open Meet or video tab inhibits idle indefinitely, even when nobody is
+// there. The tracker records which window was inhibiting ("watching") and keeps
+// counting through calls by itself, from the microphone.
 Item {
   id: root
 
@@ -16,7 +18,7 @@ Item {
 
   IdleMonitor {
     timeout: root.idleSeconds
-    respectInhibitors: true
+    respectInhibitors: false
     onIsIdleChanged: root.run(isIdle ? "window-time idle " + root.idleSeconds : "window-time active")
   }
 }

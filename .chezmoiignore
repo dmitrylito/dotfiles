@@ -43,6 +43,10 @@ system/
 .config/mimeapps.list
 .config/spotify-flags.conf
 .local/bin/chromium-profile-launch
+.config/chromium-flags.conf
+.config/chromium/NativeMessagingHosts/dev.dmitrylito.window_time.json
+.local/share/window-time/
+.local/bin/window-time-tab-host
 .local/bin/discord-ptm
 .local/bin/work-mode
 .local/share/applications/

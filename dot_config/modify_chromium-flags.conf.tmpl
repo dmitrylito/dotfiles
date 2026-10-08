@@ -1,0 +1,24 @@
+#!/usr/bin/python3
+# modify_chromium-flags.conf — load the window-time extension in every profile.
+#
+# Omarchy owns ~/.config/chromium-flags.conf and already passes its own
+# extensions in one --load-extension list; a second flag would replace it (the
+# last value of a switch wins), so the window-time directory is appended to that
+# list. Everything else in the file is left as it is.
+# Takes effect when Chromium next starts.
+
+import sys
+
+EXTENSION = {{ printf "%s/.local/share/window-time/chromium-extension" .chezmoi.homeDir | quote }}
+FLAG = "--load-extension="
+
+lines = sys.stdin.read().splitlines()
+for index, line in enumerate(lines):
+    if line.startswith(FLAG):
+        paths = [path for path in line[len(FLAG):].split(",") if path]
+        if EXTENSION not in paths:
+            lines[index] = FLAG + ",".join(paths + [EXTENSION])
+        break
+else:
+    lines.append(FLAG + EXTENSION)
+print("\n".join(lines))
