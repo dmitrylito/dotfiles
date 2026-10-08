@@ -53,13 +53,18 @@ system/
 .XCompose
 {{ end }}
 
+{{ if and (not $work) (ne .chezmoi.hostname "DLCO-1") }}
+# FC API login for fc-daily-report: work machines, plus DLCO-1, where the daily-report
+# skill and the ops center (which holds the same login) run.
+.config/secrets/fc-api.env
+{{ end }}
+
 {{ if not $work }}
 # Fleet Chaser project tooling belongs to the work role, regardless of platform.
 Projects/fleetchaser/
 .config/fleetchaser-mypy.ini
 .local/bin/fc-dmypy
 .local/bin/fc-mypy
-.config/secrets/fc-api.env
 .local/bin/work-mode
 .claude/skills/restack-migrations/
 .claude/skills/state-mileage-import/
