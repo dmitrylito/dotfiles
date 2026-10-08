@@ -76,12 +76,19 @@ fc-daily-report categorize --run RUN_DIR --work site:console.fleetchaser.com pro
 fc-daily-report categorize --run RUN_DIR --day --personal 'page:www.google.com|g63 brabus - Google Search'
 ```
 
-Keys, most specific first: `page:<site>|<title>`, `session:<host>/<id>`,
+Keys, most specific first: `page:<site>|<title>`, `path:<site>/<first path segment>`, `session:<host>/<id>`,
 `project:<cwd name>`, `site:<host>`, `profile:<Chromium profile>`,
 `terminal:<host>`, `watching:<title>`, `watching:<class>`, `idle`,
 `app:<class>`. Rules persist in `~/.config/fc-daily-report/categories.json`, so
 later days start pre-sorted; `--day` writes the run's own `categories.json`,
 which wins for that day only. `work_seconds` is work-categorized time plus calls.
+
+Broad areas for the management report are a second rule set (`"areas"` in the same
+files): `fc-daily-report categorize --run RUN_DIR --area --set 'site:dialpad.com=Customer
+Support & Troubleshooting' [--day]`. Calls are keyed `call:<ref>`, `meet:<code>`,
+`call_event:<title>` and `call_company:<name>`. `timeline.json` `areas` gives exclusive
+time per area: a call owns its span, the rest goes to each segment's area, personal
+time is excluded, and the areas sum to the tracked total.
 
 FC tasks come from the FC backend API (`fc_api.py`): tasks modified on the day,
 their current state (status names from each workflow), and the audit entries Dmitry

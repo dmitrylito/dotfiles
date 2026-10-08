@@ -6,8 +6,9 @@ description: Reconstruct Dmitry's day from measured screen time, Claude Code/Cod
 # Fleet Chaser daily report
 
 Choose the output from the user's intent: **timeline** for "what did I spend my
-time on", "from when I started until now", or "for myself"; **work** for a daily
-report, work update, or report for posting. A bare "what did I do today" defaults
+time on", "from when I started until now", or "for myself"; **management** for a
+consolidated report with broad areas and time per area (for sending to
+management); **work** for a daily report, work update, or report for posting. A bare "what did I do today" defaults
 to a personal timeline, not a paste-ready company report. Run on demand; invoking
 this skill does not create a schedule or send the report anywhere.
 
@@ -159,6 +160,24 @@ Include substantial personal activity only when the user asks about their whole
 day; keep it brief and avoid unnecessary personal details. Browser visit blocks in
 `index.json` remain visits, not durations: never total them into hours; durations
 come only from `timeline.json`.
+
+### Management time report
+
+Build it after categorization, from `timeline.json` `areas`: exclusive time per
+broad area (each minute counted once; a call owns its whole span, so screen work
+during a call counts toward the call's area; personal time is left out). Areas are
+rules like categories: `fc-daily-report categorize --run RUN --area --set KEY=AREA`
+(standing rules for sites, projects and apps; `--day` for individual calls
+`call:call:<id>`, meetings `meet:<code>` / `call_event:<title>` and chat sessions).
+Anything in `Unassigned` needs Dmitry's area before the report goes out; propose
+areas from the evidence, he decides. Areas used so far: Customer Support &
+Troubleshooting, Field Coordination & Installs, Sales & Quotes, Billing & Invoicing,
+Meetings & Product Feedback, Operations & Admin, Engineering & Internal Tooling, Misc.
+
+Title `Fleet Chaser Time Report — <date> (<start> – <cutoff>)`, the total, then one
+row per area, largest first: area, time, share, and one line of concrete work done
+(customers, outcomes, counts). End with open items. Save `report-management.md` and a
+paste-ready `report-management.txt` (plain lines, `•` bullets) in the run directory.
 
 ### Work report for posting
 

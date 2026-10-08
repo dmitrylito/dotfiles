@@ -5,6 +5,7 @@ Usage: fc-daily-report collect --date YYYY-MM-DD --mode work|timeline
        fc-daily-report review --run DIR [--text]
        fc-daily-report fc-token [--clipboard]      (FC API access; see fc_api.py)
        fc-daily-report categorize --run DIR --work KEY... --personal KEY...
+       fc-daily-report categorize --run DIR --area --set KEY=AREA [--day]
                                   [--set KEY=CATEGORY] [--day]
        fc-daily-report documents --run DIR --ref call:123 --ref email:456
        fc-daily-report import-gmail --run DIR --input connector-response.json
@@ -1104,6 +1105,7 @@ def categorize(args):
     run = Path(args.run).expanduser()
     updates = {key: "work" for key in args.work}
     updates |= {key: "personal" for key in args.personal}
+    section = "areas" if getattr(args, "area", False) else "rules"
     for pair in args.set:
         key, separator, category = pair.rpartition("=")
         if not separator or not key or not category:
@@ -1112,13 +1114,17 @@ def categorize(args):
     if not updates:
         raise ValueError("nothing to categorize")
     target = run / DAY_CATEGORY_FILE if args.day else Path(args.categories)
-    save_rules(target, updates)
+    save_rules(target, updates, section)
     result = build_timeline(run, args.categories)
     return {
         "run": str(run),
         "rules_file": str(target),
         "set": updates,
         "totals": result["totals"],
+        "areas": [
+            {"area": a["area"], "seconds": a["seconds"]}
+            for a in result["areas"]
+        ],
         "still_uncategorized": [
             group["key"]
             for group in result["review"]
@@ -1290,6 +1296,11 @@ def main():
     command.add_argument("--set", action="append", default=[])
     command.add_argument(
         "--day", action="store_true", help="only for this run's day"
+    )
+    command.add_argument(
+        "--area",
+        action="store_true",
+        help="--set KEY=AREA assigns broad areas (management report) instead of categories",
     )
     command = commands.add_parser("documents")
     command.add_argument("--run", required=True)

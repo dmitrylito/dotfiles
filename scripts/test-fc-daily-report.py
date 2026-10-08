@@ -1069,3 +1069,41 @@ def test_pane_follows_chat_title_after_resume_or_fork(timeline_module):
         "dlco-1",
         "old",
     )
+
+
+def test_areas_are_exclusive_and_calls_own_their_span(timeline_module):
+    def seg(start, end, site, category="work"):
+        return {
+            "start": start,
+            "end": end,
+            "kind": "browser",
+            "site": site,
+            "title": site,
+            "class": "chromium",
+            "url": None,
+            "profile": None,
+            "category": category,
+            "label": site,
+        }
+
+    segments = [
+        seg(0, 100, "console"),
+        seg(100, 200, "billing"),
+        seg(200, 260, "news", "personal"),
+    ]
+    calls = [
+        {"start": 50, "end": 150, "ref": "call:1", "company": "Paragon"},
+        {"start": 140, "end": 170, "ref": "call:2", "company": "Acme"},
+    ]
+    areas = {
+        "site:console": "Support",
+        "site:billing": "Billing",
+        "call:call:1": "Sales",
+        "call_company:Acme": "Support",
+    }
+    result = {
+        a["area"]: a["seconds"]
+        for a in timeline_module.build_areas(segments, calls, areas)
+    }
+    assert result == {"Support": 50 + 20, "Sales": 100, "Billing": 30}
+    assert sum(result.values()) == 200

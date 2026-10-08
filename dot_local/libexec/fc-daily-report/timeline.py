@@ -32,6 +32,8 @@ from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 UNCATEGORIZED = "uncategorized"
+UNASSIGNED_AREA = "Unassigned"
+AREA_ITEMS = 6
 CATEGORY_FILE = Path.home() / ".config/fc-daily-report/categories.json"
 DAY_CATEGORY_FILE = "categories.json"
 MIN_GAP_SECONDS = 100
@@ -123,18 +125,18 @@ def union_seconds(intervals):
     return total + (current[1] - current[0] if current else 0.0)
 
 
-def load_rules(*paths):
+def load_rules(*paths, section="rules"):
     rules = {}
     for path in paths:
         if path and Path(path).exists():
-            rules.update(json.loads(Path(path).read_text()).get("rules", {}))
+            rules.update(json.loads(Path(path).read_text()).get(section, {}))
     return rules
 
 
-def save_rules(path, updates):
+def save_rules(path, updates, section="rules"):
     path = Path(path)
     current = json.loads(path.read_text()) if path.exists() else {}
-    current.setdefault("rules", {}).update(updates)
+    current.setdefault(section, {}).update(updates)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     temporary.write_text(
@@ -168,12 +170,81 @@ def keys_of(segment):
     keys = []
     if segment.get("site"):
         keys.append(f"page:{segment['site']}|{segment['title']}")
+        if first := first_path(segment.get("url")):
+            keys.append(f"path:{segment['site']}/{first}")
         if segment.get("fc_customer"):
             keys.append(f"fc_customer:{segment['fc_customer']}")
         keys.append(f"site:{segment['site']}")
     if segment.get("profile"):
         keys.append(f"profile:{segment['profile']}")
     return keys + [f"app:{segment['class']}"]
+
+
+def first_path(url):
+    if not url:
+        return None
+    parts = [part for part in urlsplit(url).path.split("/") if part]
+    return parts[0] if parts else None
+
+
+def call_keys(call):
+    keys = []
+    if call.get("ref"):
+        keys.append(f"call:{call['ref']}")
+    if call.get("meet_code"):
+        keys.append(f"meet:{call['meet_code']}")
+    if call.get("event"):
+        keys.append(f"call_event:{call['event'].strip()}")
+    if call.get("company"):
+        keys.append(f"call_company:{call['company']}")
+    return keys + ["call"]
+
+
+def first_match(keys, rules, default):
+    return next((rules[key] for key in keys if key in rules), default)
+
+
+def build_areas(segments, calls, areas):
+    """Exclusive time per broad area: a call owns its whole span (what was on
+    screen during it belongs to the call); other time goes to its segment's area.
+    Personal time is left out."""
+    totals = defaultdict(lambda: {"seconds": 0.0, "items": defaultdict(float)})
+    busy = []
+    for call in sorted(calls, key=lambda c: c["start"]):
+        for start, end in subtract(call["start"], call["end"], busy):
+            area = first_match(call_keys(call), areas, UNASSIGNED_AREA)
+            label = (
+                call.get("event")
+                or call.get("company")
+                or call.get("meet_code")
+                or "call"
+            )
+            totals[area]["seconds"] += end - start
+            totals[area]["items"][f"call: {label}"] += end - start
+        busy.append((call["start"], call["end"]))
+    for segment in segments:
+        if segment["category"] == "personal":
+            continue
+        area = first_match(keys_of(segment), areas, UNASSIGNED_AREA)
+        for start, end in subtract(segment["start"], segment["end"], busy):
+            totals[area]["seconds"] += end - start
+            totals[area]["items"][segment["label"]] += end - start
+    return sorted(
+        (
+            {
+                "area": area,
+                "seconds": round(entry["seconds"]),
+                "items": [
+                    {"label": label, "seconds": round(seconds)}
+                    for label, seconds in sorted(
+                        entry["items"].items(), key=lambda i: -i[1]
+                    )[:AREA_ITEMS]
+                ],
+            }
+            for area, entry in totals.items()
+        ),
+        key=lambda a: -a["seconds"],
+    )
 
 
 def review_key(segment):
@@ -947,6 +1018,9 @@ def build(run, categories_path=CATEGORY_FILE):
         row for source in sources.values() for row in source.get("rows", [])
     ]
     rules = load_rules(categories_path, run / DAY_CATEGORY_FILE)
+    areas = load_rules(
+        categories_path, run / DAY_CATEGORY_FILE, section="areas"
+    )
     focus, sessions = build_segments(screen, agents, bounds)
     calls, attempts, scheduled = build_calls(rows, screen, focus, bounds)
     extra, away = idle_segments(screen, focus, bounds, calls)
@@ -1032,6 +1106,7 @@ def build(run, categories_path=CATEGORY_FILE):
         "records": build_records(segments),
         "fc_customers": build_fc_customers(segments),
         "review": build_review(segments),
+        "areas": build_areas(segments, calls, areas),
         "away": away,
         "blocks": build_blocks(segments, zone),
         "buckets": build_buckets(segments, calls, zone, bucket_minutes),
