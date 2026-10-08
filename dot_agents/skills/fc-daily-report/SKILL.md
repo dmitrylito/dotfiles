@@ -170,9 +170,15 @@ rules like categories: `fc-daily-report categorize --run RUN --area --set KEY=AR
 (standing rules for sites, projects and apps; `--day` for individual calls
 `call:call:<id>`, meetings `meet:<code>` / `call_event:<title>` and chat sessions).
 Anything in `Unassigned` needs Dmitry's area before the report goes out; propose
-areas from the evidence, he decides. Areas used so far: Customer Support &
-Troubleshooting, Field Coordination & Installs, Sales & Quotes, Billing & Invoicing,
-Meetings & Product Feedback, Operations & Admin, Engineering & Internal Tooling, Misc.
+areas from the evidence, he decides. Dmitry's areas (2026-10-08):
+- **Support**: fixing hardware and coordinating fixes, support tickets in Linear.
+- **Sales**: customer contact for adding vehicles, quotes, hardware drop-offs not
+  tied to a fix, and customer questions about the product.
+- **Billing**.
+- **Internal Tools**: tooling, engineering and the ops pipeline.
+- **Business Development**: internal meetings and product work (e.g. customer
+  product feedback sessions), vendors, research.
+- **Misc**: audio tools and music; kept out of the management total, noted apart.
 
 Title `Fleet Chaser Time Report — <date> (<start> – <cutoff>)`, the total, then one
 row per area, largest first: area, time, share, and one line of concrete work done
