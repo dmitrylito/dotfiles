@@ -21,7 +21,7 @@ ENCRYPTED_FIXTURES = {
     ".secrets.yaml.age": "".join(
         f"{group}:\n  VALIDATION_ONLY: '1'\n"
         + ("  GITHUB_PERSONAL_ACCESS_TOKEN: validation-only-token\n  OPS_CENTER_MCP_API_KEY: validation-only-ops-token\n" if group == "shared" else "")
-        for group in ("shared", "omada-mcp", "gluetun", "caddy")
+        for group in ("shared", "omada-mcp", "gluetun", "caddy", "fc-api")
     ),
     "scripts/moshi-pairing-token.age": "validation-only-token\n",
     "scripts/codex-config-baseline.toml.age": (FIXTURES / "codex-config.toml").read_text(),

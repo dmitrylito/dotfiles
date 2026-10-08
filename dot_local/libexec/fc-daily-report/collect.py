@@ -702,11 +702,17 @@ def lookup_task_names(run, config):
     screen = read(run / "screen.json")
     if not screen:
         return
+    api_tasks = read(run / "sources.json", {}).get("fc_api", {}).get("rows", [])
     wanted = sorted(
         {
             task_id
             for span in screen.get("spans", [])
             if (task_id := task_ids(span.get("url")))
+        }
+        | {
+            row["fc_task_id"]
+            for row in api_tasks
+            if row.get("source_type") == "fc_task_state"
         }
     )
     if not wanted:

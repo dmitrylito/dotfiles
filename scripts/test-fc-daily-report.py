@@ -902,16 +902,19 @@ def test_fc_api_keeps_own_actions_inside_the_day(collector, bounds, tmp_path):
         def access(self):
             return jwt({"employee_id": 7, "exp": 9999999999})
 
+        def get(self, endpoint, params=None):
+            assert endpoint == "tasks/workflow/1/"
+            return {"statuses": [{"id": 3, "name": "Ready"}]}
+
         def pages(self, endpoint, params, page_size, max_pages):
             self.listed.append((endpoint, params.get("modified_date")))
             if endpoint == "tasks/task/":
                 yield {
                     "id": 42,
                     "name": "INST: Paragon",
-                    "display_number": 9,
-                    "status": {"name": "Ready"},
-                    "workflow": {"name": "Installs"},
-                    "company": {"name": "Paragon"},
+                    "displayNumber": 9,
+                    "status": 3,
+                    "workflow": {"id": 1, "name": "Installs"},
                 }
                 return
             yield from [
@@ -919,19 +922,19 @@ def test_fc_api_keeps_own_actions_inside_the_day(collector, bounds, tmp_path):
                     "id": 3,
                     "created": iso(16),
                     "action": "t:u",
-                    "created_by": {"id": 7, "full_name": "Dmitry"},
+                    "createdBy": {"id": 7, "fullName": "Dmitry"},
                 },
                 {
                     "id": 2,
                     "created": iso(15),
                     "action": "t:m",
-                    "created_by": {"id": 8, "full_name": "Vlad"},
+                    "createdBy": {"id": 8, "fullName": "Vlad"},
                 },
                 {
                     "id": 1,
                     "created": "2026-10-04T12:00:00Z",
                     "action": "t:c",
-                    "created_by": {"id": 7, "full_name": "Dmitry"},
+                    "createdBy": {"id": 7, "fullName": "Dmitry"},
                 },
             ]
 
@@ -943,10 +946,47 @@ def test_fc_api_keeps_own_actions_inside_the_day(collector, bounds, tmp_path):
     states = [r for r in result["rows"] if r["source_type"] == "fc_task_state"]
     actions = [r for r in result["rows"] if r["source_type"] == "task_audit"]
     assert states[0]["title"] == "9 - INST: Paragon"
-    assert (states[0]["status"], states[0]["company"]) == ("Ready", "Paragon")
+    assert (states[0]["status"], states[0]["workflow"]) == ("Ready", "Installs")
+    assert result["counts"] == {"tasks_modified": 1, "own_actions": 1}
     assert [(a["id"], a["action"]) for a in actions] == [("3", "t:u")]
 
     fc_api.set_refresh(jwt({"exp": 1}), tmp_path / "token.json")
     assert json.loads((tmp_path / "token.json").read_text())["access"] is None
     with pytest.raises(LookupError, match="fc-token"):
-        fc_api.FCApi(path=tmp_path / "missing.json")
+        fc_api.FCApi(path=tmp_path / "missing.json", login={})
+
+    env = tmp_path / "fc-api.env"
+    env.write_text(
+        "# comment\nFC_EMAIL=d@fc.test\nFC_PASSWORD=p=ss word\n"
+        "FC_CUSTOMER_ID=c1\nFC_HOST=https://fc.test\n"
+    )
+    login = fc_api.credentials(env)
+    assert login["FC_PASSWORD"] == "p=ss word"
+    calls = []
+
+    def request(method, endpoint, params=None, body=None, token=None):
+        calls.append((endpoint, body, token))
+        if endpoint == "auth/login/":
+            return {"access": "user-token"}
+        return {
+            "access": jwt({"employee_id": 7, "exp": 9999999999}),
+            "refresh": "r",
+        }
+
+    api = fc_api.FCApi(path=tmp_path / "cache.json", login=login)
+    api.request = request
+    assert api.base == "https://fc.test/api/"
+    assert claims_of(api.access())["employee_id"] == 7
+    assert calls == [
+        ("auth/login/", {"email": "d@fc.test", "password": "p=ss word"}, None),
+        ("auth/token/", {"customerId": "c1"}, "user-token"),
+    ]
+    api.access()
+    assert len(calls) == 2
+    assert (tmp_path / "cache.json").stat().st_mode & 0o777 == 0o600
+
+
+def claims_of(token):
+    import fc_api
+
+    return fc_api.claims(token)

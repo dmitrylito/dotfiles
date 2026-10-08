@@ -77,13 +77,14 @@ later days start pre-sorted; `--day` writes the run's own `categories.json`,
 which wins for that day only. `work_seconds` is work-categorized time plus calls.
 
 FC tasks come from the FC backend API (`fc_api.py`): tasks modified on the day,
-their current state, and the audit entries Dmitry created that day, read at collect
-time (the audit log keeps every change with its time, so no polling is needed). It
-uses his console session: `fc-daily-report fc-token` stores the console's refresh
-token (`localStorage.getItem('refresh')` on console.fleetchaser.com) in
-`~/.local/state/fc-daily-report/fc-api.json` (0600) per machine and refreshes it.
-Without a token the source is a gap and the companion audit on DLCO-1 (production
-restored daily at 05:00) supplies earlier days.
+their current state (status names from each workflow), and the audit entries Dmitry
+created that day, read at collect time (the audit log keeps every change with its
+time, so no polling is needed). It logs in with the ops center's FC account (his
+own), kept in the `fc-api` group of `.secrets.yaml.age` and rendered to
+`~/.config/secrets/fc-api.env` on the work role; the token pair is cached in
+`~/.local/state/fc-daily-report/fc-api.json` (0600). If the ops center's
+`FC_PASSWORD` changes, update the group with `secrets-edit`. Without credentials,
+`fc-daily-report fc-token --clipboard` stores a console refresh token instead.
 
 The default MCP transport reads Ops Center remotely on every device. An existing
 `OPS_CENTER_MCP_API_KEY` from the encrypted shared secrets page is read from the
