@@ -223,6 +223,16 @@ def page_title(title):
     return BROWSER_TITLE_SUFFIX.sub("", title)
 
 
+def tab_belongs(cls, url):
+    """Web app windows share titles ("Fleet Chaser" for chats and tasks), so a
+    tab report only counts for a web app window when its URL is under that app."""
+    if not (webapp := WEBAPP_CLASS.match(cls)):
+        return True
+    parts = urlsplit(url)
+    path = "/" + webapp["path"].replace("_", "/").strip("/")
+    return parts.hostname == webapp["host"] and parts.path.startswith(path.rstrip("/") or "/")
+
+
 def profile_for_url(cls, url):
     if webapp := WEBAPP_CLASS.match(cls):
         wanted = webapp["profile"].replace("_", " ")
@@ -479,7 +489,8 @@ class Tracker:
         self.db.commit()
         self.span_id, self.span_start = cur.lastrowid, now
         self.span_url = self.span_url_source = self.span_tab = None
-        if is_browser(self.cls) and (known := self.tabs.get(page_title(self.title))):
+        known = self.tabs.get(page_title(self.title))
+        if is_browser(self.cls) and known and tab_belongs(self.cls, known[0]):
             self.set_tab(known)
 
     def set_tab(self, tab):
@@ -502,7 +513,7 @@ class Tracker:
             self.tabs.pop(next(iter(self.tabs)))
         if self.span_id is None or not is_browser(self.cls) or page_title(self.title) != title:
             return
-        if tab == self.span_tab:
+        if not tab_belongs(self.cls, tab[0]) or tab == self.span_tab:
             return
         if self.span_url_source == "tab" and now - self.span_start > TAB_SETTLE_SECONDS:
             self.close(now)
