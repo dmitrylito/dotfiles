@@ -3,7 +3,7 @@
 Usage: fc-daily-report collect --date YYYY-MM-DD --mode work|timeline
        fc-daily-report timeline --run DIR [--categories PATH]
        fc-daily-report review --run DIR [--text]
-       fc-daily-report fc-token < refresh-token   (FC API access; see fc_api.py)
+       fc-daily-report fc-token [--clipboard]      (FC API access; see fc_api.py)
        fc-daily-report categorize --run DIR --work KEY... --personal KEY...
                                   [--set KEY=CATEGORY] [--day]
        fc-daily-report documents --run DIR --ref call:123 --ref email:456
@@ -1016,14 +1016,21 @@ def timeline(args):
     }
 
 
-def fc_token(_args):
+def fc_token(args):
     import getpass
 
-    refresh = (
-        getpass.getpass("FC console refresh token: ")
-        if sys.stdin.isatty()
-        else sys.stdin.read()
-    )
+    if args.clipboard:
+        refresh = subprocess.run(
+            ["wl-paste", "--no-newline"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        ).stdout
+    elif sys.stdin.isatty():
+        refresh = getpass.getpass("FC console refresh token: ")
+    else:
+        refresh = sys.stdin.read()
     fc_api.set_refresh(refresh)
     return {"stored": str(fc_api.TOKEN_FILE)}
 
@@ -1226,7 +1233,12 @@ def main():
     command.add_argument(
         "--refresh-overlap-seconds", type=positive, default=300
     )
-    commands.add_parser("fc-token")
+    command = commands.add_parser("fc-token")
+    command.add_argument(
+        "--clipboard",
+        action="store_true",
+        help="read the token from the Wayland clipboard (wl-paste)",
+    )
     command = commands.add_parser("timeline")
     command.add_argument("--run", required=True)
     command.add_argument("--categories", default=str(CATEGORY_FILE))

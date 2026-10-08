@@ -1,6 +1,6 @@
 """Read FC tasks and Dmitry's task audit entries from the FC backend API.
 
-Usage: fc-daily-report fc-token            # paste the console's refresh token on stdin
+Usage: fc-daily-report fc-token --clipboard   # after copying the refresh token
        (then every collect reads the day through the API; --skip-fc-api skips it)
 
 The console (console.fleetchaser.com) keeps its JWT pair in localStorage under
@@ -46,7 +46,17 @@ def save_tokens(tokens, path=TOKEN_FILE):
 
 def set_refresh(refresh, path=TOKEN_FILE):
     refresh = refresh.strip().strip('"')
-    claims(refresh)
+    try:
+        payload = claims(refresh)
+    except (IndexError, ValueError):
+        raise ValueError(
+            "no refresh token read: copy localStorage.getItem('refresh') from the"
+            " console's DevTools, then run fc-token --clipboard"
+        ) from None
+    if payload.get("token_type") not in (None, "refresh"):
+        raise ValueError(
+            f"got the {payload['token_type']} token; copy 'refresh', not 'token'"
+        )
     save_tokens({"refresh": refresh, "access": None}, path)
 
 
