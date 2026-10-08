@@ -12,6 +12,15 @@ other than Dialpad calls, and meetings joined on another device (calendar time
 is reported separately as scheduled). Terminal time goes to the herdr pane that
 had focus; before pane tracking existed it goes to the session most recently
 prompted on that host ("prompt-inferred").
+
+Categories are Dmitry's own end-of-day decisions: everything starts
+"uncategorized" and `fc-daily-report review` / `categorize` record rules keyed by
+page, session, project, site, profile, app, watching or idle. Persistent rules
+live in CATEGORY_FILE; `--day` rules in the run's categories.json win for that
+day. Idle comes from window-time's idle table (input-only): an idle period with
+an inhibiting window is "watching", a short one (<= SHORT_IDLE_SECONDS) is "short
+idle", longer is away. Gaps in older data without idle rows are inferred the same
+way.
 """
 
 import json
@@ -22,13 +31,46 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
-DEFAULT_CATEGORIES = {
-    "default": "work",
-    "profiles": {"Personal": "personal", "CER": "cer", "BulkBid": "bulkbid"},
-    "classes": {"spotify": "personal"},
-    "sites": {},
-}
+UNCATEGORIZED = "uncategorized"
 CATEGORY_FILE = Path.home() / ".config/fc-daily-report/categories.json"
+DAY_CATEGORY_FILE = "categories.json"
+SHORT_IDLE_SECONDS = 600
+MIN_GAP_SECONDS = 100
+MIN_RECORD_SECONDS = 5
+RECORD_PATTERNS = [
+    (
+        "fc_vehicle",
+        re.compile(r"console\.fleetchaser\.com/vehicles/.*?/vehicles/(\d+)"),
+    ),
+    ("fc_device", re.compile(r"console\.fleetchaser\.com/map/detail/(\d+)")),
+    (
+        "fc_admin",
+        re.compile(
+            r"backend\.fleetchaser\.com/admin/(\w+/\w+/[\w-]+)/(?:change/)?(?:\?|$)"
+        ),
+    ),
+    (
+        "hubspot",
+        re.compile(r"app\.hubspot\.com/contacts/\d+/record/([\d-]+/\d+)"),
+    ),
+    (
+        "hubspot",
+        re.compile(
+            r"app\.hubspot\.com/contacts/\d+/((?:contact|company|deal)/\d+)"
+        ),
+    ),
+    (
+        "gmail_thread",
+        re.compile(r"mail\.google\.com/mail/u/\d+/#[\w-]+/([A-Za-z0-9]{16,})$"),
+    ),
+    (
+        "google_doc",
+        re.compile(
+            r"docs\.google\.com/((?:document|spreadsheets|presentation|forms)/d/[\w-]+)"
+        ),
+    ),
+    ("linear_issue", re.compile(r"linear\.app/[^/]+/issue/([A-Z]+-\d+)")),
+]
 TERMINAL_CLASSES = {
     "com.mitchellh.ghostty",
     "org.omarchy.agent",
@@ -79,15 +121,24 @@ def union_seconds(intervals):
     return total + (current[1] - current[0] if current else 0.0)
 
 
-def load_categories(path):
-    rules = json.loads(json.dumps(DEFAULT_CATEGORIES))
-    if path and Path(path).exists():
-        for key, value in json.loads(Path(path).read_text()).items():
-            if isinstance(value, dict):
-                rules.setdefault(key, {}).update(value)
-            else:
-                rules[key] = value
+def load_rules(*paths):
+    rules = {}
+    for path in paths:
+        if path and Path(path).exists():
+            rules.update(json.loads(Path(path).read_text()).get("rules", {}))
     return rules
+
+
+def save_rules(path, updates):
+    path = Path(path)
+    current = json.loads(path.read_text()) if path.exists() else {}
+    current.setdefault("rules", {}).update(updates)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(current, ensure_ascii=False, indent=2, sort_keys=True)
+    )
+    temporary.replace(path)
 
 
 def site_of(span):
@@ -98,15 +149,46 @@ def site_of(span):
     return None
 
 
-def category_of(span, site, rules):
-    if span.get("profile") in rules["profiles"]:
-        return rules["profiles"][span["profile"]]
-    if span["class"] in rules["classes"]:
-        return rules["classes"][span["class"]]
-    for pattern, category in rules["sites"].items():
-        if site and (site == pattern or site.endswith("." + pattern)):
-            return category
-    return rules["default"]
+def keys_of(segment):
+    """Rule keys for a segment, most specific first."""
+    kind = segment["kind"]
+    if kind == "terminal":
+        keys = []
+        if session := segment.get("session"):
+            keys.append(f"session:{session[0]}/{session[1]}")
+        if segment.get("project"):
+            keys.append(f"project:{segment['project']}")
+        return keys + [f"terminal:{segment['host']}"]
+    if kind == "watching":
+        return [f"watching:{segment['title']}", f"watching:{segment['class']}"]
+    if kind == "idle":
+        return ["idle:short"]
+    keys = []
+    if segment.get("site"):
+        keys += [
+            f"page:{segment['site']}|{segment['title']}",
+            f"site:{segment['site']}",
+        ]
+    if segment.get("profile"):
+        keys.append(f"profile:{segment['profile']}")
+    return keys + [f"app:{segment['class']}"]
+
+
+def review_key(segment):
+    """The key a segment is listed under for end-of-day review."""
+    keys = keys_of(segment)
+    if segment["kind"] == "terminal":
+        return next((k for k in keys if k.startswith("project:")), keys[-1])
+    if segment["kind"] == "browser":
+        return next(k for k in keys if k.startswith("site:"))
+    return keys[-1] if segment["kind"] == "watching" else keys[0]
+
+
+def categorize(segment, rules):
+    for key in keys_of(segment):
+        if key in rules:
+            return rules[key], key
+    return UNCATEGORIZED, None
 
 
 def terminal_host(span, screen_host):
@@ -181,7 +263,7 @@ def inferred(segment, start, end, prompts):
     return pieces
 
 
-def build_segments(screen, agents, bounds, rules):
+def build_segments(screen, agents, bounds):
     start, cutoff = ts(bounds["start"]), ts(bounds["cutoff"])
     screen_host = (screen.get("host") or "").lower()
     sessions = {
@@ -212,7 +294,6 @@ def build_segments(screen, agents, bounds, rules):
             "url": span.get("url"),
             "profile": span.get("profile"),
             "site": site,
-            "category": category_of(span, site, rules),
         }
         if span["class"] in TERMINAL_CLASSES:
             segment["kind"] = "terminal"
@@ -224,16 +305,92 @@ def build_segments(screen, agents, bounds, rules):
             segment["kind"] = "browser" if site else "app"
             segments.append(segment)
     for segment in segments:
-        segment["label"] = label_of(segment, sessions)
-        segment["group"] = (
-            segment["label"]
-            if segment["kind"] == "terminal"
-            else segment["site"] or segment["class"]
-        )
+        if segment["kind"] == "terminal":
+            session = sessions.get(segment.get("session")) or {}
+            segment["project"] = project_of(
+                session.get("cwd") or segment.get("cwd")
+            )
     return segments, sessions
 
 
+def finish_segments(segments, sessions, rules):
+    for segment in segments:
+        segment["label"] = label_of(segment, sessions)
+        segment["group"] = (
+            segment["label"]
+            if segment["kind"] in {"terminal", "watching", "idle"}
+            else segment["site"] or segment["class"]
+        )
+        segment["category"], segment["decided_by"] = categorize(segment, rules)
+        segment["review_key"] = review_key(segment)
+
+
+def idle_segments(screen, spans, bounds):
+    """Watching and short-idle segments, plus away periods, from idle rows and gaps."""
+    start, cutoff = ts(bounds["start"]), ts(bounds["cutoff"])
+    segments, away = [], []
+
+    def add(a, b, inhibitor_class=None, inhibitor_title=None, inferred=False):
+        if inhibitor_class:
+            title = UNREAD_PREFIX.sub(
+                "", BROWSER_SUFFIX.sub("", inhibitor_title or "")
+            )
+            segments.append(
+                {
+                    "start": a,
+                    "end": b,
+                    "kind": "watching",
+                    "class": inhibitor_class,
+                    "title": title,
+                    "site": None,
+                    "url": None,
+                    "profile": None,
+                }
+            )
+        elif b - a <= SHORT_IDLE_SECONDS:
+            segments.append(
+                {
+                    "start": a,
+                    "end": b,
+                    "kind": "idle",
+                    "class": "idle",
+                    "title": "short idle",
+                    "site": None,
+                    "url": None,
+                    "profile": None,
+                    "inferred": inferred,
+                }
+            )
+        else:
+            away.append(
+                {
+                    "start": a,
+                    "end": b,
+                    "seconds": round(b - a),
+                    "inferred": inferred,
+                }
+            )
+
+    rows = []
+    for row in screen.get("idle", []):
+        a, b = max(row["start"], start), min(row["end"], cutoff)
+        if b > a:
+            rows.append((a, b))
+            add(a, b, row.get("inhibitor_class"), row.get("inhibitor_title"))
+    covered = sorted([(s["start"], s["end"]) for s in spans] + rows)
+    reach = None
+    for a, b in covered:
+        if reach is not None and a - reach >= MIN_GAP_SECONDS:
+            add(reach, a, inferred=True)
+        reach = b if reach is None else max(reach, b)
+    return segments, away
+
+
 def label_of(segment, sessions):
+    if segment["kind"] == "watching":
+        return f"watching: {segment['title'] or segment['class']}"[:120]
+    if segment["kind"] == "idle":
+        return "short idle"
     if segment["kind"] == "terminal":
         session = sessions.get(segment.get("session"))
         if session:
@@ -503,6 +660,94 @@ def build_tasks(rows, segments, task_names):
     }
 
 
+def build_records(segments):
+    records = {}
+    for segment in segments:
+        url = segment.get("url") or ""
+        found = []
+        if task_id := task_ids(url):
+            found.append(("fc_task", task_id))
+        for kind, pattern in RECORD_PATTERNS:
+            if match := pattern.search(url):
+                found.append((kind, match[1]))
+        for kind, identity in found[:1]:
+            record = records.setdefault(
+                (kind, identity),
+                {
+                    "type": kind,
+                    "id": identity,
+                    "url": url,
+                    "seconds": 0.0,
+                    "titles": defaultdict(float),
+                    "categories": set(),
+                },
+            )
+            seconds = segment["end"] - segment["start"]
+            record["seconds"] += seconds
+            record["titles"][segment["title"]] += seconds
+            record["categories"].add(segment["category"])
+    listed = []
+    for record in records.values():
+        if record["seconds"] < MIN_RECORD_SECONDS:
+            continue
+        listed.append(
+            record
+            | {
+                "seconds": round(record["seconds"]),
+                "titles": top_titles(record["titles"]),
+                "categories": sorted(record["categories"]),
+            }
+        )
+    return sorted(listed, key=lambda r: -r["seconds"])
+
+
+def build_review(segments):
+    groups = {}
+    for segment in segments:
+        seconds = segment["end"] - segment["start"]
+        group = groups.setdefault(
+            segment["review_key"],
+            {
+                "key": segment["review_key"],
+                "seconds": 0.0,
+                "categories": defaultdict(float),
+                "items": defaultdict(lambda: {"seconds": 0.0}),
+            },
+        )
+        group["seconds"] += seconds
+        group["categories"][segment["category"]] += seconds
+        item_key = keys_of(segment)[0]
+        item = group["items"][item_key]
+        item.update(
+            key=item_key,
+            label=segment["label"],
+            category=segment["category"],
+            decided_by=segment["decided_by"],
+        )
+        item["seconds"] += seconds
+    listed = []
+    for group in groups.values():
+        items = sorted(group["items"].values(), key=lambda i: -i["seconds"])
+        listed.append(
+            {
+                "key": group["key"],
+                "seconds": round(group["seconds"]),
+                "categories": {
+                    k: round(v) for k, v in group["categories"].items()
+                },
+                "items": [
+                    i | {"seconds": round(i["seconds"])}
+                    for i in items
+                    if i["key"] != group["key"]
+                ],
+            }
+        )
+    return sorted(
+        listed,
+        key=lambda g: (-g["categories"].get(UNCATEGORIZED, 0), -g["seconds"]),
+    )
+
+
 def top_titles(titles):
     return [
         {"title": title, "seconds": round(seconds)}
@@ -598,6 +843,7 @@ def build_buckets(segments, calls, zone, minutes):
 
 
 def build(run, categories_path=CATEGORY_FILE):
+    """Write timeline.json for a run. categories_path=None ignores persistent rules."""
     run = Path(run)
     manifest = json.loads((run / "manifest.json").read_text())
     bucket_minutes = manifest["config"].get("timeline_bucket_minutes", 30)
@@ -609,22 +855,36 @@ def build(run, categories_path=CATEGORY_FILE):
     rows = [
         row for source in sources.values() for row in source.get("rows", [])
     ]
-    rules = load_categories(categories_path)
-    segments, sessions = build_segments(screen, agents, bounds, rules)
+    rules = load_rules(categories_path, run / DAY_CATEGORY_FILE)
+    focus, sessions = build_segments(screen, agents, bounds)
+    extra, away = idle_segments(screen, focus, bounds)
+    segments = sorted(focus + extra, key=lambda s: s["start"])
+    finish_segments(segments, sessions, rules)
     calls, attempts, scheduled = build_calls(rows, screen, segments, bounds)
-    by_category, by_app = defaultdict(float), defaultdict(float)
+    by_category, by_kind, by_app = (
+        defaultdict(float),
+        defaultdict(float),
+        defaultdict(float),
+    )
     for segment in segments:
         seconds = segment["end"] - segment["start"]
         by_category[segment["category"]] += seconds
+        by_kind[segment["kind"]] += seconds
         app = (
             "terminal"
             if segment["kind"] == "terminal"
             else segment["site"] or segment["class"]
         )
         by_app[(app, segment["category"])] += seconds
+    call_intervals = [(c["start"], c["end"]) for c in calls]
+    screen_intervals = [
+        (s["start"], s["end"])
+        for s in segments
+        if s["kind"] not in {"idle", "watching"}
+    ]
     work_intervals = [
         (s["start"], s["end"]) for s in segments if s["category"] == "work"
-    ] + [(c["start"], c["end"]) for c in calls]
+    ] + call_intervals
     timeline = {
         "schema_version": 1,
         "bounds": bounds,
@@ -634,25 +894,30 @@ def build(run, categories_path=CATEGORY_FILE):
             "screen": bool(screen),
             "pane_tracking": bool(screen.get("panes")),
             "agent_hosts": sorted({s[0] for s in sessions}),
-            "categories_file": str(categories_path)
-            if categories_path and Path(categories_path).exists()
-            else None,
+            "exact_urls": any(
+                s.get("url_source") == "tab" for s in screen.get("spans", [])
+            ),
+            "idle_rows": bool(screen.get("idle")),
+            "rules": len(rules),
         },
         "totals": {
-            "screen_seconds": round(sum(by_category.values())),
+            "screen_seconds": round(
+                sum(
+                    v
+                    for k, v in by_kind.items()
+                    if k not in {"idle", "watching"}
+                )
+            ),
+            "watching_seconds": round(by_kind.get("watching", 0)),
+            "short_idle_seconds": round(by_kind.get("idle", 0)),
             "by_category": {k: round(v) for k, v in by_category.items()},
+            "uncategorized_seconds": round(by_category.get(UNCATEGORIZED, 0)),
             "calls_seconds": round(
                 union_seconds([(c["start"], c["end"]) for c in calls])
             ),
             "calls_off_screen_seconds": round(
-                union_seconds(work_intervals)
-                - union_seconds(
-                    [
-                        (s["start"], s["end"])
-                        for s in segments
-                        if s["category"] == "work"
-                    ]
-                )
+                union_seconds(screen_intervals + call_intervals)
+                - union_seconds(screen_intervals)
             ),
             "work_seconds": round(union_seconds(work_intervals)),
             "scheduled_unmeasured_meeting_seconds": round(
@@ -670,6 +935,9 @@ def build(run, categories_path=CATEGORY_FILE):
         "call_attempts": attempts,
         "scheduled_meetings": scheduled,
         "tasks": build_tasks(rows, segments, screen.get("task_names")),
+        "records": build_records(segments),
+        "review": build_review(segments),
+        "away": away,
         "blocks": build_blocks(segments, zone),
         "buckets": build_buckets(segments, calls, zone, bucket_minutes),
     }

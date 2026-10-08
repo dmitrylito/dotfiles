@@ -47,13 +47,36 @@ code in the Meet tab title; otherwise the event appears under
 `scheduled_meetings`, not in totals. Screen idle over the omarchy shell plugin
 timeout is excluded unless a call holds the mic.
 
-Categories default to `work`; the `Personal`, `CER` and `BulkBid` browser
-profiles and Spotify are not. Override in
-`~/.config/fc-daily-report/categories.json`, merged over the defaults:
+Idle is input-only (keyboard/mouse, two minutes, from the omarchy shell plugin).
+window-time records each idle period with the window that was holding the screen
+awake: those become `watching` segments; idle periods up to ten minutes become
+`short idle`; longer ones are listed under `away`. Calls keep counting through
+idle from the desktop microphone. Browser spans carry the active tab's exact URL
+from the window-time Chromium extension (`url_source: tab`) once Chromium has
+restarted with it; older spans keep the History title match (`history`).
+`records` lists what was on screen by record: FC tasks, vehicles and devices,
+admin objects, HubSpot records, Gmail threads, Google docs and Linear issues.
 
-```json
-{"profiles": {"CER": "work"}, "sites": {"youtube.com": "personal"}, "classes": {}}
+Nothing is categorized automatically. Everything starts `uncategorized`; Dmitry
+decides at the end of the day:
+
+```sh
+fc-daily-report review --run RUN_DIR --text        # groups, uncategorized first
+fc-daily-report categorize --run RUN_DIR --work site:console.fleetchaser.com project:backend \
+    --personal app:spotify --set 'watching:chromium=work'
+fc-daily-report categorize --run RUN_DIR --day --personal 'page:www.google.com|g63 brabus - Google Search'
 ```
+
+Keys, most specific first: `page:<site>|<title>`, `session:<host>/<id>`,
+`project:<cwd name>`, `site:<host>`, `profile:<Chromium profile>`,
+`terminal:<host>`, `watching:<title>`, `watching:<class>`, `idle:short`,
+`app:<class>`. Rules persist in `~/.config/fc-daily-report/categories.json`, so
+later days start pre-sorted; `--day` writes the run's own `categories.json`,
+which wins for that day only. `work_seconds` is work-categorized time plus calls.
+
+FC task actions come from the companion audit on DLCO-1, a copy of production
+restored daily at 05:00 (`import-db`); the current day's actions appear the next
+morning. Until then today's tasks show on-screen time and unattributed changes.
 
 The default MCP transport reads Ops Center remotely on every device. An existing
 `OPS_CENTER_MCP_API_KEY` from the encrypted shared secrets page is read from the

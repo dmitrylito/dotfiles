@@ -2,6 +2,9 @@
 
 Usage: fc-daily-report collect --date YYYY-MM-DD --mode work|timeline
        fc-daily-report timeline --run DIR [--categories PATH]
+       fc-daily-report review --run DIR [--text]
+       fc-daily-report categorize --run DIR --work KEY... --personal KEY...
+                                  [--set KEY=CATEGORY] [--day]
        fc-daily-report documents --run DIR --ref call:123 --ref email:456
        fc-daily-report import-gmail --run DIR --input connector-response.json
 Installed globally by chezmoi under ~/.local/bin and ~/.local/libexec.
@@ -40,7 +43,13 @@ from evidence import (
     sql_literal,
     window,
 )
-from timeline import CATEGORY_FILE, task_ids
+from timeline import (
+    CATEGORY_FILE,
+    DAY_CATEGORY_FILE,
+    UNCATEGORIZED,
+    save_rules,
+    task_ids,
+)
 from timeline import build as build_timeline
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -1002,6 +1011,63 @@ def timeline(args):
     }
 
 
+def review(args):
+    run = Path(args.run).expanduser()
+    result = build_timeline(run, args.categories)
+    groups = [
+        group | {"items": group["items"][: args.items]}
+        for group in result["review"]
+    ]
+    if args.text:
+        lines = []
+        for group in groups:
+            mark = " ".join(
+                f"{k} {v // 60}m" for k, v in group["categories"].items()
+            )
+            lines.append(
+                f"{group['seconds'] // 60:>4}m  {group['key']}  [{mark}]"
+            )
+            for item in group["items"]:
+                lines.append(
+                    f"        {item['seconds'] // 60:>3}m  {item['category']:<13}  {item['key']}"
+                )
+                if not item["key"].endswith(item["label"].split(": ", 1)[-1]):
+                    lines.append(f"{'':<29}{item['label']}")
+        return "\n".join(lines)
+    return {
+        "run": str(run),
+        "uncategorized_seconds": result["totals"]["uncategorized_seconds"],
+        "review": groups,
+    }
+
+
+def categorize(args):
+    run = Path(args.run).expanduser()
+    updates = {key: "work" for key in args.work}
+    updates |= {key: "personal" for key in args.personal}
+    for pair in args.set:
+        key, separator, category = pair.rpartition("=")
+        if not separator or not key or not category:
+            raise ValueError(f"--set needs KEY=CATEGORY, got {pair!r}")
+        updates[key] = category
+    if not updates:
+        raise ValueError("nothing to categorize")
+    target = run / DAY_CATEGORY_FILE if args.day else Path(args.categories)
+    save_rules(target, updates)
+    result = build_timeline(run, args.categories)
+    return {
+        "run": str(run),
+        "rules_file": str(target),
+        "set": updates,
+        "totals": result["totals"],
+        "still_uncategorized": [
+            group["key"]
+            for group in result["review"]
+            if group["categories"].get(UNCATEGORIZED)
+        ],
+    }
+
+
 def documents(args):
     run = Path(args.run).expanduser()
     manifest = read(run / "manifest.json")
@@ -1144,6 +1210,20 @@ def main():
     command = commands.add_parser("timeline")
     command.add_argument("--run", required=True)
     command.add_argument("--categories", default=str(CATEGORY_FILE))
+    command = commands.add_parser("review")
+    command.add_argument("--run", required=True)
+    command.add_argument("--categories", default=str(CATEGORY_FILE))
+    command.add_argument("--items", type=positive, default=15)
+    command.add_argument("--text", action="store_true")
+    command = commands.add_parser("categorize")
+    command.add_argument("--run", required=True)
+    command.add_argument("--categories", default=str(CATEGORY_FILE))
+    command.add_argument("--work", nargs="*", default=[])
+    command.add_argument("--personal", nargs="*", default=[])
+    command.add_argument("--set", action="append", default=[])
+    command.add_argument(
+        "--day", action="store_true", help="only for this run's day"
+    )
     command = commands.add_parser("documents")
     command.add_argument("--run", required=True)
     command.add_argument("--ref", action="append", required=True)
@@ -1158,10 +1238,15 @@ def main():
         result = {
             "collect": collect,
             "timeline": timeline,
+            "review": review,
+            "categorize": categorize,
             "documents": documents,
             "import-gmail": import_gmail,
         }[args.command](args)
-        print(json.dumps(redact(result), ensure_ascii=False))
+        if isinstance(result, str):
+            print(result)
+        else:
+            print(json.dumps(redact(result), ensure_ascii=False))
         return 0
     except (
         OSError,

@@ -626,7 +626,20 @@ def test_timeline_measures_sessions_calls_and_tasks(
             },
         },
     )
-    result = timeline_module.build(tmp_path, None)
+    rules = tmp_path / "rules.json"
+    rules.write_text(
+        json.dumps(
+            {
+                "rules": {
+                    "profile:Work": "work",
+                    "profile:Personal": "personal",
+                    "project:backend": "work",
+                    "project:ops-center": "work",
+                }
+            }
+        )
+    )
+    result = timeline_module.build(tmp_path, rules)
 
     sessions = {s["session_id"]: s for s in result["terminal"]["sessions"]}
     assert sessions["s1"]["focus_seconds"] == 7 * 60
@@ -662,6 +675,107 @@ def test_timeline_measures_sessions_calls_and_tasks(
     assert totals["calls_off_screen_seconds"] == 360
     assert totals["work_seconds"] == 3000
     assert totals["scheduled_unmeasured_meeting_seconds"] == 3600
+    assert [(r["type"], r["id"], r["seconds"]) for r in result["records"]] == [
+        ("fc_task", "42", 240)
+    ]
+    assert timeline_module.build(tmp_path, None)["totals"]["by_category"] == {
+        "uncategorized": 2940
+    }
+
+
+def test_idle_rows_gaps_and_end_of_day_rules(
+    collector, timeline_module, tmp_path, bounds
+):
+    from argparse import Namespace
+
+    def span(start, end, cls, title, url=None):
+        return {
+            "start": start,
+            "end": end,
+            "class": cls,
+            "title": title,
+            "url": url,
+            "profile": "Work",
+        }
+
+    collector.save(
+        tmp_path / "manifest.json",
+        {"bounds": bounds, "config": {"timeline_bucket_minutes": 30}},
+    )
+    collector.save(
+        tmp_path / "screen.json",
+        {
+            "host": "fcoffice",
+            "spans": [
+                span(
+                    at(13),
+                    at(13, 10),
+                    "chromium",
+                    "Docs - Chromium",
+                    "https://docs.google.com/document/d/abc/edit",
+                ),
+                span(at(13, 20), at(13, 30), "spotify", "Spotify"),
+                span(
+                    at(13, 35),
+                    at(13, 40),
+                    "chromium",
+                    "Docs - Chromium",
+                    "https://docs.google.com/document/d/abc/edit",
+                ),
+                span(
+                    at(15),
+                    at(15, 5),
+                    "chromium",
+                    "Docs - Chromium",
+                    "https://docs.google.com/document/d/abc/edit",
+                ),
+            ],
+            "idle": [
+                {
+                    "start": at(13, 10),
+                    "end": at(13, 20),
+                    "inhibitor_class": "chromium",
+                    "inhibitor_title": "Training video - YouTube - Chromium",
+                },
+            ],
+        },
+    )
+    result = timeline_module.build(tmp_path, None)
+    totals = result["totals"]
+    assert (
+        totals["screen_seconds"],
+        totals["watching_seconds"],
+        totals["short_idle_seconds"],
+    ) == (1800, 600, 300)
+    assert [a["seconds"] for a in result["away"]] == [80 * 60]
+    assert result["records"][0]["type"] == "google_doc"
+
+    rules = tmp_path / "rules.json"
+    outcome = collector.categorize(
+        Namespace(
+            run=str(tmp_path),
+            categories=str(rules),
+            day=False,
+            work=["site:docs.google.com", "watching:chromium", "idle:short"],
+            personal=["app:spotify"],
+            set=[],
+        )
+    )
+    assert outcome["totals"]["by_category"] == {"work": 2100, "personal": 600}
+    assert outcome["still_uncategorized"] == []
+    collector.categorize(
+        Namespace(
+            run=str(tmp_path),
+            categories=str(rules),
+            day=True,
+            work=[],
+            personal=[],
+            set=["watching:Training video - YouTube=personal"],
+        )
+    )
+    day = timeline_module.build(tmp_path, rules)["totals"]["by_category"]
+    assert day == {"work": 1500, "personal": 1200}
+    assert json.loads(rules.read_text())["rules"]["watching:chromium"] == "work"
 
 
 def test_agent_sessions_keep_typed_prompts_only(tmp_path, monkeypatch):
