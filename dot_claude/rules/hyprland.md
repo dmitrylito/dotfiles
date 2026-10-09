@@ -22,9 +22,10 @@ and only after he says so.
   `quickshell -n -p <copy of $OMARCHY_PATH/shell>` with `HOME` pointed at a copied
   config and side-effect services (notifications, idle, lock, polkit) in
   `disabledPlugins`, and address it with `HOME=… quickshell -p <copy> ipc call …`.
-- **Applying to the live session is a deploy, not a test.** `chezmoi apply` of shell or
-  Hyprland files, `omarchy restart shell`, and live `omarchy-shell` IPC calls wait for
-  his OK.
+- **Applying to the live session is a deploy, not a test.** Never use the live session
+  to explore or debug. Once a fix has passed in the testbed, apply it (`chezmoi apply`
+  of the changed targets, `omarchy restart shell` when a plugin changed) without asking
+  — he said "dont ask to apply fixes" — and read back the shell log after.
 - **Chromium works in it.** The testbed exports `CHROMIUM_USER_DATA_DIR`, seeded with
   the real profile names so every derived WM_CLASS matches the real session.
   `work-mode` has been run end to end inside it. Signing in there is a separate
