@@ -1,0 +1,334 @@
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["opencv-python-headless>=4.8", "numpy"]
+# ///
+#
+# autoframe — Google Meet-style auto-framing for the webcam, published as a
+# virtual camera ("Autoframe Camera") that Loom, Meet, Zoom etc. can pick.
+#
+#   autoframe                      run the daemon (systemd: autoframe.service)
+#   autoframe --always-on          keep the real camera open even with no viewer
+#   autoframe --input clip.mp4 --output framed.mp4
+#                                  reframe a file instead, to test the framing
+#
+# The daemon writes a placeholder to the virtual camera and opens the real one
+# only while some other process has the virtual device open (polled from
+# /proc/*/fd), so the webcam light stays off when nothing is recording.
+#
+# Needs the v4l2loopback module loaded with the sink device (see
+# /etc/modprobe.d/autoframe.conf):
+#   options v4l2loopback video_nr=10 card_label="Autoframe Camera" exclusive_caps=1
+# exclusive_caps=1 is what makes Chromium list the device as a camera.
+#
+# The YuNet face model is downloaded once into $XDG_CACHE_HOME/autoframe/.
+# Tuning flags: --face-size, --max-zoom, --head-y; see --help.
+
+import argparse
+import fcntl
+import glob
+import hashlib
+import math
+import os
+import struct
+import sys
+import time
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+MODEL_URL = (
+    "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/"
+    "face_detection_yunet/face_detection_yunet_2023mar.onnx"
+)
+MODEL_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+
+DETECT_WIDTH = 640
+DETECT_SCORE = 0.7
+VIEWER_POLL_SECONDS = 1.0
+VIEWER_GONE_SECONDS = 3.0
+IDLE_FPS = 5
+CAMERA_RETRY_SECONDS = 2.0
+
+V4L2_BUF_TYPE_VIDEO_OUTPUT = 2
+V4L2_FIELD_NONE = 1
+VIDIOC_S_FMT = 0xC0D05605
+V4L2_FORMAT_SIZE = 208
+
+
+def log(msg):
+    print(f"autoframe: {msg}", file=sys.stderr, flush=True)
+
+
+def size_arg(text):
+    w, h = text.lower().split("x")
+    return int(w), int(h)
+
+
+def default_source():
+    for path in sorted(glob.glob("/dev/v4l/by-id/*-video-index0")):
+        return path
+    return "/dev/video0"
+
+
+def model_path():
+    cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "autoframe"
+    path = cache / "face_detection_yunet_2023mar.onnx"
+    if not path.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        log(f"downloading face model to {path}")
+        data = urllib.request.urlopen(MODEL_URL, timeout=60).read()
+        if hashlib.sha256(data).hexdigest() != MODEL_SHA256:
+            sys.exit("autoframe: face model checksum mismatch")
+        tmp = path.with_suffix(".tmp")
+        tmp.write_bytes(data)
+        tmp.rename(path)
+    return str(path)
+
+
+class Detector:
+    def __init__(self, src_w, src_h):
+        self.scale = DETECT_WIDTH / src_w
+        self.size = (DETECT_WIDTH, round(src_h * self.scale))
+        self.net = cv2.FaceDetectorYN.create(model_path(), "", self.size, DETECT_SCORE, 0.3, 50)
+
+    def faces(self, frame):
+        small = cv2.resize(frame, self.size, interpolation=cv2.INTER_AREA)
+        _, found = self.net.detect(small)
+        if found is None:
+            return []
+        return [tuple(v / self.scale for v in row[:4]) for row in found]
+
+
+@dataclass
+class Box:
+    cx: float
+    cy: float
+    h: float
+
+
+class Framer:
+    def __init__(self, src_w, src_h, out_w, out_h, args):
+        self.src_w, self.src_h = src_w, src_h
+        self.aspect = out_w / out_h
+        self.full = self.clamp(Box(src_w / 2, src_h / 2, src_h))
+        self.min_h = max(src_h / args.max_zoom, out_h * 0.5)
+        self.face_size = args.face_size
+        self.head_y = args.head_y
+        self.deadzone = args.deadzone
+        self.tau = args.glide
+        self.lost_hold = args.lost_hold
+        self.target = self.goal = self.cur = self.full
+        self.last_seen = -math.inf
+
+    def clamp(self, b):
+        h = min(b.h, self.src_h, self.src_w / self.aspect)
+        w = h * self.aspect
+        cx = min(max(b.cx, w / 2), self.src_w - w / 2)
+        cy = min(max(b.cy, h / 2), self.src_h - h / 2)
+        return Box(cx, cy, h)
+
+    def wanted(self, faces):
+        x0 = min(f[0] for f in faces)
+        y0 = min(f[1] for f in faces)
+        x1 = max(f[0] + f[2] for f in faces)
+        y1 = max(f[1] + f[3] for f in faces)
+        face_h = max(f[3] for f in faces)
+        h = max(face_h / self.face_size, (y1 - y0) / 0.6, (x1 - x0) / self.aspect / 0.75)
+        h = max(h, self.min_h)
+        cy = (y0 + y1) / 2 + (0.5 - self.head_y) * h
+        return self.clamp(Box((x0 + x1) / 2, cy, h))
+
+    def update(self, faces, now, dt):
+        if faces:
+            self.last_seen = now
+            want = self.wanted(faces)
+            a = 1 - math.exp(-dt / 0.15)
+            self.target = Box(*(t + (w - t) * a for t, w in zip(vars(self.target).values(), vars(want).values())))
+            g, t = self.goal, self.target
+            gw = g.h * self.aspect
+            if (
+                abs(t.cx - g.cx) > self.deadzone * gw
+                or abs(t.cy - g.cy) > self.deadzone * g.h
+                or abs(t.h / g.h - 1) > self.deadzone * 1.5
+            ):
+                self.goal = t
+        elif now - self.last_seen > self.lost_hold:
+            self.goal = self.full
+        a = 1 - math.exp(-dt / self.tau)
+        self.cur = self.clamp(Box(*(c + (g - c) * a for c, g in zip(vars(self.cur).values(), vars(self.goal).values()))))
+        b = self.cur
+        w = b.h * self.aspect
+        x0 = int(round(b.cx - w / 2))
+        y0 = int(round(b.cy - b.h / 2))
+        return x0, y0, int(round(w)), int(round(b.h))
+
+
+class Sink:
+    def __init__(self, path, w, h):
+        self.w, self.h = w, h
+        self.fd = os.open(path, os.O_RDWR)
+        fmt = bytearray(V4L2_FORMAT_SIZE)
+        struct.pack_into("I", fmt, 0, V4L2_BUF_TYPE_VIDEO_OUTPUT)
+        struct.pack_into(
+            "8I", fmt, 8,
+            w, h, int.from_bytes(b"YU12", "little"), V4L2_FIELD_NONE,
+            w, w * h * 3 // 2, 0, 0,
+        )
+        fcntl.ioctl(self.fd, VIDIOC_S_FMT, fmt)
+        self.path = os.path.realpath(path)
+
+    def write(self, bgr):
+        os.write(self.fd, cv2.cvtColor(bgr, cv2.COLOR_BGR2YUV_I420).tobytes())
+
+    def viewers(self):
+        count = 0
+        me = str(os.getpid())
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit() or pid == me:
+                continue
+            try:
+                fds = os.scandir(f"/proc/{pid}/fd")
+            except OSError:
+                continue
+            with fds:
+                for fd in fds:
+                    try:
+                        if os.readlink(fd.path) == self.path:
+                            count += 1
+                            break
+                    except OSError:
+                        pass
+        return count
+
+
+def placeholder(w, h, text):
+    img = np.zeros((h, w, 3), np.uint8)
+    scale = h / 720
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, 2)
+    cv2.putText(img, text, ((w - tw) // 2, (h + th) // 2), cv2.FONT_HERSHEY_SIMPLEX, scale, (90, 90, 90), 2, cv2.LINE_AA)
+    return img
+
+
+def open_camera(source, w, h, fps):
+    cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
+    if not cap.isOpened():
+        return None
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+    cap.set(cv2.CAP_PROP_FPS, fps)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    ok, frame = cap.read()
+    if not ok:
+        cap.release()
+        return None
+    return cap, frame
+
+
+def reframe(frame, rect, out_w, out_h):
+    x, y, w, h = rect
+    return cv2.resize(frame[y : y + h, x : x + w], (out_w, out_h), interpolation=cv2.INTER_AREA if h > out_h else cv2.INTER_LINEAR)
+
+
+def run_file(args):
+    cap = cv2.VideoCapture(args.input)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    ok, frame = cap.read()
+    if not ok:
+        sys.exit(f"autoframe: cannot read {args.input}")
+    src_h, src_w = frame.shape[:2]
+    out_w, out_h = args.out_size
+    detector = Detector(src_w, src_h)
+    framer = Framer(src_w, src_h, out_w, out_h, args)
+    writer = cv2.VideoWriter(args.output, cv2.VideoWriter_fourcc(*"mp4v"), fps, (out_w, out_h))
+    n = 0
+    while ok:
+        rect = framer.update(detector.faces(frame), n / fps, 1 / fps)
+        writer.write(reframe(frame, rect, out_w, out_h))
+        n += 1
+        ok, frame = cap.read()
+    writer.release()
+    log(f"wrote {n} frames to {args.output}")
+
+
+def run_daemon(args):
+    out_w, out_h = args.out_size
+    sink = Sink(args.sink, out_w, out_h)
+    log(f"publishing {out_w}x{out_h} on {sink.path}, source {args.source}")
+    idle = placeholder(out_w, out_h, "Camera starting...")
+    busy = placeholder(out_w, out_h, "Camera busy")
+    cam = detector = framer = None
+    last_poll = 0.0
+    last_viewer = -math.inf
+    last_try = -math.inf
+    last_frame = time.monotonic()
+    while True:
+        now = time.monotonic()
+        if now - last_poll >= VIEWER_POLL_SECONDS:
+            last_poll = now
+            if args.always_on or sink.viewers():
+                last_viewer = now
+        wanted = now - last_viewer < VIEWER_GONE_SECONDS
+        if cam and not wanted:
+            cam.release()
+            cam = None
+            log("no viewers, camera released")
+        if not cam and wanted and now - last_try >= CAMERA_RETRY_SECONDS:
+            last_try = now
+            opened = open_camera(args.source, *args.in_size, args.fps)
+            if opened:
+                cam, frame = opened
+                src_h, src_w = frame.shape[:2]
+                if not framer or (framer.src_w, framer.src_h) != (src_w, src_h):
+                    detector = Detector(src_w, src_h)
+                    framer = Framer(src_w, src_h, out_w, out_h, args)
+                last_frame = time.monotonic()
+                log(f"camera open at {src_w}x{src_h}")
+            else:
+                log(f"cannot open {args.source}, retrying")
+        if not cam:
+            sink.write(busy if wanted else idle)
+            time.sleep(1 / IDLE_FPS)
+            continue
+        ok, frame = cam.read()
+        if not ok:
+            log("camera read failed, reopening")
+            cam.release()
+            cam = None
+            continue
+        now = time.monotonic()
+        dt = min(now - last_frame, 0.2)
+        last_frame = now
+        rect = framer.update(detector.faces(frame), now, dt)
+        sink.write(reframe(frame, rect, out_w, out_h))
+
+
+def main():
+    p = argparse.ArgumentParser(description="Auto-framing virtual webcam")
+    p.add_argument("--source", default=default_source(), help="real camera device")
+    p.add_argument("--sink", default="/dev/video10", help="v4l2loopback device to publish on")
+    p.add_argument("--in-size", type=size_arg, default=(2560, 1440), help="camera capture size")
+    p.add_argument("--out-size", type=size_arg, default=(1280, 720), help="virtual camera size")
+    p.add_argument("--fps", type=int, default=30)
+    p.add_argument("--face-size", type=float, default=0.30, help="face height as a share of the frame height")
+    p.add_argument("--head-y", type=float, default=0.42, help="face centre position from the top, 0-1")
+    p.add_argument("--max-zoom", type=float, default=2.5, help="largest zoom relative to the full camera view")
+    p.add_argument("--deadzone", type=float, default=0.08, help="how far the face may drift before reframing")
+    p.add_argument("--glide", type=float, default=0.45, help="reframe glide time constant, seconds")
+    p.add_argument("--lost-hold", type=float, default=3.0, help="seconds without a face before zooming out")
+    p.add_argument("--always-on", action="store_true", help="keep the camera open with no viewers")
+    p.add_argument("--input", help="reframe this video file instead of the camera")
+    p.add_argument("--output", default="autoframe-test.mp4", help="output file for --input")
+    args = p.parse_args()
+    if args.input:
+        run_file(args)
+    else:
+        run_daemon(args)
+
+
+if __name__ == "__main__":
+    main()
