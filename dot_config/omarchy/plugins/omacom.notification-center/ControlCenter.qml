@@ -16,6 +16,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
 import Quickshell.Networking
+import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
 import qs.Commons
 import qs.Commons as Commons
@@ -50,6 +51,7 @@ ColumnLayout {
       passwordSsid = ""
     } else {
       refreshMute()
+      refreshNight()
       resolveVolumeSink()
     }
     syncScanner()
@@ -76,6 +78,7 @@ ColumnLayout {
     running: cc.open
     onTriggered: {
       cc.refreshMute()
+      cc.refreshNight()
       cc.refreshLists()
     }
   }
@@ -228,8 +231,42 @@ ColumnLayout {
 
   // --------------------------------------------------------- night light
 
-  readonly property var nightlight: bar && bar.shell ? bar.shell.firstPartyServiceFor("omarchy.nightlight") : null
-  readonly property bool nightOn: !!nightlight && nightlight.enabled
+  // omarchy hands its first-party service proxies (night light, media) only to
+  // kind "bar" plugins, never to a bar-widget, so night light goes through the
+  // service's IPC target and media through MPRIS directly.
+  property bool nightKnown: false
+  property bool nightOn: false
+  // The service applies the temperature asynchronously, so a status poll right
+  // after a toggle still reports the old state.
+  property double nightHoldUntil: 0
+
+  function refreshNight() {
+    if (nightProc.running || Date.now() < nightHoldUntil) return
+    nightProc.running = true
+  }
+
+  function toggleNight() {
+    nightOn = !nightOn
+    nightHoldUntil = Date.now() + 1500
+    Quickshell.execDetached(["omarchy-shell", "-q", "nightlight", nightOn ? "enable" : "disable"])
+  }
+
+  Process {
+    id: nightProc
+    command: ["omarchy-shell", "nightlight", "status"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (Date.now() < cc.nightHoldUntil) return
+        try {
+          cc.nightOn = !!JSON.parse(text).enabled
+          cc.nightKnown = true
+        } catch (e) {
+          cc.nightKnown = false
+        }
+      }
+    }
+  }
 
   // --------------------------------------------------------------- audio
 
@@ -355,9 +392,19 @@ ColumnLayout {
 
   // --------------------------------------------------------------- media
 
-  readonly property var media: bar && bar.shell ? bar.shell.firstPartyServiceFor("omarchy.media") : null
-  readonly property bool hasMedia: !!media && !!media.hasMedia
-  readonly property bool playing: hasMedia && !!media.activePlayer && media.activePlayer.isPlaying
+  readonly property var players: Mpris.players ? Mpris.players.values : []
+  readonly property var player: {
+    var fallback = null
+    for (var i = 0; i < players.length; i++) {
+      var p = players[i]
+      if (!p || !(p.trackTitle || p.trackArtist)) continue
+      if (p.isPlaying) return p
+      if (!fallback) fallback = p
+    }
+    return fallback
+  }
+  readonly property bool hasMedia: !!player
+  readonly property bool playing: hasMedia && player.isPlaying
 
   // ---------------------------------------------------------- components
 
@@ -626,9 +673,9 @@ ColumnLayout {
     Tile {
       glyph: "󰔎"
       title: "Night Light"
-      subtitle: !cc.nightlight ? "Unavailable" : (cc.nightOn ? "On" : "Off")
+      subtitle: !cc.nightKnown ? "Unavailable" : (cc.nightOn ? "On" : "Off")
       active: cc.nightOn
-      onToggled: if (cc.nightlight) cc.nightlight.setNightlight(!cc.nightOn)
+      onToggled: if (cc.nightKnown) cc.toggleNight()
     }
   }
 
@@ -773,7 +820,7 @@ ColumnLayout {
         Image {
           id: art
           anchors.fill: parent
-          source: cc.hasMedia ? cc.media.artUrl : ""
+          source: cc.hasMedia ? (cc.player.trackArtUrl || "") : ""
           fillMode: Image.PreserveAspectCrop
           asynchronous: true
           sourceSize.width: Style.space(80)
@@ -794,7 +841,7 @@ ColumnLayout {
         spacing: 0
         Text {
           Layout.fillWidth: true
-          text: cc.hasMedia ? (cc.media.title || cc.media.identity) : ""
+          text: cc.hasMedia ? (cc.player.trackTitle || cc.player.identity || "") : ""
           font.family: cc.fontFamily
           font.pixelSize: Style.font.bodySmall
           font.bold: true
@@ -803,7 +850,7 @@ ColumnLayout {
         }
         Text {
           Layout.fillWidth: true
-          text: cc.hasMedia ? (cc.media.artist || cc.media.identity) : ""
+          text: cc.hasMedia ? (cc.player.trackArtist || "") : ""
           visible: text !== ""
           font.family: cc.fontFamily
           font.pixelSize: Style.font.caption
@@ -812,9 +859,22 @@ ColumnLayout {
         }
       }
 
-      IconButton { glyph: "󰒮"; onClicked: cc.media.runAction("previous") }
-      IconButton { glyph: cc.playing ? "󰏤" : "󰐊"; glyphSize: Style.font.title; onClicked: cc.media.runAction("playPause") }
-      IconButton { glyph: "󰒭"; onClicked: cc.media.runAction("next") }
+      IconButton {
+        glyph: "󰒮"
+        opacity: cc.hasMedia && cc.player.canGoPrevious ? 1 : 0.4
+        onClicked: if (cc.hasMedia && cc.player.canGoPrevious) cc.player.previous()
+      }
+      IconButton {
+        glyph: cc.playing ? "󰏤" : "󰐊"
+        glyphSize: Style.font.title
+        opacity: cc.hasMedia && cc.player.canTogglePlaying ? 1 : 0.4
+        onClicked: if (cc.hasMedia && cc.player.canTogglePlaying) cc.player.togglePlaying()
+      }
+      IconButton {
+        glyph: "󰒭"
+        opacity: cc.hasMedia && cc.player.canGoNext ? 1 : 0.4
+        onClicked: if (cc.hasMedia && cc.player.canGoNext) cc.player.next()
+      }
     }
   }
 }
