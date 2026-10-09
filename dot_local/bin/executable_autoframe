@@ -214,7 +214,9 @@ def placeholder(w, h, text):
 
 
 def open_camera(source, w, h, fps):
-    cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
+    # OpenCV's V4L2 backend refuses /dev/v4l/by-id paths; it takes the index.
+    index = int(os.path.realpath(source).removeprefix("/dev/video"))
+    cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
     if not cap.isOpened():
         return None
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
