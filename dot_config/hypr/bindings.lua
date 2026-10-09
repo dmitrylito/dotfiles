@@ -254,7 +254,7 @@ end
 
 hl.unbind("SUPER + S") -- Omarchy default: Toggle scratchpad
 hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad (fit current monitor)" })
-o.bind("SUPER + E", "Toggle AI scratchpad", hl.dsp.workspace.toggle_special("AI"))
+o.bind("SUPER + E", "Toggle notification center", { ipc = "notification-center.toggle" })
 o.bind("SUPER + D", "Toggle Spotify scratchpad", spotify_toggle)
 o.bind("SUPER + SHIFT + M", "Music", spotify_toggle)
 
