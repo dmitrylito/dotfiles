@@ -1,5 +1,6 @@
-// Bell bar widget: recent-notification list, reminder management, and a DND
-// toggle for the Omarchy 4 notifications service. Notification history lives on
+// Bell bar widget: control-center tiles and sliders (ControlCenter.qml), the
+// recent-notification list, reminder management, and a DND toggle for the
+// Omarchy 4 notifications service. Notification history lives on
 // disk (one JSON file per entry under the service's historyDir); live toasts
 // come from service.popupModel; reminders come from `omarchy reminder`, which
 // backs each one with a transient systemd user timer.
@@ -22,6 +23,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "NotificationLogic.js" as NotificationLogic
 
@@ -98,11 +100,11 @@ BarWidget {
 
   // Theme palette (mirrors the notification cards so the popup matches the
   // rest of the notification stack).
-  readonly property color colForeground: Color.foreground
-  readonly property color colDim: Qt.darker(Color.foreground, 1.4)
-  readonly property color colBorder: Style.normalBorderFor(Color.foreground, Color.accent)
-  readonly property color colSurface: Style.normalFillFor(Color.foreground, Color.accent)
-  readonly property color colAccent: Color.accent
+  readonly property color colForeground: Commons.Color.foreground
+  readonly property color colDim: Qt.darker(Commons.Color.foreground, 1.4)
+  readonly property color colBorder: Style.normalBorderFor(Commons.Color.foreground, Commons.Color.accent)
+  readonly property color colSurface: Style.normalFillFor(Commons.Color.foreground, Commons.Color.accent)
+  readonly property color colAccent: Commons.Color.accent
   readonly property int cardRadius: Style.cornerRadius
 
   implicitWidth: button.implicitWidth
@@ -385,21 +387,38 @@ BarWidget {
     open: root.popupOpen
     focusTarget: keyCatcher
     contentWidth: popup.fittedContentWidth(Style.space(440))
-    contentHeight: popup.cappedContentHeight(Style.space(540))
+    contentHeight: popup.cappedContentHeight(Style.space(820))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
       // Every key on the Reminders tab belongs to a text field, and the
       // catcher's hjkl / x / space bindings would eat them.
-      blocked: root.activeTab === "reminders"
+      blocked: root.activeTab === "reminders" || controls.editing
       onCloseRequested: root.close()
 
       ColumnLayout {
         anchors.fill: parent
         spacing: Style.space(10)
 
-        // ----------------------------------------- tabs + DND
+        ControlCenter {
+          id: controls
+          Layout.fillWidth: true
+          bar: root.bar
+          open: root.popupOpen
+          dnd: root.dnd
+          colForeground: root.colForeground
+          colDim: root.colDim
+          colBorder: root.colBorder
+          colSurface: root.colSurface
+          colAccent: root.colAccent
+          cardRadius: root.cardRadius
+          onDndToggleRequested: root.toggleDnd()
+        }
+
+        PanelSeparator { Layout.fillWidth: true }
+
+        // ----------------------------------------- tabs
         RowLayout {
           Layout.fillWidth: true
           spacing: Style.space(8)
@@ -418,51 +437,6 @@ BarWidget {
             fontSize: Style.font.caption
             focusable: false
             onChanged: function(tab) { root.activeTab = tab }
-          }
-
-          Item { Layout.fillWidth: true }
-
-          BorderSurface {
-            id: dndPill
-            visible: root.activeTab === "notifications"
-            Layout.preferredHeight: Math.max(Style.space(24), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
-            Layout.preferredWidth: dndLabel.implicitWidth + dndGlyph.implicitWidth + Style.space(18)
-            radius: Math.min(Style.space(12), root.cardRadius + Style.space(6))
-            color: dndOn ? root.colAccent : root.colSurface
-            borderSpec: Border.flat(dndOn ? root.colAccent : root.colBorder, Style.normalBorderWidth)
-
-            readonly property bool dndOn: root.dnd
-
-            Row {
-              anchors.centerIn: parent
-              spacing: Style.space(4)
-
-              Text {
-                id: dndGlyph
-                text: dndPill.dndOn ? "󰂛" : "󰂚"
-                font.family: root.bar ? root.bar.fontFamily : ""
-                color: dndPill.dndOn ? Color.background : root.colDim
-                font.pixelSize: Style.font.body
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              Text {
-                id: dndLabel
-                text: dndPill.dndOn ? "DND on" : "DND off"
-                font.family: root.bar ? root.bar.fontFamily : ""
-                color: dndPill.dndOn ? Color.background : root.colDim
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                anchors.verticalCenter: parent.verticalCenter
-              }
-            }
-
-            MouseArea {
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.toggleDnd()
-            }
           }
         }
 
