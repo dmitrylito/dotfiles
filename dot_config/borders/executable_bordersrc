@@ -7,11 +7,13 @@
 #
 # Width/rounding mirror the Hyprland looknfeel on the omarchy profile
 # (border_size = 4, rounding = 10); colors are Catppuccin Mocha.
+# hidpi=on doubles the border surfaces: ~680MB vs ~170MB on the two non-Retina
+# 3440x1440 externals. Borders look softer on the built-in Retina panel.
 
 options=(
   style=round
   width=4.0
-  hidpi=on
+  hidpi=off
   active_color=0xff89b4fa
   inactive_color=0x40585b70
 )
