@@ -49,6 +49,7 @@ system/
 .local/bin/window-time-tab-host
 .local/bin/discord-ptm
 .local/bin/work-mode
+.local/bin/lazygit
 .local/share/applications/
 .XCompose
 {{ end }}

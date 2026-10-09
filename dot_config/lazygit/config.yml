@@ -1,28 +1,42 @@
 git:
   diffRenderers:
-    - command: delta --paging=never --side-by-side --line-numbers --hyperlinks --hyperlinks-file-link-format="lazygit-edit://{path}:{line}";
+    - command: delta --{{colorScheme}} --paging=never --line-numbers --hyperlinks --hyperlinks-file-link-format="lazygit-edit://{path}:{line}" {{if gt .width 160}}--side-by-side{{end}}
   merging:
     args: "--no-ff"
+# Omarchy machines layer ~/.local/state/omarchy/current/theme/lazygit.yml over this
+# theme through ~/.local/bin/lazygit; every other profile uses it as is.
 gui:
+  showRandomTip: false
+  showCommandLog: false
   theme:
     activeBorderColor:
-      - "#a6e3a1"
+      - "#89b4fa"
       - bold
     inactiveBorderColor:
-      - "#a6adc8"
+      - "#6c7086"
+    searchingActiveBorderColor:
+      - "#f9e2af"
+      - bold
     optionsTextColor:
       - "#89b4fa"
     selectedLineBgColor:
       - "#313244"
+    inactiveViewSelectedLineBgColor:
+      - "#181825"
+    cherryPickedCommitFgColor:
+      - "#89b4fa"
     cherryPickedCommitBgColor:
       - "#45475a"
-    cherryPickedCommitFgColor:
-      - "#a6e3a1"
+    markedBaseCommitFgColor:
+      - "#89b4fa"
+    markedBaseCommitBgColor:
+      - "#f9e2af"
     unstagedChangesColor:
       - "#f38ba8"
     defaultFgColor:
       - "#cdd6f4"
-    searchingActiveBorderColor:
-      - "#f9e2af"
-  authorColors:
-    "*": "#b4befe"
+    authorColors:
+      "*": "#b4befe"
+disableStartupPopups: true
+update:
+  method: never
