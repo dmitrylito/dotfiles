@@ -24,7 +24,9 @@ BarIndicator {
   }
 
   Process {
-    command: ["bash", "-c", "omarchy-voxtype-status"]
+    // omarchy-voxtype-status was dropped from Omarchy edge. The loop re-attaches
+    // after the voxtype daemon restarts and --follow exits.
+    command: ["bash", "-c", "while :; do voxtype status --follow --format json; sleep 2; done"]
     running: true
     stdout: SplitParser {
       onRead: function(data) { root.update(data) }
