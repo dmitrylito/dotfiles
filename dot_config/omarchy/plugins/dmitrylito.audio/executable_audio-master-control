@@ -4,7 +4,7 @@ set -euo pipefail
 
 action=${1:-status}
 source_name=$(pactl get-default-source)
-mapfile -t source_ids < <(pactl list short sources | awk -v name="$source_name" '$2 == name { print $1 }')
+mapfile -t source_ids < <(pactl list short sources | awk -F'\t' -v name="$source_name" '$2 == name { print $1 }')
 
 sink_on=0
 if ! pactl get-sink-mute @DEFAULT_SINK@ | grep -q 'yes'; then sink_on=1; fi
