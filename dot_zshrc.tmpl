@@ -45,8 +45,8 @@ plugins=(
   sudo
   docker
   docker-compose
-  gpg-agent
-  gcloud
+{{ if ne (.profile | lower) "mac" }}  gpg-agent
+{{ end }}  gcloud
   uv
   fzf
 )
@@ -57,6 +57,12 @@ for plugin in zsh-sage you-should-use zsh-syntax-highlighting; do
   [[ -d "$ZSH_CUSTOM/plugins/$plugin" ]] && plugins+=("$plugin")
 done
 unset plugin
+{{- if eq (.profile | lower) "mac" }}
+
+# OMZ's gpg-agent plugin runs `gpgconf --list-options` (~470ms on macOS) on every
+# shell start; ssh support is off here, so only GPG_TTY is needed for signing.
+export GPG_TTY=$TTY
+{{- end }}
 
 if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
   source "$ZSH/oh-my-zsh.sh"
