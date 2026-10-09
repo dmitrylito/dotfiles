@@ -6,15 +6,25 @@ interrupts his work and has twice left stray windows behind. This is not negotia
 for exploratory testing — only a final confirmation runs against the live session,
 and only after he says so.
 
-    hypr-testbed start [monitors]   # 3 by default, ws 1/2/3 one per monitor
+    hypr-testbed start [--headless] [monitors]   # 3 by default, ws 1/2/3 one per monitor
     eval "$(hypr-testbed env)"      # points hyprctl, launched apps and Chromium at it
     hypr-testbed run <cmd...>       # or one command at a time
+    hypr-testbed screenshot [monitor|ws] [file]  # prints the PNG path
     hypr-testbed status
     hypr-testbed stop               # always, when done
 
-- A running testbed has **no window in the host session** — it removes its own
-  nested window once the virtual monitors exist. `HYPR_TESTBED_VISIBLE=1` keeps it
-  (parked on host workspace 9) when the point is to watch it.
+- A running testbed keeps its nested window on a **hidden host scratchpad**;
+  `HYPR_TESTBED_VISIBLE=1` parks it on host workspace 9 instead.
+- **Screenshots never need `show`** — `show` puts the testbed on his screen. Monitor 1
+  (WAYLAND-1) is that hidden window and cannot be captured; the HEADLESS monitors can.
+  Start with `--headless` whenever the result has to be looked at, so every workspace
+  is capturable. That includes the omarchy shell: run a second
+  `quickshell -n -p <copy of $OMARCHY_PATH/shell>` with `HOME` pointed at a copied
+  config and side-effect services (notifications, idle, lock, polkit) in
+  `disabledPlugins`, and address it with `HOME=… quickshell -p <copy> ipc call …`.
+- **Applying to the live session is a deploy, not a test.** `chezmoi apply` of shell or
+  Hyprland files, `omarchy restart shell`, and live `omarchy-shell` IPC calls wait for
+  his OK.
 - **Chromium works in it.** The testbed exports `CHROMIUM_USER_DATA_DIR`, seeded with
   the real profile names so every derived WM_CLASS matches the real session.
   `work-mode` has been run end to end inside it. Signing in there is a separate
