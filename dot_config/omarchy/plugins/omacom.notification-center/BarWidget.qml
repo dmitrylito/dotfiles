@@ -65,9 +65,17 @@ BarWidget {
   property int liveCount: 0
   property bool dnd: false
 
+  // Ask for the target state rather than a toggle, so a click landing while the
+  // previous call is in flight cannot undo it.
+  property bool wantDnd: false
   function toggleDnd() {
-    if (dndProc.running) return
     dnd = !dnd
+    wantDnd = dnd
+    sendDnd()
+  }
+  function sendDnd() {
+    if (dndProc.running) return
+    dndProc.command = ["omarchy-shell", "notifications", "setDnd", wantDnd ? "on" : "off"]
     dndProc.running = true
   }
 
@@ -76,7 +84,7 @@ BarWidget {
     var count = Number(lines[0] || 0)
     var changed = count !== liveCount
     liveCount = count
-    dnd = String(lines[1] || "") === "dnd"
+    if (!dndProc.running) dnd = String(lines[1] || "") === "dnd"
     if (changed && popupOpen) refreshTimer.restart()
   }
 
@@ -265,7 +273,12 @@ BarWidget {
       "settings=$2\n" +
       "set -- \"$1\"/*.json\n" +
       "printf '%s\\n' \"$#\"\n" +
-      "grep -qs '\"dnd\"[[:space:]]*:[[:space:]]*true' \"$settings\" && echo dnd || echo ok",
+      // The service writes notifications.json 200ms after a change, so the file
+      // lags a toggle; ask the service, and read the file only if it is down.
+      "case $(omarchy-shell notifications dndState 2>/dev/null) in\n" +
+      "  on) echo dnd ;; off) echo ok ;;\n" +
+      "  *) grep -qs '\"dnd\"[[:space:]]*:[[:space:]]*true' \"$settings\" && echo dnd || echo ok ;;\n" +
+      "esac",
       "--", root.popupDir, root.settingsPath]
     stdout: StdioCollector {
       waitForEnd: true
@@ -276,8 +289,15 @@ BarWidget {
   Process {
     id: dndProc
     running: false
-    command: ["omarchy-shell", "-q", "notifications", "toggleDnd"]
-    onExited: if (!stateProc.running) stateProc.running = true
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var state = String(text).trim()
+        if (state !== "on" && state !== "off") return
+        if ((state === "on") !== root.wantDnd) Qt.callLater(root.sendDnd)
+        else root.dnd = root.wantDnd
+      }
+    }
   }
 
   Process {
