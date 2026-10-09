@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Wayland
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // Full-screen alert for a starting meeting. Summoned by the `meeting-alert`
@@ -23,11 +24,11 @@ Item {
   property int snoozeMinutes: 5
   property string joinProfile: ""
 
-  property color background: Color.menu.background
-  property color foreground: Color.menu.text
-  property color border: Color.menu.border
+  property color background: Commons.Color.menu.background
+  property color foreground: Commons.Color.menu.text
+  property color border: Commons.Color.menu.border
   property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
-  property color scrim: Color.menu.scrim
+  property color scrim: Commons.Color.menu.scrim
 
   function open(payloadJson) {
     var payload = ({})

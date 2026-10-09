@@ -5,9 +5,15 @@ built-in notification service.
 
 It adds:
 
+- a control-center block above the tabs: Wi-Fi, Bluetooth, Do Not Disturb
+  and Night Light tiles (click toggles, chevron expands networks / paired
+  devices), output and input volume sliders with device pickers, and a
+  now-playing card. It replaces the separate network, Bluetooth and audio bar
+  buttons; mute state goes through `dmitrylito.audio/audio-master-control`, so
+  keep that plugin installed even though it is off the bar;
 - a list of recent notifications with relative timestamps;
 - per-notification dismissal and a Clear action;
-- a Do Not Disturb toggle (right-click the bell, or the pill in the popup);
+- a Do Not Disturb toggle (right-click the bell, or its tile in the popup);
 - a Reminders tab that lists, creates, reschedules and cancels the timers
   behind `omarchy reminder`;
 - an IPC toggle for keybinds: `omarchy-shell notification-center toggle`.
