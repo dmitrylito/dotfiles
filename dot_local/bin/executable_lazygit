@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Wrapper for /usr/bin/lazygit, deployed on the omarchy profile only.
+#
+# Layers the current Omarchy theme over ~/.config/lazygit/config.yml. `omarchy theme set`
+# renders that layer from ~/.config/omarchy/themed/lazygit.yml.tpl into the theme dir.
+# LG_CONFIG_FILE aborts lazygit on a missing file, so the layer is skipped until a theme
+# set has rendered it, and an LG_CONFIG_FILE set by the caller (snacks.nvim) wins.
+
+theme="$HOME/.local/state/omarchy/current/theme/lazygit.yml"
+config="${XDG_CONFIG_HOME:-$HOME/.config}/lazygit/config.yml"
+
+if [[ -z "${LG_CONFIG_FILE:-}" && -f "$theme" && -f "$config" ]]; then
+  export LG_CONFIG_FILE="$config,$theme"
+fi
+
+exec /usr/bin/lazygit "$@"
