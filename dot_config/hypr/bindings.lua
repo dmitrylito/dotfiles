@@ -94,6 +94,38 @@ o.bind("SUPER + ALT + L", "Move window to group on left", "hyprctl dispatch move
 o.bind("SUPER + N", "Toggle window split", hl.dsp.layout("togglesplit"))
 
 -- ---------------------------------------------------------------------------
+-- Editing
+-- ---------------------------------------------------------------------------
+
+-- Copies of Omarchy's clipboard helpers (default/hypr/bindings/clipboard.lua),
+-- which are local to that file. send_key_state down/up instead of send_shortcut works
+-- around Hyprland leaving synthetic keys stuck.
+local function send_shortcut_once(mods, key)
+	hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down" }))
+	hl.timer(function()
+		hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "up" }))
+	end, { timeout = 50, type = "oneshot" })
+end
+
+local function active_window_is_terminal()
+	local window = hl.get_active_window()
+	for _, tag in ipairs(window and window.tags or {}) do
+		if tag:gsub("%*$", "") == "terminal" then
+			return true
+		end
+	end
+	return false
+end
+
+-- SUPER + A (Select all) comes from Omarchy's clipboard.lua.
+-- Not sent to terminals: Ctrl+Z there suspends the foreground job.
+o.bind("SUPER + Z", "Undo", function()
+	if not active_window_is_terminal() then
+		send_shortcut_once("CTRL", "Z")
+	end
+end)
+
+-- ---------------------------------------------------------------------------
 -- Pop-out
 -- ---------------------------------------------------------------------------
 
@@ -237,7 +269,33 @@ o.bind(
 -- Dictation
 -- ---------------------------------------------------------------------------
 
-o.bind("SUPER + Z", "Toggle dictation", "voxtype record toggle")
+local dictation_tap_window_ms = 300
+local dictation_tap_generation = 0
+local dictation_tap_armed = false
+
+local function dictation_super_tap()
+	if dictation_tap_armed then
+		dictation_tap_armed = false
+		hl.exec_cmd("voxtype record toggle")
+		return
+	end
+	dictation_tap_armed = true
+	dictation_tap_generation = dictation_tap_generation + 1
+	local generation = dictation_tap_generation
+	-- A stale timer from an earlier tap must not disarm a newer one.
+	hl.timer(function()
+		if generation == dictation_tap_generation then
+			dictation_tap_armed = false
+		end
+	end, { timeout = dictation_tap_window_ms, type = "oneshot" })
+end
+
+-- A modifier's mask changes between its press and release, so match the keysym
+-- independently of it (same as Omarchy's ALT + Alt_R push-to-talk).
+o.bind("SUPER + Super_L", "Toggle dictation (double-tap Super)", dictation_super_tap, {
+	release = true,
+	ignore_mods = true,
+})
 o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true }) -- re-added after omarchy's region picker tears down; see chezmoi.lua
 
 -- ---------------------------------------------------------------------------
