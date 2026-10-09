@@ -22,7 +22,10 @@
 # exclusive_caps=1 is what makes Chromium list the device as a camera.
 #
 # The YuNet face model is downloaded once into $XDG_CACHE_HOME/autoframe/.
-# Tuning flags: --face-size, --max-zoom, --head-y; see --help.
+# Tuning flags: --face-size, --max-zoom, --head-y, --deadzone(-y), --settle; see --help.
+# The crop holds still while the face stays inside the --deadzone/--deadzone-y box (and its
+# size within --zoom-deadzone); it reframes only after the face has been outside
+# that box for --settle seconds, so leaning or glancing away does not move it.
 
 import argparse
 import fcntl
@@ -52,6 +55,7 @@ VIEWER_POLL_SECONDS = 1.0
 VIEWER_GONE_SECONDS = 3.0
 IDLE_FPS = 5
 CAMERA_RETRY_SECONDS = 2.0
+TARGET_SMOOTH_SECONDS = 0.3
 
 V4L2_BUF_TYPE_VIDEO_OUTPUT = 2
 V4L2_FIELD_NONE = 1
@@ -119,10 +123,14 @@ class Framer:
         self.face_size = args.face_size
         self.head_y = args.head_y
         self.deadzone = args.deadzone
+        self.deadzone_y = args.deadzone_y
+        self.zoom_deadzone = math.log(1 + args.zoom_deadzone)
+        self.settle = args.settle
         self.tau = args.glide
         self.lost_hold = args.lost_hold
         self.target = self.goal = self.cur = self.full
         self.last_seen = -math.inf
+        self.outside_since = math.inf
 
     def clamp(self, b):
         h = min(b.h, self.src_h, self.src_w / self.aspect)
@@ -142,22 +150,32 @@ class Framer:
         cy = (y0 + y1) / 2 + (0.5 - self.head_y) * h
         return self.clamp(Box((x0 + x1) / 2, cy, h))
 
+    def outside(self, t):
+        g = self.goal
+        return (
+            abs(t.cx - g.cx) > self.deadzone * g.h * self.aspect
+            or abs(t.cy - g.cy) > self.deadzone_y * g.h
+            or abs(math.log(t.h / g.h)) > self.zoom_deadzone
+        )
+
     def update(self, faces, now, dt):
         if faces:
             self.last_seen = now
             want = self.wanted(faces)
-            a = 1 - math.exp(-dt / 0.15)
+            if self.goal is self.full:
+                self.target = self.goal = want
+            a = 1 - math.exp(-dt / TARGET_SMOOTH_SECONDS)
             self.target = Box(*(t + (w - t) * a for t, w in zip(vars(self.target).values(), vars(want).values())))
-            g, t = self.goal, self.target
-            gw = g.h * self.aspect
-            if (
-                abs(t.cx - g.cx) > self.deadzone * gw
-                or abs(t.cy - g.cy) > self.deadzone * g.h
-                or abs(t.h / g.h - 1) > self.deadzone * 1.5
-            ):
-                self.goal = t
+            if not self.outside(self.target):
+                self.outside_since = math.inf
+            elif now - min(self.outside_since, now) >= self.settle:
+                self.goal = self.target
+                self.outside_since = math.inf
+            else:
+                self.outside_since = min(self.outside_since, now)
         elif now - self.last_seen > self.lost_hold:
             self.goal = self.full
+            self.outside_since = math.inf
         a = 1 - math.exp(-dt / self.tau)
         self.cur = self.clamp(Box(*(c + (g - c) * a for c, g in zip(vars(self.cur).values(), vars(self.goal).values()))))
         b = self.cur
@@ -317,10 +335,13 @@ def main():
     p.add_argument("--out-size", type=size_arg, default=(1280, 720), help="virtual camera size")
     p.add_argument("--fps", type=int, default=30)
     p.add_argument("--face-size", type=float, default=0.42, help="face height as a share of the frame height")
-    p.add_argument("--head-y", type=float, default=0.42, help="face centre position from the top, 0-1")
+    p.add_argument("--head-y", type=float, default=0.56, help="face centre position from the top, 0-1")
     p.add_argument("--max-zoom", type=float, default=2.5, help="largest zoom relative to the full camera view")
-    p.add_argument("--deadzone", type=float, default=0.08, help="how far the face may drift before reframing")
-    p.add_argument("--glide", type=float, default=0.45, help="reframe glide time constant, seconds")
+    p.add_argument("--deadzone", type=float, default=0.15, help="how far the face may drift sideways before reframing, share of the crop width")
+    p.add_argument("--deadzone-y", type=float, default=0.1, help="how far the face may drift up or down before reframing, share of the crop height")
+    p.add_argument("--zoom-deadzone", type=float, default=0.3, help="how much the face size may change before reframing, share")
+    p.add_argument("--settle", type=float, default=0.7, help="seconds the face must stay outside the deadzone before reframing")
+    p.add_argument("--glide", type=float, default=0.7, help="reframe glide time constant, seconds")
     p.add_argument("--lost-hold", type=float, default=3.0, help="seconds without a face before zooming out")
     p.add_argument("--always-on", action="store_true", help="keep the camera open with no viewers")
     p.add_argument("--input", help="reframe this video file instead of the camera")
