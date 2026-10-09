@@ -1,2 +1,3 @@
 onnxruntime-opt-rocm
+v4l2loopback-dkms
 vulkan-tools
