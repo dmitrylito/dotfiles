@@ -272,11 +272,27 @@ o.bind(
 local dictation_tap_window_ms = 300
 local dictation_tap_generation = 0
 local dictation_tap_armed = false
+local voxtype_state_file = (os.getenv("XDG_RUNTIME_DIR") or "") .. "/voxtype/state"
+
+local function dictation_is_recording()
+	local file = io.open(voxtype_state_file, "r")
+	if not file then
+		return false
+	end
+	local state = file:read("*l")
+	file:close()
+	return state == "recording" or state == "streaming"
+end
 
 local function dictation_super_tap()
+	if dictation_is_recording() then
+		dictation_tap_armed = false
+		hl.exec_cmd("voxtype record stop")
+		return
+	end
 	if dictation_tap_armed then
 		dictation_tap_armed = false
-		hl.exec_cmd("voxtype record toggle")
+		hl.exec_cmd("voxtype record start")
 		return
 	end
 	dictation_tap_armed = true
@@ -292,7 +308,7 @@ end
 
 -- A modifier's mask changes between its press and release, so match the keysym
 -- independently of it (same as Omarchy's ALT + Alt_R push-to-talk).
-o.bind("SUPER + Super_L", "Toggle dictation (double-tap Super)", dictation_super_tap, {
+o.bind("SUPER + Super_L", "Dictation (double-tap Super to start, tap to stop)", dictation_super_tap, {
 	release = true,
 	ignore_mods = true,
 })
