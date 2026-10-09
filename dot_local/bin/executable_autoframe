@@ -316,7 +316,7 @@ def main():
     p.add_argument("--in-size", type=size_arg, default=(2560, 1440), help="camera capture size")
     p.add_argument("--out-size", type=size_arg, default=(1280, 720), help="virtual camera size")
     p.add_argument("--fps", type=int, default=30)
-    p.add_argument("--face-size", type=float, default=0.30, help="face height as a share of the frame height")
+    p.add_argument("--face-size", type=float, default=0.42, help="face height as a share of the frame height")
     p.add_argument("--head-y", type=float, default=0.42, help="face centre position from the top, 0-1")
     p.add_argument("--max-zoom", type=float, default=2.5, help="largest zoom relative to the full camera view")
     p.add_argument("--deadzone", type=float, default=0.08, help="how far the face may drift before reframing")
