@@ -1,0 +1,17 @@
+[Unit]
+Description=NoiseTorch on the fifine mic, set as default source
+PartOf=graphical-session.target
+After=graphical-session.target pipewire-pulse.service wireplumber.service
+Wants=pipewire-pulse.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=60
+ExecStartPre=/bin/sh -c 'until pactl list short sources | grep -q alsa_input.usb-3142_fifine_Microphone-00.analog-stereo; do sleep 1; done'
+ExecStart=/usr/bin/noisetorch -i -s alsa_input.usb-3142_fifine_Microphone-00.analog-stereo -t 85
+ExecStartPost=/usr/bin/pactl set-default-source "NoiseTorch Microphone for fifine Microphone"
+ExecStop=/usr/bin/noisetorch -u
+
+[Install]
+WantedBy=graphical-session.target
