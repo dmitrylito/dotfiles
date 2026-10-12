@@ -3,7 +3,7 @@
 
 Usage: claude-prune-agents [--hours N] [--states done,stopped] [--dry-run]
        Run by the claude-prune-agents.timer systemd user unit, hourly.
-       Default cutoff: finished and idle for more than 5 hours.
+       Default cutoff: finished and idle for more than 72 hours.
 
 Claude prunes ~/.claude/projects, plans, tasks and friends at startup via
 cleanupPeriodDays, but ~/.claude/jobs is not in that sweep, so the agent-view
@@ -86,7 +86,7 @@ def idle_hours(job_id):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--hours", type=float, default=5)
+    ap.add_argument("--hours", type=float, default=72)
     ap.add_argument("--states", default="done,stopped")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
