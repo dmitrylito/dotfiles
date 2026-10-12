@@ -255,10 +255,6 @@ DISABLED_PLUGINS = (
 )
 
 ENFORCED_SCALARS = {
-    # Transcript retention. Enforced, not a default: every established box already wrote the
-    # key, so a BASELINE change never reaches them and /resume silently keeps losing history
-    # at the old cutoff.
-    "cleanupPeriodDays": 15,
     # Terse ships in dot_claude/output-styles and carries Proactive's execution guidance in
     # its own text, so switching away from the built-in style loses nothing.
     "outputStyle": "Terse",
@@ -375,6 +371,17 @@ def remove_isolation_hooks(hooks):
     return hooks
 
 
+# Deleted from the live file on every apply so Claude Code's own default applies. Every
+# established box already wrote these keys, so dropping them from BASELINE alone would not.
+REMOVED_KEYS = ("cleanupPeriodDays",)
+
+
+def remove_keys(live, keys):
+    for key in keys:
+        live.pop(key, None)
+    return live
+
+
 def enforce_scalars(live, enforced):
     for key, value in enforced.items():
         live[key] = clone(value)
@@ -423,6 +430,7 @@ current["hooks"] = enforce_moshi_hooks(current.get("hooks"), BASELINE["hooks"])
 enforce_style_hooks(current["hooks"])
 remove_isolation_hooks(current["hooks"])
 enforce_scalars(current, ENFORCED_SCALARS)
+remove_keys(current, REMOVED_KEYS)
 enforce_disabled_plugins(current, DISABLED_PLUGINS)
 enforce_allow(current, BASELINE["permissions"])
 
