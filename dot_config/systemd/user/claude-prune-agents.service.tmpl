@@ -1,7 +1,0 @@
-[Unit]
-Description=Drop stale finished sessions out of Claude Code's agent view
-
-[Service]
-Type=oneshot
-Environment=PATH={{ .chezmoi.homeDir }}/.local/share/mise/shims:{{ .chezmoi.homeDir }}/.local/bin:/usr/bin
-ExecStart={{ .chezmoi.homeDir }}/.local/bin/claude-prune-agents
