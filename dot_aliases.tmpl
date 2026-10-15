@@ -1,6 +1,22 @@
 # vim: set filetype=zsh:
 alias n="nvim"
 alias lg="lazygit"
+# ops-center's compose file lives in docker/; scope its COMPOSE_* vars to this one
+# process. Exporting them (the old .envrc) leaked into other repos' compose runs and
+# replaced prod ops-db/redis.
+lazydocker() {
+  local main profile
+  main=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && main=${main%/.git}
+  if [[ $main == "$HOME/Projects/ops-center" ]]; then
+    profile=${LLM_PROFILE:-$(sed -n 's/^LLM_PROFILE ?= //p' "$main/Makefile")}
+    COMPOSE_PROJECT_NAME=ops-center \
+      COMPOSE_FILE="$main/docker/docker-compose.yml" \
+      COMPOSE_ENV_FILES="$main/docker/.env,$main/docker/model-profiles/$profile.profile" \
+      command lazydocker "$@"
+  else
+    command lazydocker "$@"
+  fi
+}
 alias lzd="lazydocker"
 alias lzp='lazypodman'
 alias cz="chezmoi"
