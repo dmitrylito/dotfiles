@@ -129,10 +129,9 @@ outer.right = 10
 # Launch Terminal (focus existing Ghostty window, else launch it)
 cmd-ctrl-alt-semicolon = 'exec-and-forget wid=$(aerospace list-windows --all --format "%{window-id}|%{app-bundle-id}" | grep "com.mitchellh.ghostty" | head -1 | cut -d"|" -f1 | tr -d " "); if [ -n "$wid" ]; then aerospace focus --window-id "$wid"; else open -a Ghostty; fi'
 
-# Herdr remote picker (mirrors omarchy's SUPER+B). Ghostty's own `-e` is unsupported when
-# invoked as a CLI on macOS, so go through `open -na ... --args`; the login zsh is what puts
-# /opt/homebrew/bin (herdr, fzf) on PATH, which the GUI launch env lacks.
-cmd-ctrl-alt-b = 'exec-and-forget open -na Ghostty --args -e /bin/zsh -lc "$HOME/.local/bin/herdr-remote-picker"'
+# Herdr remote picker (mirrors omarchy's SUPER+B). ghostty-run opens the window in the
+# running Ghostty via AppleScript; `open -na` would start a second Ghostty process.
+cmd-ctrl-alt-b = 'exec-and-forget "$HOME/.local/bin/ghostty-run" "$HOME/.local/bin/herdr-remote-picker"'
 
 # Layout changes
 cmd-ctrl-alt-slash = 'layout tiles horizontal vertical'
