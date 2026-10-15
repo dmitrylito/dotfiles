@@ -86,7 +86,7 @@ APPS=(
 LAYOUT_2='FC-Dialpad.desktop,FC-Chat.desktop | FC-Gmail.desktop'
 WIDTHS_2=(0.556)
 LAYOUT_3='Linear.desktop | FC-Tasks.desktop'
-WIDTHS_3=()
+WIDTHS_3=(0.343)
 
 BROWSER_CLASS='^chromium$'
 
