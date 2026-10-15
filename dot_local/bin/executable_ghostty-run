@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Open a new window in the already-running Ghostty (macOS) and run a command in it,
+# via Ghostty's AppleScript dictionary. `open -na Ghostty --args -e` would start a
+# second Ghostty process instead. The command runs under a login zsh so
+# /opt/homebrew/bin is on PATH (the GUI launch env lacks it).
+# A command that exits in under abnormal-command-exit-runtime (250ms) shows
+# Ghostty's "failed to launch" screen even on success.
+# Usage: ghostty-run <command...>
+
+osascript - "$*" <<'EOF'
+on run argv
+  tell application "Ghostty"
+    set cfg to new surface configuration
+    set command of cfg to "/bin/zsh -lc " & quoted form of (item 1 of argv)
+    new window with configuration cfg
+  end tell
+end run
+EOF
