@@ -125,6 +125,35 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
     assert ".local/libexec/fc-daily-report/collect.py" in state, label
     settings = json.loads(state[".claude/settings.json"]["contents"])
     assert any(f"under {home} with" in rule for rule in settings["autoMode"]["allow"]), label
+    hook_modifier = run(
+        command + ["execute-template"], env, home,
+        (staged / "dot_codex/modify_hooks.json.tmpl").read_text(),
+    )
+    hook_script = home / "check-codex-hooks.py"
+    hook_script.write_text(hook_modifier)
+    events = ("PermissionRequest", "SessionStart", "Stop", "UserPromptSubmit")
+    custom = {"type": "command", "command": "custom-hook"}
+    stale = {"type": "command", "command": "'/old/bin/moshi-hook' codex-hook"}
+    fixture = {"description": "preserved", "hooks": {
+        event: [{"matcher": "startup", "hooks": [custom, stale, stale]}]
+        for event in events
+    }}
+    fixture["hooks"]["PostToolUse"] = [{"hooks": [custom]}]
+    for initial in ({}, fixture):
+        output = run([sys.executable, str(hook_script)], env, home, json.dumps(initial))
+        merged = json.loads(output)
+        for event in events:
+            expected = [{"matcher": "startup", "hooks": [custom]}] if initial else []
+            if profile != "mac":
+                expected.append({"hooks": [{
+                    "type": "command",
+                    "command": f"'{home}/.local/bin/moshi-hook-codex-guard' codex-hook",
+                }]})
+            assert merged["hooks"].get(event, []) == expected, f"{label}: {event} hooks"
+        if initial:
+            assert merged["description"] == fixture["description"], label
+            assert merged["hooks"]["PostToolUse"] == fixture["hooks"]["PostToolUse"], label
+        assert run([sys.executable, str(hook_script)], env, home, output) == output, label
 
 
 def main():
