@@ -55,6 +55,11 @@ def check_syntax(name, contents, env, cwd):
 
 def validate_case(profile, work, hostname, staged, scratch, base_env, age):
     label = f"{profile}-{str(work).lower()}-{hostname}"
+    # debug is stored as omarchy plus the flag; other configs predate the key entirely.
+    debug = profile == "debug"
+    debug_data = {"debug": True} if debug else {}
+    if debug:
+        profile = "omarchy"
     home = scratch / label
     config_dir = home / ".config/chezmoi"
     config_dir.mkdir(parents=True)
@@ -67,7 +72,7 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
     config = {
         "sourceDir": str(staged), "destDir": str(home),
         "encryption": "age", "useBuiltinAge": True, "age": age,
-        "data": {"profile": profile, "work": work},
+        "data": {"profile": profile, "work": work} | debug_data,
         "git": {"autoCommit": False, "autoPush": False},
     }
     (config_dir / "chezmoi.json").write_text(json.dumps(config))
@@ -78,7 +83,8 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
         command + ["execute-template", "--init"], env, home,
         (staged / ".chezmoi.toml.tmpl").read_text(),
     )
-    tomllib.loads(rendered_config)
+    rendered_data = tomllib.loads(rendered_config)["data"]
+    assert (rendered_data["profile"], rendered_data["debug"]) == (profile, debug), label
     state = json.loads(run(command + ["dump", "--format=json"], env, home))
     for name, entry in state.items():
         if "contents" in entry:
@@ -92,7 +98,13 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
     plugins = state[".zshrc"]["contents"].split("plugins=(", 1)[1].split(")", 1)[0].split()
     assert ("archlinux" in plugins) == (profile != "mac"), label
     tools = tomllib.loads(state[".config/mise/config.toml"]["contents"])["tools"]
-    assert tools["agy"] == "latest" and ("codex" in tools) == (profile != "server"), label
+    assert ("agy" in tools) == (not debug) and ("codex" in tools) == (profile != "server"), label
+    for target in (".config/systemd/user/moshi-reguard.service", ".config/voxtype/config.toml", ".config/opencode/opencode.json"):
+        assert (target in state) == (profile == "omarchy" and not debug), f"{label}: {target}"
+    if debug:
+        for target in (".zshrc", ".config/herdr/config.toml", ".config/systemd/user/herdr-server.service",
+                       ".local/bin/moshi-hook-claude-guard", ".config/nvim/init.lua", ".config/git/config"):
+            assert target in state, f"{label}: {target}"
     assert (".config/hypr/hyprland.lua" in state) == (profile == "omarchy"), label
     assert (".config/systemd/user/cer-production-watch.service" in state) == (profile == "server" and hostname == "DLCO-3"), f"{label}: production service routing"
     assert (".config/secrets/github-mcp.env" in state) == (profile == "server"), label
@@ -201,7 +213,7 @@ def main():
         upstream = Path(env["OMARCHY_PATH"]) / "config/hypr/hyprland.lua"
         upstream.parent.mkdir(parents=True)
         shutil.copyfile(FIXTURES / "hyprland.lua", upstream)
-        for profile, hostname in (("omarchy", "validation-host"), ("server", "validation-host"), ("mac", "validation-host"), ("omarchy", "fcoffice"), ("server", "DLCO-1"), ("server", "DLCO-2"), ("server", "DLCO-3")):
+        for profile, hostname in (("omarchy", "validation-host"), ("debug", "validation-host"), ("server", "validation-host"), ("mac", "validation-host"), ("omarchy", "fcoffice"), ("server", "DLCO-1"), ("server", "DLCO-2"), ("server", "DLCO-3")):
             for work in (False, True):
                 validate_case(profile, work, hostname, staged, scratch, env, age)
         if args.installed_omarchy:
@@ -209,7 +221,7 @@ def main():
             contents = run([sys.executable, str(staged / "dot_config/hypr/modify_hyprland.lua")], env | {"OMARCHY_PATH": str(installed)}, home, "")
             check_syntax("hyprland.lua", contents, env, home)
             print(f"installed Omarchy entrypoint validated: {installed}")
-    print("all 14 fixture-based profile/role/host combinations passed")
+    print("all 16 fixture-based profile/role/host combinations passed")
 
 
 if __name__ == "__main__":

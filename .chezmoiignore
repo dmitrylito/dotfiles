@@ -1,5 +1,6 @@
 {{- $profile := .profile | lower -}}
 {{- $work := .work -}}
+{{- $debug := dig "debug" false . -}}
 # Repo tooling — lives in the chezmoi source dir, never deployed to $HOME
 README.md
 package-lock.json
@@ -52,6 +53,58 @@ system/
 .local/bin/lazygit
 .local/share/applications/
 .XCompose
+{{ end }}
+
+{{ if $debug }}
+# Debug USB: shell, Hyprland/Omarchy, herdr, nvim, git, Claude and Codex only.
+# Drops daemons and apps the debug profile does not install. The moshi guard
+# wrappers stay: Claude/Codex hooks call them and they exit 0 without moshi.
+.config/systemd/user/autoframe.service
+.config/systemd/user/dotoold.service
+.config/systemd/user/meeting-alert-sync.service
+.config/systemd/user/meeting-alert-sync.timer
+.config/systemd/user/moshi-hook.service.d/
+.config/systemd/user/moshi-pane-rebind.service
+.config/systemd/user/moshi-pane-rebind.timer
+.config/systemd/user/moshi-reguard.path
+.config/systemd/user/moshi-reguard.service
+.config/systemd/user/noisetorch.service
+.config/systemd/user/pipewire-pulse.service.d/
+.config/systemd/user/rclone-gdrive.service
+.config/systemd/user/window-time.service
+.config/systemd/user/graphical-session.target.wants/autoframe.service
+.config/systemd/user/graphical-session.target.wants/dotoold.service
+.config/systemd/user/graphical-session.target.wants/noisetorch.service
+.config/systemd/user/graphical-session.target.wants/rclone-gdrive.service
+.config/systemd/user/graphical-session.target.wants/window-time.service
+.config/systemd/user/timers.target.wants/meeting-alert-sync.timer
+.config/meeting-alert/
+.config/voxtype/
+.config/opencode/
+.config/yazi/
+.config/ghostty/
+.config/omniwm/
+.config/claude-desktop-flags.conf
+.config/spotify-flags.conf
+.config/mimeapps.list
+# psd replaces ~/.config/chromium with a symlink into RAM; managing any path under it
+# would make chezmoi turn the symlink back into a directory.
+.config/chromium/
+.local/bin/autoframe
+.local/bin/discord-ptm
+.local/bin/ga-mcp-refresh-adc
+.local/bin/import-db
+.local/bin/import-db-fast
+.local/bin/input-remapper-control
+.local/bin/input-remapper-gtk
+.local/bin/meeting-alert
+.local/bin/moshi-pane-rebind
+.local/bin/nautilus
+.local/bin/window-time
+.local/bin/window-time-tab-host
+.local/share/window-time/
+.local/share/applications/
+.local/share/dbus-1/
 {{ end }}
 
 {{ if and (not $work) (ne .chezmoi.hostname "DLCO-1") }}

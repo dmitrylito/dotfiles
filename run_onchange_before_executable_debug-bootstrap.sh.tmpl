@@ -1,0 +1,40 @@
+{{- if dig "debug" false . -}}
+#!/usr/bin/env bash
+# Bootstrap the debug USB profile, which skips the Ansible package reconciliation.
+#
+# Usage: not run by hand. chezmoi runs it before applying files whenever its rendered
+#        content changes (package list hash below).
+#
+# Installs packages/debug/pacman.txt, Oh My Zsh with the custom plugins playbook.yml
+# clones on other profiles, links ~/.local/bin/herdr to the pacman binary (the herdr
+# unit and scripts expect the native-install path), and makes zsh the login shell.
+# Runs before files so ensure-herdr-plugins and the Codex modifier find herdr and uv.
+#
+#   packages/debug/pacman.txt: {{ include "packages/debug/pacman.txt" | sha256sum }}
+set -euo pipefail
+
+mapfile -t packages < <(grep -vE '^[[:space:]]*(#|$)' "{{ joinPath .chezmoi.sourceDir "packages/debug/pacman.txt" }}")
+mapfile -t missing < <(pacman -T "${packages[@]}" || true)
+if ((${#missing[@]})); then
+	sudo pacman -S --needed --noconfirm "${missing[@]}"
+fi
+
+omz="$HOME/.oh-my-zsh"
+[[ -d $omz ]] || git clone --depth 1 https://github.com/ohmyzsh/ohmyzsh.git "$omz"
+while read -r name repo; do
+	[[ -d $omz/custom/plugins/$name ]] || git clone --depth 1 "$repo" "$omz/custom/plugins/$name"
+done <<'EOF'
+zsh-sage https://github.com/UtsavMandal2022/zsh-sage.git
+you-should-use https://github.com/MichaelAquilina/zsh-you-should-use.git
+zsh-syntax-highlighting https://github.com/zsh-users/zsh-syntax-highlighting.git
+EOF
+
+if [[ ! -e $HOME/.local/bin/herdr && -x /usr/bin/herdr ]]; then
+	mkdir -p "$HOME/.local/bin"
+	ln -s /usr/bin/herdr "$HOME/.local/bin/herdr"
+fi
+
+if [[ $(getent passwd "$(id -un)" | cut -d: -f7) != /usr/bin/zsh ]]; then
+	sudo chsh -s /usr/bin/zsh "$(id -un)"
+fi
+{{ end -}}
