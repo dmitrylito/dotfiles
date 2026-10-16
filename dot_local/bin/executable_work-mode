@@ -4,6 +4,7 @@
 #
 #   ws 1 : work browser (chromium, "Work" profile)
 #   ws 2 : Dialpad over FC Chat | FC Gmail
+#          (portrait monitor: FC Gmail over FC Chat over Dialpad)
 #   ws 3 : Linear | FC Tasks
 #   scratchpad : Spotify
 #
@@ -51,6 +52,9 @@
 #     directory (chrome-<host>__<path>-<Profile_Dir>), so URL and class cannot drift.
 #   * Widths are fractions of the row, turned into pixels from the live window
 #     sizes, so no monitor resolution is baked in.
+#   * A workspace with a LAYOUT_<ws>_PORTRAIT uses it when the monitor showing the
+#     workspace is taller than it is wide, so a rotated screen gets rows instead of
+#     columns without a per-host copy of this script.
 # Still device-dependent: which monitor each workspace lives on — that is
 # workspaces.lua (nwg-displays output, per-device and chezmoi-ignored).
 #
@@ -85,6 +89,7 @@ APPS=(
 # Columns "|" left to right, entries "," stacked top to bottom within a column.
 LAYOUT_2='FC-Dialpad.desktop,FC-Chat.desktop | FC-Gmail.desktop'
 WIDTHS_2=(0.556)
+LAYOUT_2_PORTRAIT='FC-Gmail.desktop,FC-Chat.desktop,FC-Dialpad.desktop'
 LAYOUT_3='Linear.desktop | FC-Tasks.desktop'
 WIDTHS_3=(0.343)
 
@@ -219,6 +224,15 @@ ws_of() {
 geom() {
   hyprctl clients -j | jq -r --arg a "$1" \
     'first(.[] | select(.address == $a) | "\(.at[0]) \(.at[1]) \(.size[0]) \(.size[1])") // empty'
+}
+
+# Rotations 1, 3, 5 and 7 swap the mode's width and height.
+ws_is_portrait() {
+  local mon
+  mon="$(hyprctl workspaces -j | jq -r --arg w "$1" 'first(.[] | select(.name == $w) | .monitor) // empty')"
+  [[ -n "$mon" ]] || return 1
+  hyprctl monitors -j | jq -e --arg m "$mon" \
+    'first(.[] | select(.name == $m) | (.transform % 2 == 1) != (.height > .width))' >/dev/null
 }
 
 # ------------------------------------------------------------------- placement
@@ -498,7 +512,11 @@ for name in "${ENTRIES[@]}"; do
   place "$addr" "${E_WS[$name]}" "${E_LABEL[$name]}"
 done
 
-apply_layout 2 "$LAYOUT_2" ${WIDTHS_2[@]+"${WIDTHS_2[@]}"}
+if ws_is_portrait 2; then
+  apply_layout 2 "$LAYOUT_2_PORTRAIT"
+else
+  apply_layout 2 "$LAYOUT_2" ${WIDTHS_2[@]+"${WIDTHS_2[@]}"}
+fi
 apply_layout 3 "$LAYOUT_3" ${WIDTHS_3[@]+"${WIDTHS_3[@]}"}
 
 [[ -n "$FOCUS_ADDR" ]] && focus_window "$FOCUS_ADDR"
