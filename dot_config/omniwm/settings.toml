@@ -48,10 +48,10 @@ fullscreenUsesOuterGaps = false
 size = 10.0
 
 [gaps.outer]
-bottom = 11.0
-left = 11.0
-right = 11.0
-top = 11.0
+bottom = 10.0
+left = 10.0
+right = 10.0
+top = 10.0
 
 [general]
 animationSpeed = 1.0
@@ -210,11 +210,11 @@ minHeight = 550.0
 minWidth = 950.0
 
 [[appRules]]
+assignToWorkspace = "1"
 bundleId = "com.google.Chrome"
 id = "486CEFA6-69AA-4A3C-AF27-BCD38F4F138B"
 minHeight = 375.0
 minWidth = 500.0
-assignToWorkspace = "1"
 
 [[appRules]]
 bundleId = "dev.zed.Zed"
@@ -247,11 +247,11 @@ minHeight = 420.0
 minWidth = 500.0
 
 [[appRules]]
+assignToWorkspace = "10"
 bundleId = "com.spotify.client"
 id = "2DE9390B-0DB4-4D0C-9ABA-06F76F1D4EA9"
 minHeight = 600.0
 minWidth = 800.0
-assignToWorkspace = "10"
 
 [[appRules]]
 bundleId = "com.hnc.Discord"
@@ -260,11 +260,11 @@ minHeight = 500.0
 minWidth = 800.0
 
 [[appRules]]
+assignToWorkspace = "2"
 bundleId = "com.mitchellh.ghostty"
 id = "7876C9EF-437E-4D4F-9C27-B1B02F4AABCE"
 minHeight = 48.0
 minWidth = 90.0
-assignToWorkspace = "2"
 
 [[appRules]]
 bundleId = "com.microsoft.Outlook"
@@ -273,11 +273,11 @@ minHeight = 650.0
 minWidth = 930.0
 
 [[appRules]]
+assignToWorkspace = "3"
 bundleId = "com.apple.MobileSMS"
 id = "552FB77D-BF0E-4737-90A6-B5BC6986C579"
 minHeight = 320.0
 minWidth = 660.0
-assignToWorkspace = "3"
 
 [[appRules]]
 bundleId = "com.apple.finder"
@@ -331,14 +331,14 @@ id = "A02557AB-ED79-464C-A664-34FBFDCFF056"
 layout = "float"
 
 [[appRules]]
+assignToWorkspace = "3"
 bundleId = "com.electron.dialpad"
 id = "B9FDE5AB-F39E-457C-B386-35EEA42054C4"
-assignToWorkspace = "3"
 
 [[appRules]]
+assignToWorkspace = "9"
 bundleId = "com.apple.systempreferences"
 id = "A0AE127B-13E0-404E-AE19-4141B78580BC"
-assignToWorkspace = "9"
 layout = "tile"
 
 [[hotkeys]]
@@ -426,7 +426,7 @@ binding = "Control+Option+Command+1"
 id = "switchWorkspace.0"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+1"
+binding = "Hyper+1"
 id = "moveToWorkspace.0"
 
 [[hotkeys]]
@@ -434,7 +434,7 @@ binding = "Control+Option+Command+2"
 id = "switchWorkspace.1"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+2"
+binding = "Hyper+2"
 id = "moveToWorkspace.1"
 
 [[hotkeys]]
@@ -442,7 +442,7 @@ binding = "Control+Option+Command+3"
 id = "switchWorkspace.2"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+3"
+binding = "Hyper+3"
 id = "moveToWorkspace.2"
 
 [[hotkeys]]
@@ -450,7 +450,7 @@ binding = "Control+Option+Command+4"
 id = "switchWorkspace.3"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+4"
+binding = "Hyper+4"
 id = "moveToWorkspace.3"
 
 [[hotkeys]]
@@ -458,7 +458,7 @@ binding = "Control+Option+Command+5"
 id = "switchWorkspace.4"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+5"
+binding = "Hyper+5"
 id = "moveToWorkspace.4"
 
 [[hotkeys]]
@@ -466,7 +466,7 @@ binding = "Control+Option+Command+6"
 id = "switchWorkspace.5"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+6"
+binding = "Hyper+6"
 id = "moveToWorkspace.5"
 
 [[hotkeys]]
@@ -474,7 +474,7 @@ binding = "Control+Option+Command+7"
 id = "switchWorkspace.6"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+7"
+binding = "Hyper+7"
 id = "moveToWorkspace.6"
 
 [[hotkeys]]
@@ -482,7 +482,7 @@ binding = "Control+Option+Command+8"
 id = "switchWorkspace.7"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+8"
+binding = "Hyper+8"
 id = "moveToWorkspace.7"
 
 [[hotkeys]]
@@ -490,8 +490,16 @@ binding = "Control+Option+Command+9"
 id = "switchWorkspace.8"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+9"
+binding = "Hyper+9"
 id = "moveToWorkspace.8"
+
+[[hotkeys]]
+binding = "Control+Option+Command+0"
+id = "switchWorkspace.9"
+
+[[hotkeys]]
+binding = "Hyper+0"
+id = "moveToWorkspace.9"
 
 [[hotkeys]]
 binding = "Unassigned"
@@ -690,19 +698,23 @@ binding = "Unassigned"
 id = "moveColumnToWorkspace.8"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+H"
+binding = "Unassigned"
+id = "moveColumnToWorkspace.9"
+
+[[hotkeys]]
+binding = "Hyper+H"
 id = "move.left"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+J"
+binding = "Hyper+J"
 id = "move.down"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+K"
+binding = "Hyper+K"
 id = "move.up"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+L"
+binding = "Hyper+L"
 id = "move.right"
 
 [[hotkeys]]
@@ -746,7 +758,7 @@ binding = "Unassigned"
 id = "moveWorkspaceToMonitor.left"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+Tab"
+binding = "Hyper+Tab"
 id = "moveWorkspaceToMonitor.right"
 
 [[hotkeys]]
@@ -758,11 +770,11 @@ binding = "Unassigned"
 id = "moveWorkspaceToMonitor.down"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+Left Bracket"
+binding = "Hyper+Left Bracket"
 id = "moveWindowToMonitor.left"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+Right Bracket"
+binding = "Hyper+Right Bracket"
 id = "moveWindowToMonitor.right"
 
 [[hotkeys]]
@@ -1026,19 +1038,19 @@ binding = "Control+Option+Command+Minus"
 id = "resizeFocusedWindow.shrink"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+Left Arrow"
+binding = "Hyper+Left Arrow"
 id = "preselect.left"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+Right Arrow"
+binding = "Hyper+Right Arrow"
 id = "preselect.right"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+Up Arrow"
+binding = "Hyper+Up Arrow"
 id = "preselect.up"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+Down Arrow"
+binding = "Hyper+Down Arrow"
 id = "preselect.down"
 
 [[hotkeys]]
@@ -1062,7 +1074,7 @@ binding = "Unassigned"
 id = "rescueOffscreenWindows"
 
 [[hotkeys]]
-binding = "Control+Option+Shift+Command+F"
+binding = "Hyper+F"
 id = "toggleFocusedWindowFloating"
 
 [[hotkeys]]
@@ -1104,14 +1116,6 @@ id = "toggleOverview"
 [[hotkeys]]
 binding = "Unassigned"
 id = "toggleSystemStats"
-
-[[hotkeys]]
-binding = "Control+Option+Command+0"
-id = "switchWorkspace.9"
-
-[[hotkeys]]
-binding = "Control+Option+Shift+Command+0"
-id = "moveToWorkspace.9"
 
 [[workspaces]]
 id = "AD36F001-C57E-41A5-AC1D-DF5249D007F0"
