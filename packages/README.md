@@ -32,6 +32,9 @@ single-command setup flow.
 - `server/hosts/<hostname>/excluded-pacman.txt`: shared native packages not
   installed on that server; capture retains them in the shared list.
 - `mac/{brew,casks,taps}.txt`: desired Homebrew set.
+- `debug/pacman.txt`: the debug USB profile's additions to the Omarchy base,
+  installed by `run_onchange_before_executable_debug-bootstrap.sh.tmpl` instead
+  of Ansible. Nothing is removed.
 
 Server hosts are identical apart from CPU and role: DLCO-1 alone declares ZFS
 (`zfs-linux-lts`, `zfs-utils` in its added list turn on the archzfs stack),

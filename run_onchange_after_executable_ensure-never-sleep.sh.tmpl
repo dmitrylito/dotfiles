@@ -1,4 +1,4 @@
-{{- if eq (.profile | lower) "omarchy" -}}
+{{- if and (eq (.profile | lower) "omarchy") (not (dig "debug" false .)) -}}
 #!/bin/sh
 # Keep this host from ever sleeping: every sleep target masked and logind
 # ignoring the lid and sleep keys (system/30-never-sleep.conf). The lid only

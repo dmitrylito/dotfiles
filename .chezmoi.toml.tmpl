@@ -1,5 +1,10 @@
-{{- $profile := promptStringOnce . "profile" "Machine profile (Omarchy, server, mac)" -}}
+{{- $profile := promptStringOnce . "profile" "Machine profile (Omarchy, server, mac, debug)" | lower -}}
 {{- $work := promptBoolOnce . "work" "Enable work configuration" false -}}
+{{- /* debug is the minimal Omarchy debug USB. It renders as omarchy plus the debug flag,
+       so desktop templates need no third branch. The flag is stored in [data] because
+       promptStringOnce returns the stored "omarchy" on re-init. */ -}}
+{{- $debug := or (eq $profile "debug") (dig "debug" false .) -}}
+{{- if $debug }}{{ $profile = "omarchy" }}{{ end -}}
 # This repo is public, so anything secret must be committed encrypted.
 # The identity lives outside the source tree and is never committed; copy it to a new
 # machine out of band before the first `chezmoi apply`, or encrypted files stay unreadable.
@@ -8,8 +13,9 @@ encryption = "age"
 useBuiltinAge = true
 
 [data]
-    profile = {{ $profile | lower | quote }}
+    profile = {{ $profile | quote }}
     work = {{ $work }}
+    debug = {{ $debug }}
 
 [age]
     identity = {{ (joinPath .chezmoi.homeDir ".config" "chezmoi" "key.txt") | quote }}

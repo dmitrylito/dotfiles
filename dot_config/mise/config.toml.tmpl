@@ -1,4 +1,12 @@
 [tools]
+{{ if dig "debug" false . -}}
+# Debug USB: only the agent CLIs, gh, and the node herdr's drovr plugin needs.
+# uv comes from pacman (packages/debug/pacman.txt) for the Codex config modifier.
+claude = "latest"
+codex = "latest"
+gh = "latest"
+node = "26"
+{{- else -}}
 agy = "latest"
 bun = "latest"
 claude = "latest"
@@ -11,6 +19,7 @@ node = "26"
 "npm:pyright" = "latest"
 opencode = "latest"
 python = ["3.12", "3.14"]
+{{- end }}
 
 [settings]
 minimum_release_age_excludes = ["claude", "codex"]

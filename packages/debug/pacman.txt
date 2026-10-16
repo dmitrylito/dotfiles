@@ -1,0 +1,7 @@
+# Debug USB profile: packages beyond the Omarchy base install.
+# Installed by run_onchange_before_executable_debug-bootstrap.sh.tmpl; nothing is removed.
+herdr
+profile-sync-daemon
+tailscale
+uv
+zsh

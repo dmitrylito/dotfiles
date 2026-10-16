@@ -1,3 +1,4 @@
+{{- if not (dig "debug" false .) -}}
 #!/bin/sh
 # Bring the Moshi hook daemon up on this machine, from nothing if need be:
 # install the vendor systemd user service if it is missing, register the
@@ -193,3 +194,4 @@ os.replace(tmp, path)
 print("ensure-moshi-units: normalized Codex hooks")
 PY
 fi
+{{ end -}}

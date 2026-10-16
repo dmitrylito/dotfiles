@@ -1,3 +1,4 @@
+{{- if not (dig "debug" false .) -}}
 #!/usr/bin/env bash
 # Chezmoi runs this after init/apply when the rendered content changes. The
 # hashes deliberately cover only inputs that can change the active machine's
@@ -49,3 +50,4 @@ if ! command -v ansible-playbook >/dev/null 2>&1; then
 fi
 
 exec "{{ joinPath .chezmoi.sourceDir "scripts/reconcile-packages.sh" }}"
+{{ end -}}
