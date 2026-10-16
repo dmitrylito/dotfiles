@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-# Preserve runtime-owned hooks and enforce one Moshi handler per managed event.
+# Preserve runtime-owned hooks; manage Moshi handlers on Linux and remove them on Mac.
 # Usage: chezmoi apply ~/.codex/hooks.json; reads existing JSON on stdin.
-# Requires Python 3 and installed Moshi integration commands.
+# Requires Python 3; Linux hooks require installed Moshi integration commands.
 
 import json
 import sys
 
 USER_HOME = "{{ .chezmoi.homeDir }}"
+MOSHI_ENABLED = {{ if eq .profile "mac" }}False{{ else }}True{{ end }}
 # Quotes and the trailing `codex-hook` are load-bearing: this is the exact shape
 # `moshi-hook status` matches, and anything else is reported as stale wiring.
 MOSHI_COMMAND = "'" + USER_HOME + "/.local/bin/moshi-hook-codex-guard' codex-hook"
@@ -64,9 +65,13 @@ for event in EVENTS:
 
 for event in EVENTS:
     groups = without_moshi(hooks.get(event))
-    groups.append(
-        {"hooks": [{"command": MOSHI_COMMAND, "type": "command"}]}
-    )
-    hooks[event] = groups
+    if MOSHI_ENABLED:
+        groups.append(
+            {"hooks": [{"command": MOSHI_COMMAND, "type": "command"}]}
+        )
+    if groups:
+        hooks[event] = groups
+    else:
+        hooks.pop(event, None)
 
 print(json.dumps(current, indent=2, sort_keys=True))
