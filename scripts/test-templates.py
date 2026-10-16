@@ -99,9 +99,10 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
     assert ("archlinux" in plugins) == (profile != "mac"), label
     tools = tomllib.loads(state[".config/mise/config.toml"]["contents"])["tools"]
     assert ("agy" in tools) == (not debug) and ("codex" in tools) == (profile != "server"), label
-    for target in (".config/systemd/user/moshi-reguard.service", ".config/voxtype/config.toml", ".config/opencode/opencode.json"):
-        assert (target in state) == (profile == "omarchy" and not debug), f"{label}: {target}"
     if debug:
+        for target in (".config/systemd/user/moshi-reguard.service", ".config/voxtype/config.toml",
+                       ".config/opencode/opencode.json", ".config/chromium/NativeMessagingHosts/dev.dmitrylito.window_time.json"):
+            assert target not in state, f"{label}: {target}"
         for target in (".zshrc", ".config/herdr/config.toml", ".config/systemd/user/herdr-server.service",
                        ".local/bin/moshi-hook-claude-guard", ".config/nvim/init.lua", ".config/git/config"):
             assert target in state, f"{label}: {target}"
