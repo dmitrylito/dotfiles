@@ -4,8 +4,8 @@
 // disk (one JSON file per entry under the service's historyDir); live toasts
 // come from service.popupModel; reminders come from `omarchy reminder`, which
 // backs each one with a transient systemd user timer.
-// Left-click (or `omarchy-shell notification-center toggle`) opens the popup,
-// right-click toggles Do Not Disturb.
+// Left-click (or `omarchy-shell shell toggle omacom.notification-center`) opens
+// the popup, right-click toggles Do Not Disturb.
 //
 // The popup has two tabs. Notifications is always the one that opens — the tab
 // resets on every open so the bell stays a one-click read of what just came in,
@@ -32,8 +32,12 @@ BarWidget {
   moduleName: "omacom.notification-center"
 
   property bool popupOpen: false
+  // open/close/opened is the contract shell.toggle uses to pick the focused
+  // monitor's copy. A plain IpcHandler only reaches whichever per-monitor
+  // instance registered the target first.
+  readonly property bool opened: popupOpen
+  function open() { popupOpen = true }
   function close() { popupOpen = false }
-  function toggle() { popupOpen = !popupOpen }
 
   property string activeTab: "notifications"
 
@@ -375,11 +379,6 @@ BarWidget {
     repeat: true
     running: root.popupOpen && root.activeTab === "reminders"
     onTriggered: root.refreshReminders()
-  }
-
-  IpcHandler {
-    target: "notification-center"
-    function toggle(): string { root.toggle(); return root.popupOpen ? "open" : "closed" }
   }
 
   WidgetButton {
