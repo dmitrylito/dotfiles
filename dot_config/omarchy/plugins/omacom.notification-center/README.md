@@ -16,7 +16,7 @@ It adds:
 - a Do Not Disturb toggle (right-click the bell, or its tile in the popup);
 - a Reminders tab that lists, creates, reschedules and cancels the timers
   behind `omarchy reminder`;
-- an IPC toggle for keybinds: `omarchy-shell notification-center toggle`.
+- an IPC toggle for keybinds: `omarchy-shell shell toggle omacom.notification-center`.
 
 The popup always opens on the Notifications tab; Reminders is one click away
 and never steals the default view.

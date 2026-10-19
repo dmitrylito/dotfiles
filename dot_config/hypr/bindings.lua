@@ -256,7 +256,7 @@ hl.unbind("SUPER + S") -- Omarchy default: Toggle scratchpad
 hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad (fit current monitor)" })
 -- omarchy-shell instead of { ipc = ... }: Omarchy 4.0.4's o.bind has no ipc branch and
 -- passes the table to hl.bind, which rejects it (helpers.lua:105).
-o.bind("SUPER + E", "Toggle notification center", "omarchy-shell -q notification-center toggle")
+o.bind("SUPER + E", "Toggle notification center", "omarchy-shell -q shell toggle omacom.notification-center")
 o.bind("SUPER + D", "Toggle Spotify scratchpad", spotify_toggle)
 o.bind("SUPER + SHIFT + M", "Music", spotify_toggle)
 
