@@ -1,16 +1,15 @@
--- Omarchy's scratchpad console (default/hypr/qconsole.lua) with our size and seed.
+-- Omarchy's scratchpad console (default/hypr/qconsole.lua) with our seed.
 --
 -- Its height share and seed command are locals, and its event handlers are
 -- registered before any user module loads, so a second module refitting the same
 -- workspace rule ends up fighting it: whichever handler ran last sets the height,
 -- which is the console resizing itself at random. hyprland.lua stops Omarchy
 -- from loading its copy (see modify_hyprland.lua) and this loads that same file
--- with the two values swapped, so upstream fixes still arrive with updates.
+-- with the seed swapped, so upstream fixes still arrive with updates.
 
 local upstream = (os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/qconsole.lua"
 
 local patches = {
-	{ "local share = 0.5\n", "local share = 0.66\n" },
 	{
 		'local seed = "[workspace special:scratchpad silent] omarchy-agent"',
 		'local seed = "[workspace special:scratchpad silent] herdr-agent"',
