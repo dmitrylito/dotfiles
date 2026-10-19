@@ -684,6 +684,14 @@
     - name: Make Docker wait for firewalld to be running (server)
       when: p == 'server'
       block:
+        - name: Ensure the Docker drop-in directory exists
+          ansible.builtin.file:
+            path: /etc/systemd/system/docker.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
         - name: Install the Docker firewalld wait drop-in
           ansible.builtin.copy:
             dest: /etc/systemd/system/docker.service.d/10-wait-firewalld.conf
