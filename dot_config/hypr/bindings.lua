@@ -151,58 +151,9 @@ hl.bind("SUPER + P", pseudopanel.toggle, {
 -- Scratchpads
 -- ---------------------------------------------------------------------------
 
--- Omarchy keeps one global geometry rule for the qconsole. On mixed-size
--- monitors that rule can still contain the previous monitor's bottom gap when
--- SUPER+S runs, so refit it synchronously against the monitor receiving the
--- keypress before revealing the scratchpad.
-local qconsole_share = 0.66 -- fraction of the usable height the console covers
-local qconsole_box = 2 -- panel width as a multiple of its height; math.huge = full width
-local qconsole_split_box = math.huge -- same, once two or more windows tile in it
-
-local function qconsole_tiled_count()
-	local count = 0
-	for _, window in ipairs(hl.get_windows()) do
-		if not window.floating and window.workspace and window.workspace.name == "special:scratchpad" then
-			count = count + 1
-		end
-	end
-	return count
-end
-
-local function qconsole_refit()
-	local monitor = hl.get_active_monitor()
-	if not monitor or not monitor.scale or monitor.scale <= 0 then
-		return
-	end
-
-	-- Monitor width/height are physical pixels in the panel's own orientation;
-	-- gaps and reserved are logical, so the scale comes out first.
-	local width, height = monitor.width, monitor.height
-	if monitor.transform % 2 == 1 then
-		width, height = height, width
-	end
-
-	local reserved = monitor.reserved
-	height = height / monitor.scale - reserved.top - reserved.bottom
-	width = width / monitor.scale - reserved.left - reserved.right
-
-	local tall = math.floor(height * qconsole_share)
-	local box = qconsole_tiled_count() >= 2 and qconsole_split_box or qconsole_box
-	local wide = math.min(width, tall * box)
-	local side = math.max(0, math.floor((width - wide) / 2))
-	local bottom = math.max(0, math.floor(height - tall))
-
-	hl.workspace_rule({
-		workspace = "special:scratchpad",
-		gaps_in = 0,
-		gaps_out = { top = 0, right = side, bottom = bottom, left = side },
-		no_border = true,
-		on_created_empty = "[workspace special:scratchpad silent] herdr-agent",
-	})
-end
+require("hypr.qconsole")
 
 local function qconsole_toggle()
-	qconsole_refit()
 	-- on_created_empty only fires for an empty scratchpad; with the herdr window
 	-- still there, restart the agent if it was exited.
 	for _, window in ipairs(hl.get_windows({ class = "org.omarchy.agent" })) do
@@ -212,18 +163,6 @@ local function qconsole_toggle()
 		end
 	end
 	hl.dispatch(hl.dsp.workspace.toggle_special("scratchpad"))
-	-- Re-read once Hyprland has committed the workspace visibility change. This
-	-- closes the focus-event race that leaves mixed-scale setups using stale
-	-- geometry until the pointer moves to another monitor.
-	hl.timer(qconsole_refit, { timeout = 50, type = "oneshot" })
-end
-
--- Refit when windows join or leave so the panel widens or narrows in place.
--- Deferred so a closing window is already gone from get_windows().
-for _, event in ipairs({ "window.open", "window.close", "window.destroy", "window.move_to_workspace" }) do
-	hl.on(event, function()
-		hl.timer(qconsole_refit, { timeout = 50, type = "oneshot" })
-	end)
 end
 
 -- Focusing a window on a hidden special workspace does not reveal it, so toggle the
@@ -253,7 +192,7 @@ local function spotify_toggle()
 end
 
 hl.unbind("SUPER + S") -- Omarchy default: Toggle scratchpad
-hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad (fit current monitor)" })
+hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad" })
 -- omarchy-shell instead of { ipc = ... }: Omarchy 4.0.4's o.bind has no ipc branch and
 -- passes the table to hl.bind, which rejects it (helpers.lua:105).
 o.bind("SUPER + E", "Toggle notification center", "omarchy-shell -q shell toggle omacom.notification-center")
