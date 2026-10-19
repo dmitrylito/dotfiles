@@ -5,6 +5,46 @@
 local require_optional = require("default.hypr.require_optional")
 require_optional.module("hypr.workspaces")
 
+-- Keep Hyprland's global workspace numbers, which workspaces.lua and work-mode
+-- assume. Omarchy's per-monitor workspaces (default/hypr/monitor-workspaces.lua)
+-- give each monitor a block of ten and, on start, reload and monitor changes,
+-- move every workspace onto the monitor owning its number, overriding the rules
+-- above. Its event handlers and the bar call through o.workspaces at run time,
+-- so replacing the table's functions disables it; its own keybinds captured the
+-- originals when tiling.lua loaded, hence the rebinds.
+o.workspaces.reconcile = function() end
+
+o.workspaces.focus = function(workspace)
+	return hl.dsp.focus({ workspace = tostring(workspace) })
+end
+
+o.workspaces.move_window = function(workspace, follow)
+	return hl.dsp.window.move({ workspace = tostring(workspace), follow = follow ~= false })
+end
+
+o.workspaces.move_to_monitor = function(direction)
+	return hl.dsp.workspace.move({ monitor = direction })
+end
+
+for workspace = 1, 10 do
+	local key = "code:" .. tostring(workspace + 9)
+	o.rebind("SUPER + " .. key, "Switch to workspace " .. workspace, o.workspaces.focus(workspace))
+	o.rebind("SUPER + SHIFT + " .. key, "Move window to workspace " .. workspace, o.workspaces.move_window(workspace))
+	o.rebind(
+		"SUPER + SHIFT + ALT + " .. key,
+		"Move window silently to workspace " .. workspace,
+		o.workspaces.move_window(workspace, false)
+	)
+end
+
+for key, direction in pairs({ LEFT = "left", RIGHT = "right", UP = "up", DOWN = "down" }) do
+	o.rebind(
+		"SUPER + SHIFT + ALT + " .. key,
+		"Move workspace to " .. direction .. " monitor",
+		o.workspaces.move_to_monitor(direction:sub(1, 1))
+	)
+end
+
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 
 -- The LG dual-mode panel switches between 4K@144 and 1080p@480 in its own OSD;
