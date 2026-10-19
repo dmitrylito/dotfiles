@@ -7,6 +7,11 @@ import sys
 
 
 ANCHOR = 'require("default.hypr.toggles")'
+DEFAULTS_ANCHOR = 'require("default.hypr.omarchy")'
+QCONSOLE_OVERRIDE = """-- BEGIN chezmoi qconsole override
+-- hypr/qconsole.lua loads a patched copy; two copies fight over the scratchpad size.
+package.loaded["default.hypr.qconsole"] = true
+-- END chezmoi qconsole override"""
 CUSTOM_MODULE = """-- BEGIN chezmoi custom module
 require("hypr.chezmoi")
 -- END chezmoi custom module"""
@@ -26,6 +31,13 @@ if upstream.count(ANCHOR) != 1:
         "Omarchy's entrypoint structure changed"
     )
 
+if upstream.count(DEFAULTS_ANCHOR) != 1:
+    sys.exit(
+        f"expected exactly one {DEFAULTS_ANCHOR!r} in {upstream_path}; "
+        "Omarchy's entrypoint structure changed"
+    )
+
 before, after = upstream.split(ANCHOR)
 rendered = before + ANCHOR + "\n\n" + CUSTOM_MODULE + after
+rendered = rendered.replace(DEFAULTS_ANCHOR, QCONSOLE_OVERRIDE + "\n" + DEFAULTS_ANCHOR)
 sys.stdout.write(rendered.rstrip() + "\n")
