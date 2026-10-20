@@ -37,6 +37,9 @@ system/
 # Keeps hotplugged displays blank while the Omarchy session is locked.
 .local/bin/omarchy-lock-dpms-guard
 .config/systemd/user/omarchy-lock-dpms-guard.service
+# Kills an Omarchy shell that hangs in teardown during `omarchy restart shell`.
+.local/bin/omarchy-shell-reaper
+.config/systemd/user/omarchy-shell-reaper.service
 .config/systemd/user/dotoold.service
 .config/systemd/user/herdr-server.service
 .config/systemd/user/rclone-gdrive.service
