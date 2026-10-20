@@ -3,12 +3,13 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 
-// Stands in for omarchy.idle (disabled in shell.json): this host never locks
-// or sleeps, so idle only blanks the displays and activity brings them back.
+// Stands in for omarchy.idle (disabled in shell.json): no screensaver and no
+// sleep; idle blanks the displays, then locks, and activity brings them back.
 Item {
   id: root
 
-  readonly property int displayOffSeconds: 300
+  readonly property int displayOffSeconds: 600
+  readonly property int lockSeconds: 900
 
   // Stay Awake (omarchy-toggle-idle, the bar indicator) is a marker file.
   readonly property string stayAwakePath: Quickshell.env("HOME") + "/.local/state/omarchy/indicators/stay-awake"
@@ -42,5 +43,12 @@ Item {
     timeout: root.displayOffSeconds
     respectInhibitors: true
     onIsIdleChanged: root.run(isIdle ? "omarchy-brightness-display off" : root.wakeCommand)
+  }
+
+  IdleMonitor {
+    enabled: !root.stayAwake
+    timeout: root.lockSeconds
+    respectInhibitors: true
+    onIsIdleChanged: if (isIdle) root.run("omarchy-system-lock")
   }
 }
