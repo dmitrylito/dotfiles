@@ -212,7 +212,7 @@ docker-appdata/caddy/
 .config/systemd/user/media-podman-proxy.service
 {{ end }}
 {{ if ne .chezmoi.hostname "DLCO-3" }}
-{{ range list "seerr" "prowlarr" "flaresolverr" "homepage" "audiobookshelf" "calibre-web" "shelfmark" }}
+{{ range list "seerr" "prowlarr" "flaresolverr" "homepage" "audiobookshelf" "calibre-web" "shelfmark" "homebridge" }}
 .config/containers/systemd/{{ . }}.container
 {{ end }}
 .config/containers/storage.conf

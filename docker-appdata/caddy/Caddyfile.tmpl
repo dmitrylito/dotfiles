@@ -79,6 +79,10 @@
 		}
 		reverse_proxy {{ $dlco3 }}:3000
 	}
+	@homebridge host homebridge.dlco.us
+	handle @homebridge {
+		reverse_proxy {{ $dlco3 }}:8581
+	}
 	@liveevents host liveevents.dlco.us
 	handle @liveevents {
 		reverse_proxy {{ $dlco1 }}:8080

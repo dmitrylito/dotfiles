@@ -1,0 +1,26 @@
+[Unit]
+Description=Homebridge
+After=network-online.target
+RequiresMountsFor=/data
+
+[Container]
+Image=docker.io/homebridge/homebridge:latest
+AutoUpdate=registry
+# HomeKit pairing needs mDNS and the HAP port on the LAN itself, so this stays out of media.pod.
+Network=host
+Environment=TZ=America/New_York
+# systemd-resolved already serves mDNS on the host; a second avahi inside the container would fight it
+# for 5353. Homebridge's built-in ciao advertiser coexists with resolved.
+Environment=ENABLE_AVAHI=0
+HealthCmd=curl --fail http://127.0.0.1:8581
+HealthInterval=60s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=300s
+Volume=/data/docker-appdata/homebridge:/homebridge:Z
+
+[Install]
+WantedBy=default.target
+
+[Service]
+Restart=always
