@@ -6,6 +6,7 @@ base
 base-devel
 bat
 bluez
+bluez-utils
 bob
 btop
 chezmoi
