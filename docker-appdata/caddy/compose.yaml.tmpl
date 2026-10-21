@@ -3,7 +3,7 @@ name: caddy
 services:
   caddy:
     build: .
-    image: local/caddy-cloudflare:2.11.4
+    image: local/caddy-cloudflare:2.11.7
     restart: unless-stopped
     env_file: {{ joinPath .chezmoi.homeDir ".config/secrets/caddy.env" }}
     ports:
