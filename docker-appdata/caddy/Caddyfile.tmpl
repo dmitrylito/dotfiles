@@ -161,6 +161,14 @@
 			}
 		}
 	}
+	@scrypted host scrypted.init.dlco.us
+	handle @scrypted {
+		reverse_proxy https://{{ $dlco3 }}:10443 {
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+	}
 	@torrent host torrent.init.dlco.us
 	handle @torrent {
 		reverse_proxy {{ $dlco1 }}:8181
