@@ -16,20 +16,20 @@ function icon(name) {
 BEGIN {
     cat["audiobooks"] = "Media"; cat["books"] = "Media"; cat["calibre"] = "Media"; cat["plex"] = "Media"; cat["seerr"] = "Media"
     cat["adguard"] = "Management"; cat["dlco1"] = "Management"; cat["dlco2"] = "Management"; cat["dlco3"] = "Management"
-    cat["kuma"] = "Management"; cat["omada"] = "Management"; cat["ha"] = "Management"
+    cat["kuma"] = "Management"; cat["omada"] = "Management"; cat["ha"] = "Management"; cat["scrypted"] = "Management"
     cat["chat"] = "Work"; cat["cer"] = "Personal"; cat["cer-staging"] = "Personal"; cat["vsl"] = "Personal"
     cat["backend"] = "Work"; cat["billing"] = "Work"; cat["console"] = "Work"
     cat["fcbot"] = "Work"; cat["liveevents"] = "Work"
     skip["home"] = 1; skip["sonarr"] = 1; skip["radarr"] = 1; skip["prowlarr"] = 1; skip["torrent"] = 1
     icons["audiobooks"] = "audiobookshelf.png"; icons["books"] = "calibre-web.png"; icons["calibre"] = "calibre-web.png"
     icons["plex"] = "plex.png"; icons["seerr"] = "overseerr.png"; icons["vsl"] = "supabase.png"
-    icons["adguard"] = "adguard-home.png"; icons["ha"] = "home-assistant.png"; icons["kuma"] = "uptime-kuma.png"; icons["omada"] = "omada.png"
+    icons["adguard"] = "adguard-home.png"; icons["ha"] = "home-assistant.png"; icons["scrypted"] = "scrypted.png"; icons["kuma"] = "uptime-kuma.png"; icons["omada"] = "omada.png"
     icons["dlco1"] = "cockpit.png"; icons["dlco2"] = "cockpit.png"; icons["dlco3"] = "cockpit.png"
     icons["cer"] = "mdi-office-building"; icons["cer-staging"] = "mdi-office-building-outline"; icons["backend"] = "mdi-api"
     icons["billing"] = "mdi-cash-multiple"; icons["chat"] = "mdi-chat-outline"; icons["console"] = "mdi-console"
     icons["fcbot"] = "mdi-robot-outline"; icons["liveevents"] = "mdi-broadcast"
     prefer["kuma"] = "uptime.init.dlco.us"; prefer["fcbot"] = "ops.dlco.us"
-    label["fcbot"] = "Ops Center"; label["ha"] = "Home Assistant"
+    label["fcbot"] = "Ops Center"; label["ha"] = "Home Assistant"; label["scrypted"] = "Scrypted"
     paths["cer"] = "/admin"; paths["cer-staging"] = "/admin"; paths["fcbot"] = "/admin/"
 }
 /^\*\.dlco\.us \{/ || /^\*\.init\.dlco\.us \{/ { inblock = 1; next }

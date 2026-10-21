@@ -1,0 +1,18 @@
+[Unit]
+Description=Scrypted (Nest doorbell to HomeKit)
+After=network-online.target
+RequiresMountsFor=/data
+
+[Container]
+Image=ghcr.io/koush/scrypted:latest
+AutoUpdate=registry
+# HomeKit pairing and camera discovery need mDNS on the LAN itself, so this stays out of media.pod.
+Network=host
+Environment=TZ=America/New_York
+Volume=/data/docker-appdata/scrypted:/server/volume:Z
+
+[Install]
+WantedBy=default.target
+
+[Service]
+Restart=always
