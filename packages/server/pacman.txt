@@ -5,6 +5,7 @@ ast-grep
 base
 base-devel
 bat
+bluez
 bob
 btop
 chezmoi
