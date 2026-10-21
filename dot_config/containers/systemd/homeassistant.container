@@ -1,0 +1,25 @@
+[Unit]
+Description=Home Assistant
+After=network-online.target
+RequiresMountsFor=/data
+
+[Container]
+Image=ghcr.io/home-assistant/home-assistant:stable
+AutoUpdate=registry
+# HomeKit Bridge and device discovery need mDNS on the LAN itself, so this stays out of media.pod.
+Network=host
+Environment=TZ=America/New_York
+HealthCmd=curl --fail http://127.0.0.1:8123
+HealthInterval=60s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=300s
+Volume=/data/docker-appdata/homeassistant:/config:Z
+Volume=/etc/localtime:/etc/localtime:ro
+
+[Install]
+WantedBy=default.target
+
+[Service]
+Restart=always
+TimeoutStopSec=70
