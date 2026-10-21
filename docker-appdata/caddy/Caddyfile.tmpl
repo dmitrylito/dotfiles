@@ -69,6 +69,10 @@
 			reverse_proxy {{ $dlco1 }}:8050
 		}
 	}
+	@ha host ha.dlco.us
+	handle @ha {
+		reverse_proxy {{ $dlco3 }}:8123
+	}
 	@home host home.dlco.us
 	handle @home {
 		# Homepage serves custom.css and its YAML from /api/config without Cache-Control; Cloudflare
@@ -78,10 +82,6 @@
 			defer
 		}
 		reverse_proxy {{ $dlco3 }}:3000
-	}
-	@homebridge host homebridge.dlco.us
-	handle @homebridge {
-		reverse_proxy {{ $dlco3 }}:8581
 	}
 	@liveevents host liveevents.dlco.us
 	handle @liveevents {
