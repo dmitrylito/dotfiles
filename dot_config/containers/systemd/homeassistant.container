@@ -16,6 +16,8 @@ HealthRetries=5
 HealthStartPeriod=300s
 Volume=/data/docker-appdata/homeassistant:/config:Z
 Volume=/etc/localtime:/etc/localtime:ro
+# Host BlueZ over the system bus; the bluetooth integration needs it (bluez must be installed and running on the host).
+Volume=/run/dbus:/run/dbus:ro
 
 [Install]
 WantedBy=default.target

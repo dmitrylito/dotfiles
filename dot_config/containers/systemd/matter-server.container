@@ -1,0 +1,21 @@
+[Unit]
+Description=Matter Server
+After=network-online.target
+RequiresMountsFor=/data
+
+[Container]
+Image=ghcr.io/matter-js/matterjs-server:stable
+AutoUpdate=registry
+# Matter commissioning and operation use IPv6 link-local multicast, so this stays out of media.pod.
+Network=host
+Environment=TZ=America/New_York
+Environment=LOG_LEVEL=info
+Environment=PRODUCTION_MODE=true
+# /root/.matter holds the fabric credentials; losing it means re-pairing every device.
+Volume=/data/docker-appdata/matter-server:/root/.matter:Z
+
+[Install]
+WantedBy=default.target
+
+[Service]
+Restart=always
