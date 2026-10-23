@@ -102,6 +102,22 @@ BarWidget {
     return Quickshell.iconPath(value, true)
   }
 
+  // The toast's icon order minus the sender's picture, which history never
+  // keeps: icon theme names, then a matching desktop entry's icon.
+  function historyIconSource(groupKey, source, app, appIcon) {
+    var want = NotificationLogic.iconCandidates(groupKey, source, app, appIcon)
+    for (var i = 0; i < want.themed.length; i++) {
+      var themed = Quickshell.iconPath(want.themed[i], true)
+      if (themed) return themed
+    }
+    for (var j = 0; j < want.entries.length; j++) {
+      var entry = DesktopEntries.heuristicLookup(want.entries[j])
+      var url = entry ? notificationIconSource(entry.icon) : ""
+      if (url) return url
+    }
+    return ""
+  }
+
   readonly property string icon: {
     if (dnd) return "󰂛"
     if (liveCount > 0) return "󱅫"
@@ -504,6 +520,8 @@ BarWidget {
             required property int index
             required property string app
             required property string appIcon
+            required property string source
+            required property string groupKey
             required property string summary
             required property string body
             required property string image
@@ -513,7 +531,7 @@ BarWidget {
 
             readonly property bool hasMedia: image.length > 0 && (
               image.indexOf("image://icon//") === 0 || image.indexOf("file://") === 0)
-            readonly property string smallIconSource: image.length > 0 ? image : root.notificationIconSource(appIcon)
+            readonly property string smallIconSource: image.length > 0 ? image : root.historyIconSource(groupKey, source, app, appIcon)
             readonly property bool hasIcon: !hasMedia && smallIconSource.length > 0
             readonly property string sanitizedBody: root.sanitizeBody(body, app, appIcon)
 

@@ -41,6 +41,8 @@ function parseHistory(raw) {
       summary: String(e.summary || ""),
       body: String(e.body || ""),
       rawBody: String(e.rawBody || ""),
+      source: String(e.source || ""),
+      groupKey: String(e.groupKey || ""),
       image: "",
       glyph: String(e.glyph || ""),
       urgency: typeof e.urgency === "number" ? e.urgency : 1,
@@ -49,6 +51,43 @@ function parseHistory(raw) {
   }
   rows.sort(function(a, b) { return b.timestamp - a.timestamp })
   return rows
+}
+
+// Icon names for a history row, best first: a copy of candidates() in
+// dmitrylito.notifications/Icons.js, which the toast uses. Keep the two in step.
+var SITE_PREFIXES = ["www", "app", "web", "my", "m"]
+
+function iconSlug(text) {
+  return String(text || "").slice(0, 256).toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 100)
+}
+
+function uniqueNames(names) {
+  var out = []
+  for (var i = 0; i < names.length; i++)
+    if (names[i] && out.indexOf(names[i]) < 0) out.push(names[i])
+  return out
+}
+
+function siteNames(source) {
+  var host = String(source || "").toLowerCase().replace(/\.$/, "")
+  if (host.length > 253 || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(host)) return []
+  var labels = host.split(".").filter(function(label) { return SITE_PREFIXES.indexOf(label) < 0 })
+  var names = [host]
+  if (labels.length >= 2) names.push(labels[labels.length - 2])
+  if (labels.length) names.push(labels[0])
+  return uniqueNames(names)
+}
+
+function iconCandidates(groupKey, source, app, appIcon) {
+  var site = String(groupKey || "").indexOf("web:") === 0 ? siteNames(source) : []
+  var own = [String(appIcon || ""), String(source || ""), String(app || "")]
+  var themed = site.length ? site : [own[0]]
+  for (var i = 0; i < own.length; i++) themed = themed.concat([own[i], iconSlug(own[i])])
+  return {
+    themed: uniqueNames(themed.map(function(name) { return /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,255}$/.test(name) ? name : "" })),
+    entries: uniqueNames(site.length ? [own[0], own[2]] : own)
+  }
 }
 
 function relativeTime(timestamp, now) {
