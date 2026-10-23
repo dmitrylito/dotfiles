@@ -1,9 +1,9 @@
 // Bell bar widget: control-center tiles and sliders (ControlCenter.qml), the
 // recent-notification list, reminder management, and a DND toggle for the
-// Omarchy 4 notifications service. Notification history lives on
-// disk (one JSON file per entry under the service's historyDir); live toasts
-// come from service.popupModel; reminders come from `omarchy reminder`, which
-// backs each one with a transient systemd user timer.
+// dmitrylito.notifications service. Notification history is read from the
+// service's history.json and edited through its `forget`/`clear` IPC; the live
+// toast count and DND come from its `count`/`isDnd` IPC; reminders come from
+// `omarchy reminder`, which backs each one with a transient systemd user timer.
 // Left-click (or `omarchy-shell shell toggle omacom.notification-center`) opens
 // the popup, right-click toggles Do Not Disturb.
 //
@@ -61,10 +61,8 @@ BarWidget {
   // kind "bar" (shell.qml createScopedPluginShell), so a bar-widget has to read
   // the service's on-disk state instead of its QML object.
   readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/"
-  readonly property string popupDir: stateDir + "notifications/"
-  readonly property string historyDir: popupDir + "history/"
-  readonly property string imagesDir: popupDir + "images/"
-  readonly property string settingsPath: stateDir + "notifications.json"
+  readonly property string historyPath: stateDir + "notifications/history.json"
+  readonly property string quietPath: stateDir + "notifications/quiet.json"
 
   property int liveCount: 0
   property bool dnd: false
@@ -125,12 +123,12 @@ BarWidget {
   ListModel { id: historyModel }
 
   function refreshHistory() {
-    if (!historyDir || historyProc.running) return
+    if (historyProc.running) return
     historyProc.running = true
   }
 
   function loadHistory(raw) {
-    var rows = NotificationLogic.parseHistoryFiles(raw)
+    var rows = NotificationLogic.parseHistory(raw)
     historyModel.clear()
     for (var i = 0; i < rows.length; i++) historyModel.append(rows[i])
   }
@@ -139,18 +137,16 @@ BarWidget {
 
   function dismissHistoryRow(index) {
     if (index < 0 || index >= historyModel.count) return
-    var stem = String(historyModel.get(index).fileName).replace(/\.json$/, "")
+    var row = historyModel.get(index)
+    removeQueue.push([String(row.key), String(row.closedTs)])
     historyModel.remove(index)
-    removeQueue.push(stem)
     runNextRemove()
   }
 
   function runNextRemove() {
     if (removeProc.running || removeQueue.length === 0) return
-    var stem = removeQueue.shift()
-    removeProc.command = ["bash", "-c",
-      "rm -f \"$1/$2.json\" \"$3/$2\"-*", "--",
-      root.historyDir, stem, root.imagesDir]
+    var entry = removeQueue.shift()
+    removeProc.command = ["omarchy-shell", "-q", "notifications", "forget", entry[0], entry[1]]
     removeProc.running = true
   }
 
@@ -160,7 +156,7 @@ BarWidget {
   function focusHistoryRow(index) {
     if (index < 0 || index >= historyModel.count) return
     var row = historyModel.get(index)
-    var pattern = NotificationLogic.focusPattern(row.app, row.appIcon, row.body)
+    var pattern = NotificationLogic.focusPattern(row.app, row.appIcon, row.rawBody || row.body)
     if (!pattern) return
     focusProc.command = ["omarchy-hyprland-focus-app", pattern]
     focusProc.running = true
@@ -273,17 +269,14 @@ BarWidget {
     id: stateProc
     running: false
     command: ["bash", "-c",
-      "shopt -s nullglob\n" +
-      "settings=$2\n" +
-      "set -- \"$1\"/*.json\n" +
-      "printf '%s\\n' \"$#\"\n" +
-      // The service writes notifications.json 200ms after a change, so the file
-      // lags a toggle; ask the service, and read the file only if it is down.
-      "case $(omarchy-shell notifications dndState 2>/dev/null) in\n" +
+      "omarchy-shell notifications count 2>/dev/null || echo 0\n" +
+      // The service writes quiet.json 250ms after a change, so the file lags a
+      // toggle; ask the service, and read the file only if it is down.
+      "case $(omarchy-shell notifications isDnd 2>/dev/null) in\n" +
       "  on) echo dnd ;; off) echo ok ;;\n" +
-      "  *) grep -qs '\"dnd\"[[:space:]]*:[[:space:]]*true' \"$settings\" && echo dnd || echo ok ;;\n" +
+      "  *) grep -qs '\"dnd\"[[:space:]]*:[[:space:]]*true' \"$1\" && echo dnd || echo ok ;;\n" +
       "esac",
-      "--", root.popupDir, root.settingsPath]
+      "--", root.quietPath]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.loadState(text)
@@ -319,10 +312,7 @@ BarWidget {
   Process {
     id: historyProc
     running: false
-    command: ["bash", "-c",
-      "cd \"$1\" 2>/dev/null || exit 0\n" +
-      "for f in *.json; do [[ -e $f ]] || exit 0; printf '%s\\t' \"$f\"; cat \"$f\"; done",
-      "--", root.historyDir]
+    command: ["cat", root.historyPath]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.loadHistory(text)
@@ -512,7 +502,6 @@ BarWidget {
           delegate: BorderSurface {
             id: rowCard
             required property int index
-            required property string fileName
             required property string app
             required property string appIcon
             required property string summary

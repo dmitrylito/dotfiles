@@ -37,7 +37,7 @@ BarIndicator {
 
   Process {
     id: stateProc
-    command: ["omarchy-shell", "notifications", "dndState"]
+    command: ["omarchy-shell", "notifications", "isDnd"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {

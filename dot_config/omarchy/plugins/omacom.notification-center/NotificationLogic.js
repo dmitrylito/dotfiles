@@ -1,8 +1,9 @@
 // Helpers for the omacom.notification-center bar widget.
-// parseHistoryFiles consumes the Omarchy 4 notifications service's on-disk
-// history format: one JSON object per file under
-// ~/.local/state/omarchy/notifications/history/, streamed to the widget as
-// "<fileName>\t<json>" lines (see the history Process in BarWidget.qml).
+// parseHistory reads the notifications service's
+// ~/.local/state/omarchy/notifications/history.json: one array of closed rows,
+// newest first, with `ts` and `closed_ts` in epoch SECONDS. Rows keep no
+// images, and `rawBody` is set only when it differs from `body` (Chromium's
+// origin anchor, lifted off into `source`).
 
 function isChromiumDerived(app, appIcon) {
   var source = (String(app || "") + "\n" + String(appIcon || "")).toLowerCase()
@@ -20,28 +21,31 @@ function sanitizeBody(body, app, appIcon) {
     .replace(/^\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?\s+/i, "")
 }
 
-function parseHistoryFiles(raw) {
-  var lines = String(raw || "").split("\n")
+function parseHistory(raw) {
+  var list
+  try {
+    list = JSON.parse(String(raw || ""))
+  } catch (err) {
+    return []
+  }
+  if (!Array.isArray(list)) return []
   var rows = []
-  for (var i = 0; i < lines.length; i++) {
-    var tab = lines[i].indexOf("\t")
-    if (tab <= 0) continue
-    try {
-      var e = JSON.parse(lines[i].slice(tab + 1))
-      rows.push({
-        fileName: lines[i].slice(0, tab),
-        app: String(e.app || ""),
-        appIcon: String(e.appIcon || ""),
-        summary: String(e.summary || ""),
-        body: String(e.body || ""),
-        image: String(e.image || ""),
-        glyph: String(e.glyph || ""),
-        urgency: typeof e.urgency === "number" ? e.urgency : 1,
-        timestamp: Number(e.timestamp || 0)
-      })
-    } catch (err) {
-      // A half-written or corrupt file shouldn't hide the rest of history.
-    }
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i]
+    if (!e || typeof e !== "object" || !e.key) continue
+    rows.push({
+      key: String(e.key),
+      closedTs: String(e.closed_ts),
+      app: String(e.app || ""),
+      appIcon: String(e.appIcon || ""),
+      summary: String(e.summary || ""),
+      body: String(e.body || ""),
+      rawBody: String(e.rawBody || ""),
+      image: "",
+      glyph: String(e.glyph || ""),
+      urgency: typeof e.urgency === "number" ? e.urgency : 1,
+      timestamp: Number(e.ts || 0) * 1000
+    })
   }
   rows.sort(function(a, b) { return b.timestamp - a.timestamp })
   return rows
