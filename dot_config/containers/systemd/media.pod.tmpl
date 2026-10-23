@@ -11,6 +11,12 @@ PublishPort=192.168.0.13:13378:13378
 PublishPort=192.168.0.13:8084:8083
 PublishPort=192.168.0.13:8085:8085
 
+[Service]
+# Quadlet's network-online wait can pass before DHCP assigns the publish address;
+# pasta then fails to bind and the member containers exhaust the start limit.
+ExecStartPre=/bin/sh -c 'until ip -4 -o addr show | grep -qF " 192.168.0.13/"; do sleep 1; done'
+TimeoutStartSec=300
+
 [Install]
 WantedBy=default.target
 {{ else -}}
@@ -21,6 +27,12 @@ UserNS=keep-id
 PublishPort=192.168.0.11:32400:32400
 PublishPort=192.168.0.11:8989:8989
 PublishPort=192.168.0.11:7878:7878
+
+[Service]
+# Quadlet's network-online wait can pass before DHCP assigns the publish address;
+# pasta then fails to bind and the member containers exhaust the start limit.
+ExecStartPre=/bin/sh -c 'until ip -4 -o addr show | grep -qF " 192.168.0.11/"; do sleep 1; done'
+TimeoutStartSec=300
 
 [Install]
 WantedBy=default.target
