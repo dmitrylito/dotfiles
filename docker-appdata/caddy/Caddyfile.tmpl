@@ -158,6 +158,9 @@
 		reverse_proxy https://{{ $omada }}:8043 {
 			transport http {
 				tls_insecure_skip_verify
+				# Omada drops multiplexed HTTP/2 upstream connections with GOAWAY
+				# ENHANCE_YOUR_CALM ("Too much overhead"), breaking page loads.
+				versions 1.1
 			}
 		}
 	}
