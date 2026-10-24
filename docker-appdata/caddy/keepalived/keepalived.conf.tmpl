@@ -33,7 +33,7 @@ vrrp_instance proxy_vip {
 {{- end }}
     }
     virtual_ipaddress {
-        192.168.0.3/24 dev {{ $self.iface }}
+        192.168.0.3/32 dev {{ $self.iface }}
     }
     track_script {
         chk_caddy
