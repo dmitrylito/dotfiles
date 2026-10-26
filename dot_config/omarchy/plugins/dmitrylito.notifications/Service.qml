@@ -952,6 +952,62 @@ Item {
     return false
   }
 
+  function newestLive() {
+    for (var i = 0; i < toasts.count; i++) {
+      var key = String(toasts.get(i).key)
+      if (!leaving[key]) return key
+    }
+    return ""
+  }
+
+  // The card's buttons in Toast.qml's allDeeds order: found codes, then the
+  // sender's actions.
+  function deedsFor(key) {
+    var at = rowIndexFor(key)
+    if (at < 0) return []
+    var row = toasts.get(at)
+    var out = []
+    var codes = String(row.codes || row.code || "").split(" ")
+    for (var c = 0; c < codes.length; c++)
+      if (codes[c]) out.push({ kind: "code", value: codes[c] })
+    var actions = actionsOf(key, refsRevision)
+    for (var i = 0; i < actions.length; i++) out.push({ kind: "action", value: String(actions[i].id) })
+    return out
+  }
+
+  function runDeed(key, deed) {
+    if (deed.kind === "code") copyCode(deed.value, key)
+    else invokeAction(key, deed.value)
+  }
+
+  // Upstream's Super+comma (notifications.act). Upstream hands a card with
+  // several choices to its keyboard picker; this engine has none, so such a
+  // card is clicked, or its first button pressed when a click does nothing.
+  function actOnNewest() {
+    var key = newestLive()
+    if (!key) return false
+    var deeds = deedsFor(key)
+    if (clickable(key)) activate(key)
+    else if (deeds.length) runDeed(key, deeds[0])
+    else closeToast(key, "dismissed")
+    return true
+  }
+
+  // Whether a click does something of the card's own: Omarchy's --exec
+  // command, the sender's default action, the sender's own window, or a site
+  // to go to. Focusing an app by its name alone does not count.
+  function clickable(key) {
+    var at = rowIndexFor(key)
+    if (at < 0) return false
+    var row = toasts.get(at)
+    if (Security.parseExecArgv(row.execArgv)) return true
+    var ref = refs[key]
+    var actions = (ref && ref.actions) || []
+    for (var i = 0; i < Math.min(actions.length, Security.MAX_ACTIONS); i++)
+      if (String(actions[i].identifier) === "default") return true
+    return !!(windowForPid(row.senderPid) || Markup.hostname(row.source) || String(row.link || ""))
+  }
+
   // What the sender said can be done with this notification. A restored row
   // has no live sender, so it has none of these.
   function actionsOf(key, revision) {
@@ -1500,6 +1556,9 @@ Item {
       service.setDoNotDisturb(v === "true" || v === "1" || v === "on" || v === "yes")
       return isDnd()
     }
+
+    // Dismiss, press the one button on, or click the newest card on screen.
+    function act(): string { return service.actOnNewest() ? "ok" : "none" }
 
     // Dismiss the newest card on screen.
     function dismissOne(): string { return service.dismissNewest() ? "ok" : "none" }
