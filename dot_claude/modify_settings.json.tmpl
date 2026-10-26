@@ -65,10 +65,10 @@ STYLE_HOOKS = {
 BASELINE = {
     "agentPushNotifEnabled": True,
     "autoCompactEnabled": False,
-    # Seeds the auto-mode classifier on a fresh box. A DEFAULT, not enforced: fill_defaults
-    # recurses into dicts and skips subkeys the live file already has, so an established
-    # machine keeps whatever /auto-mode-setup last wrote. Changing these rules means editing
-    # BOTH this block and the live ~/.claude/settings.json.
+    # Auto-mode classifier rules. merge_auto_mode applies them on every apply: an entry here
+    # replaces the live entry with the same head (text before " \u2014 ", or the **label**),
+    # missing ones are appended, and entries /auto-mode-setup wrote stay. Until 2026-10-26
+    # this was seed-only, so established machines never saw rules added here.
     "autoMode": {
         "allow": [
             "$defaults",
@@ -204,6 +204,34 @@ BASELINE = {
             "Bash(ssh DLCO-2:*)",
             "EnterWorktree",
             "ExitWorktree",
+        ],
+        # The allow rules above skip the auto-mode classifier. These carve out the
+        # destructive slice of each so it prompts instead (ask beats allow, even in auto mode).
+        "ask": [
+            "Bash(git push *--force*)",
+            "Bash(git push * -f*)",
+            "Bash(git push *--mirror*)",
+            "Bash(git push *--delete*)",
+            "Bash(git push * -d *)",
+            "Bash(git push * +*)",
+            "Bash(gh pr merge *--admin*)",
+            "Bash(docker exec ops-backend *flush*)",
+            "Bash(docker exec ops-backend *reset_db*)",
+            "Bash(docker exec ops-backend *rm -r*)",
+            "Bash(ssh dlco-2 *rm -r*)",
+            "Bash(ssh dlco-2 *reboot*)",
+            "Bash(ssh dlco-2 *shutdown*)",
+            "Bash(ssh dlco-2 *poweroff*)",
+            "Bash(ssh dlco-2 *zfs destroy*)",
+            "Bash(ssh dlco-2 *mkfs*)",
+            "Bash(ssh dlco-2 *wipefs*)",
+            "Bash(ssh DLCO-2 *rm -r*)",
+            "Bash(ssh DLCO-2 *reboot*)",
+            "Bash(ssh DLCO-2 *shutdown*)",
+            "Bash(ssh DLCO-2 *poweroff*)",
+            "Bash(ssh DLCO-2 *zfs destroy*)",
+            "Bash(ssh DLCO-2 *mkfs*)",
+            "Bash(ssh DLCO-2 *wipefs*)",
         ],
         "defaultMode": "auto",
     },
@@ -399,15 +427,37 @@ def enforce_disabled_plugins(live, names):
     return live
 
 
+def rule_head(rule):
+    return rule.split(" \u2014 ", 1)[0].split("**:", 1)[0]
+
+
+def merge_auto_mode(live, baseline):
+    auto_mode = live.get("autoMode")
+    if not isinstance(auto_mode, dict):
+        live["autoMode"] = clone(baseline)
+        return
+    for kind in ("allow", "environment"):
+        rules = auto_mode.get(kind)
+        if not isinstance(rules, list):
+            auto_mode[kind] = clone(baseline.get(kind, []))
+            continue
+        for rule in baseline.get(kind, []):
+            heads = [rule_head(r) if isinstance(r, str) else None for r in rules]
+            if rule_head(rule) in heads:
+                rules[heads.index(rule_head(rule))] = rule
+            else:
+                rules.append(rule)
+
+
 def enforce_allow(live, baseline):
     permissions = live.setdefault("permissions", {})
-    allow = permissions.get("allow")
-    if not isinstance(allow, list):
-        allow = permissions["allow"] = []
-    for rule in baseline.get("allow", []):
-        if rule not in allow:
-            allow.append(rule)
-    return allow
+    for kind in ("allow", "ask"):
+        rules = permissions.get(kind)
+        if not isinstance(rules, list):
+            rules = permissions[kind] = []
+        for rule in baseline.get(kind, []):
+            if rule not in rules:
+                rules.append(rule)
 
 
 raw = sys.stdin.read()
@@ -433,5 +483,6 @@ enforce_scalars(current, ENFORCED_SCALARS)
 remove_keys(current, REMOVED_KEYS)
 enforce_disabled_plugins(current, DISABLED_PLUGINS)
 enforce_allow(current, BASELINE["permissions"])
+merge_auto_mode(current, BASELINE["autoMode"])
 
 print(json.dumps(current, indent=2, sort_keys=True))
