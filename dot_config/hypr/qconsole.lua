@@ -11,8 +11,8 @@ local upstream = (os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/defaul
 
 local patches = {
 	{
-		'local seed = "[workspace special:scratchpad silent] omarchy-agent"',
-		'local seed = "[workspace special:scratchpad silent] herdr-agent"',
+		'local seed = "[workspace " .. CONSOLE .. " silent] omarchy-agent"',
+		'local seed = "[workspace " .. CONSOLE .. " silent] herdr-agent"',
 	},
 }
 

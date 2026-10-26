@@ -158,12 +158,12 @@ local function qconsole_toggle()
 	-- on_created_empty only fires for an empty scratchpad; with the herdr window
 	-- still there, restart the agent if it was exited.
 	for _, window in ipairs(hl.get_windows({ class = "org.omarchy.agent" })) do
-		if window.workspace and window.workspace.name == "special:scratchpad" then
+		if window.workspace and window.workspace.name == "special:qconsole" then
 			hl.exec_cmd("herdr-agent --ensure")
 			break
 		end
 	end
-	hl.dispatch(hl.dsp.workspace.toggle_special("scratchpad"))
+	hl.dispatch(hl.dsp.workspace.toggle_special("qconsole"))
 end
 
 -- Focusing a window on a hidden special workspace does not reveal it, so toggle the
@@ -192,8 +192,10 @@ local function spotify_toggle()
 	hl.dispatch(hl.dsp.workspace.toggle_special("spotify"))
 end
 
+-- Omarchy moved the console to special:qconsole on Super+Grave and left Super+S a
+-- plain scratchpad; Super+S stays the console here.
 hl.unbind("SUPER + S") -- Omarchy default: Toggle scratchpad
-hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle scratchpad" })
+hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle Quake console" })
 -- omarchy-shell instead of { ipc = ... }: Omarchy 4.0.4's o.bind has no ipc branch and
 -- passes the table to hl.bind, which rejects it (helpers.lua:105).
 o.bind("SUPER + E", "Toggle notification center", "omarchy-shell -q shell toggle omacom.notification-center")
