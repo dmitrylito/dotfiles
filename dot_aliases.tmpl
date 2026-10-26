@@ -67,7 +67,7 @@ cdp() {
 compdef '_path_files -/ -W ~/Projects' cdp
 
 if command -v eza >/dev/null && [[ -z ${CLAUDECODE:-} ]]; then
-  alias ls="eza --group-directories-first --color=auto --icons=auto"
+  alias ls="eza -T -L=1 --group-directories-first --color=auto --icons=auto"
   alias lsa="eza -a -l --group-directories-first --color=always --icons=always --git --time-style=relative --no-user"
   alias lt="eza -T -L=2 -l --group-directories-first --color=always --icons=always --git --no-user --no-permissions"
 else
