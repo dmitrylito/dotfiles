@@ -93,7 +93,15 @@ def fetch_events(config):
     ]
     out = subprocess.run(cmd, capture_output=True, text=True)
     if out.returncode != 0:
-        sys.exit("gcalcli failed: %s" % (out.stderr.strip() or out.stdout.strip()))
+        detail = out.stderr.strip() or out.stdout.strip()
+        last = detail.splitlines()[-1] if detail else "exit %d" % out.returncode
+        # Network blips are routine on a 5-minute timer: log one line and exit 75
+        # (EX_TEMPFAIL), which meeting-alert-sync.service counts as success.
+        if re.search(r"TimeoutError|timed out|ServerNotFoundError|Unable to find the server|"
+                     r"ConnectionError|gaierror|Temporary failure in name resolution", detail):
+            print("gcalcli network error, retrying next run: %s" % last, file=sys.stderr)
+            sys.exit(75)
+        sys.exit("gcalcli failed: %s" % detail)
 
     lines = [l for l in out.stdout.splitlines() if l.strip()]
     if not lines:

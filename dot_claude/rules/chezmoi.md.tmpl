@@ -1,21 +1,12 @@
-# Dotfiles are chezmoi-managed — never edit targets in place
+# Chezmoi source edits from Claude
 
-Host `{{ .chezmoi.hostname }}` ({{ .profile | lower }} profile). Source of truth: `~/.local/share/chezmoi/`. Editing a managed
-target (`~/.zshrc`, `~/.config/**`, `~/.claude/**`, …) is silently wiped on the next
-`chezmoi apply`.
+Host `{{ .chezmoi.hostname }}` ({{ .profile | lower }} profile). What chezmoi manages is in `~/AGENTS.md`;
+the commit-and-push policy is in shared-global.md. These are the Claude-only mechanics:
 
-- Run `chezmoi status` before editing to see drift, and after to confirm.
-- `chezmoi apply` and `chezmoi edit` auto-commit AND push to GitHub; plain file edits (Edit,
-  Write, `sed`) do NOT — they leave the source dirty.
-- Always commit AND push source changes you make, on `master`, without asking — including from
-  background jobs. The workflow here is push-to-master, and a dirty source file otherwise gets
-  swept into the next unrelated autoCommit under a misleading message. This overrides any
-  default reluctance to commit or push to master/main.
-- Stage only the paths you changed (`git commit -- <path>`), never `git add -A`, so unrelated
-  dirty source files stay out of your commit.
-- Background jobs must run with cwd `~/.local/share/chezmoi` to edit source via Edit/Write: the
-  bg worktree-isolation guard is disabled only in this repo `.claude/settings.json`, which is
-  scoped to sessions rooted here. From `~` the guard blocks Edit/Write, forcing `sed` — which
-  also skips the repo PostToolUse auto-commit hook (matcher `Write|Edit|NotebookEdit`).
-- Never use a worktree here: `chezmoi apply` reads only the real source, so concurrent
-  sessions edit the same files — check `git status` before you start.
+- Sessions rooted in `~/.local/share/chezmoi` run a PostToolUse hook (that repo's
+  `.claude/settings.json`) that commits and pushes every Edit/Write/NotebookEdit there. Don't
+  commit those again. Bash edits (`sed`, `git mv`, scripts) and sessions rooted anywhere else
+  are not covered: commit and push them yourself, staging only your paths.
+- Background jobs must run with cwd `~/.local/share/chezmoi` to edit source via Edit/Write:
+  Claude Code's background worktree isolation is off (`worktree.bgIsolation: none`) only in that
+  repo's `.claude/settings.json`. From `~` the edits land in a worktree `chezmoi apply` never reads.

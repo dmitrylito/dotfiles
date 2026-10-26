@@ -7,4 +7,6 @@ After=network-online.target
 Type=oneshot
 ExecStart=%h/.local/bin/meeting-alert sync
 TimeoutStartSec=2min
+# meeting-alert exits 75 on a gcalcli network error; the next run retries.
+SuccessExitStatus=75
 Nice=10

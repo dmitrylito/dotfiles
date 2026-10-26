@@ -176,8 +176,8 @@ for event in events:
             continue
         remaining = []
         for entry in entries:
-            command = entry.get("command") if isinstance(entry, dict) else None
-            token = command.split(" ", 1)[0].strip("'\"") if isinstance(command, str) else ""
+            cmd = entry.get("command") if isinstance(entry, dict) else None
+            token = cmd.split(" ", 1)[0].strip("'\"") if isinstance(cmd, str) else ""
             if token.rsplit("/", 1)[-1] not in names:
                 remaining.append(entry)
         if remaining:

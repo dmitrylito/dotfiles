@@ -17,8 +17,12 @@
 # matching the session's cwd against the herdr panes that are running Codex, and strips a
 # claim it cannot resolve. It only queries Herdr, so it is cheap enough to run per event.
 
+MOSHI_HOOK="${MOSHI_HOOK_BIN:-$HOME/.local/bin/moshi-hook}"
+# Hosts without Moshi (the debug profile) still run these hooks: answer empty, never fail.
+[ -x "$MOSHI_HOOK" ] || { cat >/dev/null; printf '{}\n'; exit 0; }
+
 payload=$(cat)
-output=$(printf '%s' "$payload" | "$HOME/.local/bin/moshi-hook" codex-hook)
+output=$(printf '%s' "$payload" | "$MOSHI_HOOK" codex-hook)
 exit_code=$?
 
 if [ "$exit_code" -ne 0 ]; then

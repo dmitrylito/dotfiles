@@ -112,6 +112,16 @@ step_done() {
 RUN_START=$SECONDS
 trap 'log Error "Line $LINENO failed (exit $?): $BASH_COMMAND"; log Error "Aborted after $(fmt_duration $((SECONDS - RUN_START)))."' ERR
 
+# Set while the stack is down or db runs the crash-unsafe restore config, so an abort
+# anywhere in between brings the normal stack back instead of leaving fsync=off running.
+STACK_ON_RESTORE_CONFIG=0
+restore_normal_stack() {
+  [[ $STACK_ON_RESTORE_CONFIG == 1 ]] || return 0
+  log Stack "Run failed: restarting the stack on the normal compose config; the database may be partial."
+  cd "$COMPOSE_DIR" && docker compose --progress quiet stop && docker compose --progress quiet up -d
+}
+trap restore_normal_stack EXIT
+
 #######################################
 # Steps
 #######################################
@@ -177,6 +187,7 @@ start_db_only() {
   cd "$COMPOSE_DIR"
   # stop, not down: backend's redis has no named volume, so every down/up left its
   # old anonymous /data volume behind (one orphan per night).
+  STACK_ON_RESTORE_CONFIG=1
   docker compose --progress quiet stop
   write_restore_override
   docker compose --progress quiet -f docker-compose.yml -f "$RESTORE_PG_OVERRIDE" up -d db
@@ -300,6 +311,7 @@ snapshot_and_restart() {
   docker-volume-snapshot create "$VOLUME_NAME" "$SNAPSHOT_FILE" >/dev/null
   log Stack "Snapshot is $(du -h "$SNAPSHOT_FILE" | cut -f1). Starting the full stack."
   docker compose --progress quiet up -d
+  STACK_ON_RESTORE_CONFIG=0
   step_done Stack
 }
 

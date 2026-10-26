@@ -23,6 +23,7 @@ local unbinds = {
 	"SUPER + K",
 	"SUPER + L",
 	"SUPER + ALT + K",
+	"SUPER + ALT + L",
 	"SUPER + ALT + RETURN",
 	"SUPER + RETURN",
 	"SUPER + SHIFT + M",
@@ -87,10 +88,10 @@ o.bind("SUPER + SHIFT + J", "Swap window down", hl.dsp.window.swap({ direction =
 o.bind("SUPER + SHIFT + K", "Swap window up", hl.dsp.window.swap({ direction = "u" }))
 o.bind("SUPER + SHIFT + L", "Swap window to the right", hl.dsp.window.swap({ direction = "r" }))
 
-o.bind("SUPER + ALT + H", "Move window to group on right", hl.dsp.window.move({ into_group = "r" }))
+o.bind("SUPER + ALT + H", "Move window to group on left", hl.dsp.window.move({ into_group = "l" }))
 o.bind("SUPER + ALT + J", "Move window to group on bottom", hl.dsp.window.move({ into_group = "d" }))
 o.bind("SUPER + ALT + K", "Move window to group on top", hl.dsp.window.move({ into_group = "u" }))
-o.bind("SUPER + ALT + L", "Move window to group on left", hl.dsp.window.move({ into_group = "l" }))
+o.bind("SUPER + ALT + L", "Move window to group on right", hl.dsp.window.move({ into_group = "r" }))
 
 o.bind("SUPER + N", "Toggle window split", hl.dsp.layout("togglesplit"))
 
@@ -262,7 +263,7 @@ o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true
 -- System
 -- ---------------------------------------------------------------------------
 
-o.bind("SUPER + M", "Show key bindings", "omarchy-menu-keybindings")
+o.rebind("SUPER + M", "Show key bindings", "omarchy-menu-keybindings")
 o.bind("SUPER + CTRL + ALT + L", "Suspend", "systemctl suspend", { locked = true })
 
 -- This host never sleeps or locks (system/install-never-sleep.sh): closing the

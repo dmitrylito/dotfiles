@@ -15,12 +15,12 @@ hl.config({
 {{- else if eq .chezmoi.hostname "fcoffice" }}
 		accel_profile = "adaptive",
 		sensitivity = 0.3,
+ 		natural_scroll = false,
 {{- else }}
 		accel_profile = "adaptive",
 		sensitivity = 0.4,
-		scroll_factor = 1.5,
+ 		natural_scroll = false,
 {{- end }}
-		natural_scroll = false,
 		touchpad = {
 			scroll_factor = 0.4,
 		},
