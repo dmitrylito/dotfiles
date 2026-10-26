@@ -1,3 +1,4 @@
+{{- /* chezmoi:modify-template */ -}}
 # Ghostty Configuration Template managed by Chezmoi
 # Profiles: omarchy (Linux), mac (macOS)
 {{ if eq .profile "omarchy" -}}
@@ -6,8 +7,9 @@
 # Dynamic theme colors from Omarchy
 config-file = ?"~/.local/state/omarchy/current/theme/ghostty.conf"
 
-# Font size
-font-size = 13
+# Font size is owned by Omarchy's text-size slider, which only rewrites an existing
+# `font-size =` line: keep the live value, and seed Omarchy's default if it is missing.
+{{ regexFind "(?m)^font-size = .*$" .chezmoi.stdin | default "font-size = 9" }}
 
 # Window
 gtk-toolbar-style = flat
