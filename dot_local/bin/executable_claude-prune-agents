@@ -2,7 +2,7 @@
 """Drop stale finished sessions out of Claude Code's agent view.
 
 Usage: claude-prune-agents [--hours N] [--states done,stopped] [--dry-run]
-       Run by the claude-prune-agents.timer systemd user unit, hourly.
+       Run by hand; no timer runs it.
        Default cutoff: finished and idle for more than 72 hours.
 
 Claude prunes ~/.claude/projects, plans, tasks and friends at startup via

@@ -1,37 +1,12 @@
 #!/usr/bin/env bash
 # Run mypy + mypy_django_plugin against the fleetchaser backend on the host.
 #
-# The django-stubs mypy plugin must call django.setup(), which reads env vars
-# that normally come from Docker. We load docker/envs/* (values contain '&', so
-# a naive `source` mangles them) and point BIGTABLE_EMULATOR_HOST at a dead local
-# port so setup fails fast instead of hanging 60s on the unresolvable Docker
-# `bigtable` hostname.
+# Env setup (docker/envs, Bigtable fast-fail) is shared with fc-dmypy in
+# ~/.local/libexec/fc-mypy-env.
 #
 # Project root is derived from the file argument, so this works regardless of the
 # caller's cwd (e.g. when invoked by nvim-lint).
 
-# Find the repo root from the last (file) argument, falling back to cwd.
-last_arg=""
-for last_arg in "$@"; do :; done
-start_dir="."
-[ -n "$last_arg" ] && [ -e "$last_arg" ] && start_dir=$(dirname "$last_arg")
-root=$(git -C "$start_dir" rev-parse --show-toplevel 2>/dev/null || pwd)
-cd "$root" || exit 1
-
-# Load docker/envs/*.env without letting the shell interpret '&', '?', etc.
-set -a
-for f in docker/envs/*.env; do
-  [ -e "$f" ] || continue
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in ''|\#*) continue ;; esac
-    export "${line%%=*}=${line#*=}"
-  done < "$f"
-done
-export BIGTABLE_EMULATOR_HOST="127.0.0.1:8721"
-export BIGTABLE_READ_ENABLED=False
-export BIGTABLE_WRITE_ENABLED=False
-export FAIL_ON_POSTGRES=False
-export DJANGO_SETTINGS_MODULE="fleetchaser.settings"
-set +a
+. "$HOME/.local/libexec/fc-mypy-env" "$@" || exit 1
 
 exec "$root/.venv/bin/mypy" --config-file "$HOME/.config/fleetchaser-mypy.ini" "$@"

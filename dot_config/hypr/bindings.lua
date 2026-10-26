@@ -87,10 +87,10 @@ o.bind("SUPER + SHIFT + J", "Swap window down", hl.dsp.window.swap({ direction =
 o.bind("SUPER + SHIFT + K", "Swap window up", hl.dsp.window.swap({ direction = "u" }))
 o.bind("SUPER + SHIFT + L", "Swap window to the right", hl.dsp.window.swap({ direction = "r" }))
 
-o.bind("SUPER + ALT + H", "Move window to group on right", "hyprctl dispatch moveintogroup r")
-o.bind("SUPER + ALT + J", "Move window to group on bottom", "hyprctl dispatch moveintogroup d")
-o.bind("SUPER + ALT + K", "Move window to group on top", "hyprctl dispatch moveintogroup u")
-o.bind("SUPER + ALT + L", "Move window to group on left", "hyprctl dispatch moveintogroup l")
+o.bind("SUPER + ALT + H", "Move window to group on right", hl.dsp.window.move({ into_group = "r" }))
+o.bind("SUPER + ALT + J", "Move window to group on bottom", hl.dsp.window.move({ into_group = "d" }))
+o.bind("SUPER + ALT + K", "Move window to group on top", hl.dsp.window.move({ into_group = "u" }))
+o.bind("SUPER + ALT + L", "Move window to group on left", hl.dsp.window.move({ into_group = "l" }))
 
 o.bind("SUPER + N", "Toggle window split", hl.dsp.layout("togglesplit"))
 

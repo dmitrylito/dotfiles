@@ -44,7 +44,8 @@ awk '/\[ALPM\] (installed|removed|upgraded|reinstalled|downgraded) /{a[$4]=$3}
      END{for (p in a) if (a[p] == "removed") print p}' /var/log/pacman.log | sort > "$TMP/gone"
 
 if [[ ${1:-} == --prune ]]; then
-    pacman -Qdtq | sort | comm -23 - "$TMP/declared" | comm -23 - "$TMP/ignored" > "$TMP/orphans" || true
+    pacman -Qdtq | sort | comm -23 - "$TMP/declared" | comm -23 - "$TMP/ignored" \
+        | comm -23 - "$TMP/omarchy" > "$TMP/orphans" || true
     [[ -s $TMP/orphans ]] || exit 0
     printf 'Removing orphaned dependencies: %s\n' "$(tr '\n' ' ' < "$TMP/orphans")"
     mapfile -t orphans < "$TMP/orphans"

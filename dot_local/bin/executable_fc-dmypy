@@ -9,29 +9,7 @@
 # Called by nvim-lint as: fc-dmypy <file>. Output format (column + error-end)
 # comes from ~/.config/fleetchaser-mypy.ini so no CLI flags are needed.
 
-last=""
-for last in "$@"; do :; done
-start="."
-[ -n "$last" ] && [ -e "$last" ] && start=$(dirname "$last")
-root=$(git -C "$start" rev-parse --show-toplevel 2>/dev/null || pwd)
-cd "$root" || exit 0
-
-# Load docker/envs/* (values contain '&', which `source` mangles) + Bigtable
-# fast-fail so the daemon's django.setup() succeeds on the host.
-set -a
-for f in docker/envs/*.env; do
-  [ -e "$f" ] || continue
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in ''|\#*) continue ;; esac
-    export "${line%%=*}=${line#*=}"
-  done < "$f"
-done
-export BIGTABLE_EMULATOR_HOST="127.0.0.1:8721"
-export BIGTABLE_READ_ENABLED=False
-export BIGTABLE_WRITE_ENABLED=False
-export FAIL_ON_POSTGRES=False
-export DJANGO_SETTINGS_MODULE="fleetchaser.settings"
-set +a
+. "$HOME/.local/libexec/fc-mypy-env" "$@" || exit 0
 
 CFG="$HOME/.config/fleetchaser-mypy.ini"
 DM="$root/.venv/bin/dmypy"

@@ -3,5 +3,7 @@ Description=Repair Moshi pane -> agent conversation bindings in Herdr
 Documentation=https://github.com/dmitrylito/dotfiles/pull/4
 
 [Service]
+# Runs every 20s: keep the manager's Starting/Finished lines (info) out of the journal.
+LogLevelMax=notice
 Type=oneshot
 ExecStart={{ .chezmoi.homeDir }}/.local/bin/moshi-pane-rebind

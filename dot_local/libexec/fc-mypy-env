@@ -1,0 +1,29 @@
+# Sourced by fc-mypy and fc-dmypy with their arguments: cd to the git root of the last
+# (file) argument and export what django.setup() needs on the host. The django-stubs
+# plugin calls django.setup(), which reads env vars that normally come from Docker, so
+# docker/envs/* is loaded line by line (values contain '&', which `source` mangles) and
+# BIGTABLE_EMULATOR_HOST points at a dead local port so setup fails fast instead of
+# hanging 60s on the unresolvable Docker `bigtable` hostname. Sets $root and $last;
+# returns 1 if the root cannot be entered.
+
+last=""
+for last in "$@"; do :; done
+start_dir="."
+[ -n "$last" ] && [ -e "$last" ] && start_dir=$(dirname "$last")
+root=$(git -C "$start_dir" rev-parse --show-toplevel 2>/dev/null || pwd)
+cd "$root" || return 1
+
+set -a
+for f in docker/envs/*.env; do
+  [ -e "$f" ] || continue
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|\#*) continue ;; esac
+    export "${line%%=*}=${line#*=}"
+  done < "$f"
+done
+export BIGTABLE_EMULATOR_HOST="127.0.0.1:8721"
+export BIGTABLE_READ_ENABLED=False
+export BIGTABLE_WRITE_ENABLED=False
+export FAIL_ON_POSTGRES=False
+export DJANGO_SETTINGS_MODULE="fleetchaser.settings"
+set +a

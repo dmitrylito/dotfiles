@@ -84,6 +84,4 @@ window-padding-y = 20
 
 {{ if eq .profile "mac" -}}
 background = 1a1a1a
-{{- else -}}
-background = 000000
 {{- end }}

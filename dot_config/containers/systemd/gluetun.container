@@ -4,6 +4,7 @@ After=network-online.target
 
 [Container]
 Image=docker.io/qmcgaw/gluetun:latest
+AutoUpdate=registry
 ContainerName=gluetun
 
 # Network Permissions

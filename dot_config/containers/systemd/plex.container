@@ -26,9 +26,9 @@ HealthStartPeriod=90s
 # 1. Config
 Volume=/home/dmitrylito/docker-appdata/plex:/config:Z
 # 2. Media
-Volume=/data/media:/data/media:Z
+Volume=/data/media:/data/media:z
 # 3. Transcode Temp (RAM disk is faster)
-Volume=/dev/shm:/transcode:Z
+Volume=/dev/shm:/transcode:z
 
 [Service]
 Restart=always

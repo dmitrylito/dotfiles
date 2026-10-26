@@ -34,7 +34,6 @@ uv
 voxtype-bin
 wev
 wlr-randr
-ydotool
 zsh-autosuggestions
 zsh-completions
 zsh-syntax-highlighting

@@ -41,10 +41,8 @@ managed target (`~/.zshrc`, `~/.config/**`, `~/.claude/**`, …) is silently wip
 
 ## Shell and runtimes
 
-- Interactive shell is Zsh + Oh My Zsh. Both `~/.bashrc` and `~/.zshrc` run
-  `unalias ga gd 2>/dev/null` before sourcing their function folders — OMZ's git aliases collide
-  with same-named custom functions. Keep that line or shell init breaks.
-- Personal aliases go in `~/.aliases` (sourced at the bottom of both rc files).
+- Interactive shell is Zsh + Oh My Zsh. `~/.bashrc` is Omarchy's stock file.
+- Personal aliases go in `~/.aliases` (sourced by `~/.zshrc`).
 - Runtimes come from mise (`~/.config/mise/config.toml`); run `mise trust <dir>` after creating a
   folder or worktree that carries env config.
 - Avoid commands that trigger interactive `sudo` prompts unless asked.
@@ -69,7 +67,7 @@ then map the IP with `tailscale status`. If no client shows up, say so instead o
 - Never edit `/usr/share/omarchy/` or `~/.local/share/omarchy/` — package-owned, overwritten on
   `omarchy update`. Customize in `~/.config/hypr/*.lua` (Hyprland) and `~/.config/omarchy/shell.json`
   (bar/notifications).
-- Hyprland Lua reloads on save; validate with `hyprctl reload` then `hyprctl configerrors`. The
+- Hyprland Lua does not reliably reload on save: run `hyprctl reload`, then `hyprctl configerrors`. The
   omarchy shell hot-reloads (`omarchy restart shell` if needed); terminals need
   `omarchy restart terminal`.
 - `omarchy commands` lists built-ins; `omarchy theme set "<Theme>"`; `omarchy refresh <app>` resets a

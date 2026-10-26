@@ -212,7 +212,8 @@ CLI tools should be declared in mise instead of wrapped by ad-hoc scripts.
 
 ## Validation before applying
 
-Validate all six profile/role combinations plus four hostname-specific cases,
+Validate all 16 cases (omarchy, debug, server and mac, plus fcoffice and DLCO-1/2/3, each
+with work off and on),
 then preview only the intended targets on the active machine:
 
 ```bash

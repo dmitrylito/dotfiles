@@ -33,6 +33,7 @@ ventoy-bin
 wayvnc
 webcamoid
 xmlstarlet
+ydotool
 yq
 zed
 zsa-keymapp-bin

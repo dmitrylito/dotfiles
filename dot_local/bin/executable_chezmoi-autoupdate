@@ -168,7 +168,11 @@ run() {
 if [ "${SYNC:-0}" -eq 1 ]; then
     # Waits for a shell-started run instead of skipping, so the caller's
     # follow-up (package converge) sees this commit applied.
-    ( flock -w "$TIMEOUT_BG" 9 || { log "skipped: lock busy"; exit 0; }; run ) 9>"$LOCK" </dev/null
+    if command -v flock >/dev/null 2>&1; then
+        ( flock -w "$TIMEOUT_BG" 9 || { log "skipped: lock busy"; exit 0; }; run ) 9>"$LOCK" </dev/null
+    else
+        ( run ) </dev/null
+    fi
     exit 0
 fi
 

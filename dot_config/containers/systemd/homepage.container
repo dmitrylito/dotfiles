@@ -37,7 +37,7 @@ HealthStartPeriod=60s
 
 # ZFS Volumes
 Volume=/data/docker-appdata/homepage/:/app/config:Z
-Volume=/data/media/pictures:/app/public/pictures:Z
+Volume=/data/media/pictures:/app/public/pictures:z
 Volume=%t/podman/podman.sock:/var/run/docker.sock:ro
 Volume=%t/media-remote:/remote-podman:ro
 

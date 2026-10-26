@@ -92,8 +92,7 @@
         "h": "confirm:previousField",
         "tab": "confirm:nextField",
         "space": "confirm:toggle",
-        "shift+tab": "confirm:cycleMode",
-        "ctrl+e": "confirm:toggleExplanation"
+        "shift+tab": "confirm:cycleMode"
       }
     },
     {

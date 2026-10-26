@@ -35,7 +35,8 @@ VOLUME_NAME="fleetchaser_db_volume"
 
 DB_SUPERUSER="postgres"
 DB_USER="fleetchaser"
-DB_PASS="s3cr3t"
+DB_PASS="$(sed -n 's/^DB_PASSWORD=//p' "$COMPOSE_DIR/envs/database.env" 2>/dev/null)"
+: "${DB_PASS:?DB_PASSWORD not found in $COMPOSE_DIR/envs/database.env}"
 DB_NAME="fleetchaser"
 # Roles the prod dump grants to that don't exist locally; created empty so GRANTs succeed.
 RESTORE_EXTRA_ROLES="${RESTORE_EXTRA_ROLES:-fc-readonly cloudsqlsuperuser cloudsqlimportexport}"

@@ -2,7 +2,7 @@
 
 Run `scripts/test-templates.sh` from any directory. Prerequisites on Linux or
 macOS are Python 3.11+, chezmoi, uv, bash, zsh, and Lua's `luac` compiler on PATH.
-The implementation was verified with chezmoi 2.72.2. The Codex modifier uses uv
+The implementation was verified with chezmoi 2.73.3. The Codex modifier uses uv
 to fetch pinned `tomlkit==0.13.3` into the disposable cache, so the run needs
 package-index access. No personal age identity, configured Chezmoi home, Mise
 environment, Omarchy installation, or running desktop is required.
@@ -22,7 +22,8 @@ modifiers are unchanged and still fail when required real inputs are missing.
 
 Coverage includes:
 
-- `omarchy`, `server`, and `mac`, each with `work=false` and `work=true`.
+- `omarchy`, `debug`, `server`, and `mac`, each with `work=false` and `work=true`.
+- `scripts/test-opencode-statusline.mjs` under `node --test`, when node is on PATH.
 - `fcoffice` Omarchy and `DLCO-1`, `DLCO-2`, and `DLCO-3` server, each with both work roles.
 - Initialization-template TOML and rendered Bash/Zsh, Python, Lua, and TOML syntax.
 - Modifier Python syntax, Claude settings JSON, profile tool ownership, Arch plugin

@@ -136,6 +136,7 @@ Projects/fleetchaser/
 .config/fleetchaser-mypy.ini
 .local/bin/fc-dmypy
 .local/bin/fc-mypy
+.local/libexec/fc-mypy-env
 .local/bin/work-mode
 .claude/skills/restack-migrations/
 .claude/skills/state-mileage-import/
@@ -162,6 +163,8 @@ Projects/fleetchaser/
 .config/environment.d/
 # Shim for the local voxtype GPU-encoder fork, which only fcoffice builds.
 .local/bin/voxtype
+.config/systemd/user/voxtype.service
+.config/systemd/user/voxtype.service.d/
 {{ end }}
 
 {{ if and (eq $profile "omarchy") (eq .chezmoi.hostname "fcoffice") }}
