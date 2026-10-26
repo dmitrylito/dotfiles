@@ -92,8 +92,11 @@ source_if_exists "$XDG_CONFIG_HOME/zsh/tools.zsh"
 # hyprmon must write to the unmanaged file sourced by the managed Hyprland config.
 alias hyprmon='HYPRLAND_CONFIG="$HOME/.config/hypr/monitors.conf" command hyprmon'
 
+# Only replace a dead signature (a shell that outlived a Hyprland restart): a live one
+# may be deliberate, like the nested session `hypr-testbed env` exports.
 _sync_hypr_signature() {
   (( ${+commands[systemctl]} )) || return
+  [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && command hyprctl version >/dev/null 2>&1 && return
   local signature
   signature=$(systemctl --user show-environment 2>/dev/null |
     awk -F= '$1 == "HYPRLAND_INSTANCE_SIGNATURE" { print $2 }')
