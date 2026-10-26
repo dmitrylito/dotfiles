@@ -10,6 +10,7 @@
 #   hypr-testbed screenshot [monitor|workspace] [file]
 #                                   PNG of one monitor, never shown on your screen
 #                                   (default: the focused one; prints the path)
+#   hypr-testbed pointer STEP...    move, click, drag and scroll a mouse in it
 #   hypr-testbed show               bring its screen up, to click around in it
 #                                   (that screen is monitor 1 = workspace 1)
 #   hypr-testbed hide               put it away again
@@ -38,6 +39,22 @@
 # looked at, a shell or bar under test included, since such a shell puts its
 # first bar, and its IPC-opened popups, on monitor 1. `show` has nothing to show
 # in that mode. Never `show` just to take a screenshot: it lands on the real screen.
+#
+# Pointer: `pointer` drives a virtual mouse that exists only in the testbed
+# (zwlr_virtual_pointer_v1; the client is compiled on first use from
+# ~/.local/share/hypr-testbed into the runtime dir). Hover, clicks, drags and
+# scrolling reach windows and layer-shell surfaces (bars, notifications) as a real
+# mouse would, and the cursor is drawn into screenshots. Steps run in order:
+#   move X Y            layout position
+#   move MONITOR X Y    pixel X,Y of that monitor, as in its screenshot
+#   rel DX DY           relative motion
+#   click [BUTTON]      left (default), right or middle
+#   down BUTTON, up BUTTON   hold for a drag
+#   scroll N            wheel steps, positive is down
+#   wait MS
+#   where               print the cursor position
+# e.g. `hypr-testbed pointer move HEADLESS-1 1700 70 wait 500 click`.
+# ydotool and dotool are off limits: they go through uinput and move the real mouse.
 #
 # Set HYPR_TESTBED_VISIBLE=1 to park it on PARK_WS as an ordinary window instead.
 # Aquamarine 0.15.1 has no headless-only backend (CBackend::create() fails with no
@@ -277,6 +294,88 @@ screenshot() {
   printf '%s\n' "$file"
 }
 
+# Found from the script, not $HOME, so it still works for a shell under test run
+# with HOME pointed at a copied config.
+POINTER_SRC="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../share/hypr-testbed"
+POINTER_BIN="$STATE_DIR/pointer"
+
+pointer_bin() {
+  local xml="$POINTER_SRC/wlr-virtual-pointer-unstable-v1.xml" build rc
+  if [[ ! -x "$POINTER_BIN" || "$POINTER_SRC/pointer.c" -nt "$POINTER_BIN" || "$xml" -nt "$POINTER_BIN" ]]; then
+    build="$(mktemp -d)"
+    wayland-scanner client-header "$xml" "$build/wlr-virtual-pointer-unstable-v1-client-protocol.h" \
+      && wayland-scanner private-code "$xml" "$build/protocol.c" \
+      && mkdir -p "${POINTER_BIN%/*}" \
+      && cc -O2 -I"$build" -o "$POINTER_BIN" "$POINTER_SRC/pointer.c" "$build/protocol.c" -lwayland-client -lm
+    rc=$?
+    rm -rf "$build"
+    ((rc == 0)) || die "could not build the pointer client"
+  fi
+  printf '%s\n' "$POINTER_BIN"
+}
+
+# pointer STEP... Hyprland reads motion_absolute against the bounding box of all
+# monitors, so every position is sent as an offset into that box.
+pointer() {
+  running || die "not running"
+  (($#)) || die "pointer needs steps (move, rel, click, down, up, scroll, wait, where)"
+  local sig display bin monitors minx miny width height x y steps=()
+  sig="$(sed -n 's/^SIG=//p' "$STATE")"
+  display="$(sed -n 's/^DISPLAY=//p' "$STATE")"
+  bin="$(pointer_bin)" || exit 1
+  monitors="$(HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl monitors -j)"
+  read -r minx miny width height < <(jq -r '
+    [(map(.x) | min), (map(.y) | min),
+     (map(.x + (.width / .scale | floor)) | max) - (map(.x) | min),
+     (map(.y + (.height / .scale | floor)) | max) - (map(.y) | min)] | @tsv' <<<"$monitors")
+
+  flush() {
+    ((${#steps[@]})) || return 0
+    WAYLAND_DISPLAY="$display" "$bin" "${steps[@]}" || die "pointer client failed"
+    steps=()
+  }
+
+  while (($#)); do
+    case "$1" in
+      move)
+        if [[ "${2:-}" =~ ^-?[0-9]+$ ]]; then
+          (($# >= 3)) && [[ "$3" =~ ^-?[0-9]+$ ]] || die "move needs X Y"
+          x="$2" y="$3"; shift 3
+        else
+          (($# >= 4)) && [[ "$3" =~ ^[0-9]+$ && "$4" =~ ^[0-9]+$ ]] || die "move needs MONITOR X Y"
+          read -r x y < <(jq -r --arg n "$2" --argjson px "$3" --argjson py "$4" \
+            'first(.[] | select(.name == $n) | "\(.x + $px) \(.y + $py)") // empty' <<<"$monitors")
+          [[ -n "${x:-}" ]] || die "no monitor $2 (have: $(jq -r '[.[].name] | join(" ")' <<<"$monitors"))"
+          shift 4
+        fi
+        ((x >= minx && y >= miny && x < minx + width && y < miny + height)) \
+          || die "$x,$y is off every monitor"
+        # Aimed at the pixel's centre: Hyprland scales x/extent back up in floating
+        # point and truncates, so the pixel's edge can land one short.
+        steps+=(abs $(((x - minx) * 16 + 8)) $(((y - miny) * 16 + 8)) $((width * 16)) $((height * 16))) ;;
+      rel)
+        (($# >= 3)) || die "rel needs DX DY"
+        steps+=(rel "$2" "$3"); shift 3 ;;
+      click)
+        if [[ "${2:-}" =~ ^(left|right|middle)$ ]]; then steps+=(click "$2"); shift 2
+        else steps+=(click left); shift
+        fi ;;
+      down|up)
+        [[ "${2:-}" =~ ^(left|right|middle)$ ]] || die "$1 needs left, right or middle"
+        steps+=("$1" "$2"); shift 2 ;;
+      scroll|wait)
+        [[ "${2:-}" =~ ^-?[0-9]+$ ]] || die "$1 needs a number"
+        steps+=("$1" "$2"); shift 2 ;;
+      where)
+        flush
+        HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl cursorpos
+        shift ;;
+      *) die "unknown pointer step: $1" ;;
+    esac
+  done
+  flush
+}
+
 running() {
   [[ -r "$STATE" ]] || return 1
   local sig; sig="$(sed -n 's/^SIG=//p' "$STATE")"
@@ -313,6 +412,7 @@ case "${1:-}" in
               WAYLAND_DISPLAY="$(sed -n 's/^DISPLAY=//p' "$STATE")" \
               CHROMIUM_USER_DATA_DIR="$CHROMIUM_DIR" "$@" ;;
   screenshot) shift; screenshot "$@" ;;
+  pointer) shift; pointer "$@" ;;
   show)   [[ "$(sed -n 's/^HEADLESS=//p' "$STATE" 2>/dev/null)" == 1 ]] \
             && die "started --headless: monitor 1 is disabled, there is nothing to show"
           reveal show ;;
@@ -328,5 +428,5 @@ case "${1:-}" in
             printf 'not running\n'
           fi ;;
   stop)   stop ;;
-  *)      sed -n '3,24p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *)      sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

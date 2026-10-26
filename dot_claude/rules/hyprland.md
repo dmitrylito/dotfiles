@@ -10,6 +10,7 @@ and only after he says so.
     eval "$(hypr-testbed env)"      # points hyprctl, launched apps and Chromium at it
     hypr-testbed run <cmd...>       # or one command at a time
     hypr-testbed screenshot [monitor|ws] [file]  # prints the PNG path
+    hypr-testbed pointer move HEADLESS-1 1700 70 wait 500 click   # a mouse in it
     hypr-testbed status
     hypr-testbed stop               # always, when done
 
@@ -22,6 +23,14 @@ and only after he says so.
   `quickshell -n -p <copy of $OMARCHY_PATH/shell>` with `HOME` pointed at a copied
   config and side-effect services (notifications, idle, lock, polkit) in
   `disabledPlugins`, and address it with `HOME=… quickshell -p <copy> ipc call …`.
+  To test the notification daemon itself, run that quickshell under
+  `dbus-run-session` so it owns a private `org.freedesktop.Notifications`.
+- **It has a mouse.** `hypr-testbed pointer` steps (`move X Y`, `move MONITOR X Y` in
+  that monitor's screenshot pixels, `rel`, `click [left|right|middle]`, `down`/`up`
+  for drags, `scroll N`, `wait MS`, `where`) drive a virtual pointer that exists only
+  in the testbed: hover and clicks reach windows and shell surfaces, the host cursor
+  never moves. Never use ydotool/dotool — uinput moves his real mouse. Keyboard binds
+  still can't be injected (wtype reaches clients but fires no binds).
 - **Applying to the live session is a deploy, not a test.** Never use the live session
   to explore or debug. Once a fix has passed in the testbed, apply it (`chezmoi apply`
   of the changed targets, `omarchy restart shell` when a plugin changed) without asking
