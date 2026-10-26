@@ -176,6 +176,7 @@ BarWidget {
     if (!pattern) return
     focusProc.command = ["omarchy-hyprland-focus-app", pattern]
     focusProc.running = true
+    dismissHistoryRow(index)
     root.popupOpen = false
   }
 

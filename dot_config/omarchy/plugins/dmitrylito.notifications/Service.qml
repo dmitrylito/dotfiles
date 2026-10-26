@@ -1235,12 +1235,12 @@ Item {
     saveSoon("live")
   }
 
-  // A row that closes moves from live to history.
+  // A row that closes leaves live; history keeps it unless it was opened or withdrawn.
   function storeClose(key, reason) {
     var entry = Store.liveEntry(liveEntries, key)
     if (!entry) return
     storeDrop(key)
-    storeRecord(entry, reason)
+    if (Store.recorded(reason)) storeRecord(entry, reason)
   }
 
   function storeDrop(key) {

@@ -151,6 +151,9 @@ var LIVE_ROW_CHARS = 16384
 var HISTORY_ROW_CHARS = 4096
 // The closing reasons that mean "this never reached the screen".
 var HELD_REASONS = ["snoozed", "silenced"]
+// As on a phone: a notification that was opened, or that its sender took
+// back, is done with and never reaches history.
+var UNRECORDED_REASONS = ["activated", "closed"]
 
 // What a stored row keeps. Derived text is recomputed on restore; codes,
 // links and images never persist, so a stored row cannot assert a
@@ -201,6 +204,8 @@ function retain(entries, hours, now) {
 function addHistory(entries, entry, hours, now) {
   return retain([entry].concat(entries), hours, now)
 }
+
+function recorded(reason) { return UNRECORDED_REASONS.indexOf(reason) < 0 }
 
 function held(entries, limit) {
   var out = []
