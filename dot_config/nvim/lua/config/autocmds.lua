@@ -1,8 +1,8 @@
--- Auto-open Snacks dashboard when the last normal buffer is closed
+-- No diagnostics in markdown buffers; other buffers keep theirs
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "markdown",
   callback = function(args)
-    vim.diagnostic.enable(false)
+    vim.diagnostic.enable(false, { bufnr = args.buf })
   end,
 })
 
