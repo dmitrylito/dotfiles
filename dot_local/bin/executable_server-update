@@ -1,106 +1,159 @@
 #!/usr/bin/env bash
-# server-update — `omarchy update` for the DLCO servers: pacman, AUR, orphans, mise, reboot check.
+# server-update — `omarchy update` for the DLCO servers: pacman, AUR, orphans, mise, chezmoi,
+# reboot check. Quiet: one line per step, full output only for a step that failed. Everything
+# is also written to ~/.cache/server-update.log.
 #
 # Usage:
 #   server-update            update this host and offer a reboot if the kernel changed
 #   server-update -y         no prompts: remove orphans, report (don't do) a needed reboot
-#   server-update --all [-y] run on $SERVER_UPDATE_HOSTS (default: dlco-1 dlco-2) over
-#                            `ssh -t`, then on this host last so a local reboot can't
-#                            cut the loop short
+#   server-update --all [-y] run on $SERVER_UPDATE_HOSTS (default: dlco-1 dlco-2) then this
+#                            host last so a local reboot can't cut the loop short
 #
-# Needs: sudo with a password (asked once per host, then kept alive), pacman-contrib
-# (paccache), yay, mise. mise itself is a pacman package on these hosts, so `mise up`
-# only touches the tools it manages. A remote host that lacks this script gets it via
-# `chezmoi-autoupdate --sync` first.
+# The sudo password is read once and fed to each host's sudo over the ssh channel (stdin,
+# never the command line), so --all asks once for the whole run; it assumes the same
+# password on every host. Needs pacman-contrib (paccache), yay, mise, chezmoi-autoupdate.
+# mise and chezmoi are pacman packages here, so their binaries come from `pacman -Syu`;
+# `mise up` updates the tools and chezmoi-autoupdate pulls+applies the dotfiles (without
+# run_ scripts; run `chezmoi apply` by hand for those). A remote host that lacks this
+# script gets it via `chezmoi-autoupdate --sync` first.
+#
+# Exit codes: 0 ok, 1 a step failed, 3 ok but a reboot is needed (used by --all to ask).
 
 set -uo pipefail
 
-green() { printf '\e[32m\n%s\e[0m\n' "$*"; }
+LOG=${XDG_CACHE_HOME:-$HOME/.cache}/server-update.log
+green() { printf '\e[32m%s\e[0m\n' "$*"; }
 yellow() { printf '\e[33m%s\e[0m\n' "$*" >&2; }
 red() { printf '\e[31m%s\e[0m\n' "$*" >&2; }
 
 unattended=0
 all=0
+from_stdin=0
 for arg in "$@"; do
   case $arg in
     -y) unattended=1 ;;
     --all) all=1 ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    --password-stdin) from_stdin=1 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) red "Unknown argument: $arg"; exit 2 ;;
   esac
 done
 
+read_password() {
+  if (( from_stdin )); then
+    IFS= read -r pw || { red "No password on stdin."; exit 1; }
+  else
+    IFS= read -rsp "[sudo] password for $USER: " pw </dev/tty; echo >/dev/tty
+  fi
+}
+
 confirm() {
   (( unattended )) && return 1
-  [[ -t 0 ]] || return 1
+  [[ -t 0 ]] || [[ -r /dev/tty ]] || return 1
   local reply
-  read -rp "$1 [y/N] " reply
+  read -rp "$1 [y/N] " reply </dev/tty
   [[ $reply == [yY]* ]]
 }
 
 if (( all )); then
-  flags=()
+  read_password
+  flags=(--password-stdin)
   (( unattended )) && flags+=(-y)
   failed=()
+  reboot_needed=()
   for host in ${SERVER_UPDATE_HOSTS:-dlco-1 dlco-2}; do
-    green "==== $host"
-    ssh -t "$host" "command -v server-update >/dev/null || chezmoi-autoupdate --sync; server-update ${flags[*]}" \
-      || { failed+=("$host"); yellow "$host: update exited non-zero (a reboot also ends the ssh session)"; }
+    green "== $host"
+    printf '%s\n' "$pw" | ssh "$host" "command -v server-update >/dev/null || chezmoi-autoupdate --sync; server-update ${flags[*]}"
+    case $? in
+      0) ;;
+      3) reboot_needed+=("$host") ;;
+      *) failed+=("$host") ;;
+    esac
   done
-  green "==== $(hostname) (local)"
-  "$0" "${flags[@]}" || failed+=("$(hostname)")
-  (( ${#failed[@]} == 0 )) || { red "Hosts that need a look: ${failed[*]}"; exit 1; }
+  green "== $(hostname) (local)"
+  printf '%s\n' "$pw" | "$0" "${flags[@]}"
+  case $? in
+    0) ;;
+    3) reboot_needed+=("$(hostname)") ;;
+    *) failed+=("$(hostname)") ;;
+  esac
+  for host in "${reboot_needed[@]}"; do
+    if confirm "Reboot $host now?"; then
+      if [[ $host == "$(hostname)" ]]; then
+        printf '%s\n' "$pw" | sudo -S -p '' systemctl reboot
+      else
+        printf '%s\n' "$pw" | ssh "$host" "sudo -S -p '' systemctl reboot"
+      fi
+    else
+      yellow "Reboot $host when ready."
+    fi
+  done
+  unset pw
+  (( ${#failed[@]} == 0 )) || { red "Failed on: ${failed[*]} (see ~/.cache/server-update.log there)"; exit 1; }
   exit 0
 fi
 
-sudo_keepalive_pid=""
-authorize() {
-  sudo /usr/bin/true || exit 1
-  local update_pid=$$
-  (
-    trap 'exit 0' TERM
-    while sleep 60; do
-      kill -0 "$update_pid" 2>/dev/null || exit 0
-      sudo -n /usr/bin/true 2>/dev/null || exit 0
-    done
-  ) &
-  sudo_keepalive_pid=$!
-}
-cleanup() {
-  [[ -z $sudo_keepalive_pid ]] || kill "$sudo_keepalive_pid" 2>/dev/null
-  sudo -k
-}
-trap cleanup EXIT
+read_password
+printf '%s\n' "$pw" | sudo -S -p '' /usr/bin/true 2>/dev/null || { red "sudo: wrong password."; exit 1; }
+unset pw
+
+keepalive_pid=""
+(
+  trap 'exit 0' TERM
+  while sleep 60; do
+    kill -0 $$ 2>/dev/null || exit 0
+    sudo -n /usr/bin/true 2>/dev/null || exit 0
+  done
+) &
+keepalive_pid=$!
+trap '[[ -z $keepalive_pid ]] || kill "$keepalive_pid" 2>/dev/null; sudo -k' EXIT
 
 status=0
-authorize
+: >"$LOG"
+step() {
+  local name=$1; shift
+  local out
+  printf '\n### %s\n' "$name" >>"$LOG"
+  if out=$("$@" 2>&1); then
+    printf '%s\n' "$out" >>"$LOG"
+    green "✓ $name"
+  else
+    printf '%s\n' "$out" >>"$LOG"
+    red "✗ $name"
+    printf '%s\n' "$out" | tail -n 30 >&2
+    return 1
+  fi
+}
 
-green "Prune package cache"
-sudo paccache -rk2 || yellow "Could not prune the package cache."
-
-green "Update system packages"
-sudo pacman -Syu --noconfirm || { red "pacman -Syu failed; stopping before AUR and mise."; exit 1; }
+step "Prune package cache" sudo paccache -rk2 || status=1
+step "System packages (pacman -Syu)" sudo pacman -Syu --noconfirm \
+  || { red "Stopping before AUR and mise."; exit 1; }
 
 if pacman -Qem >/dev/null 2>&1; then
-  green "Update AUR packages"
-  yay -Sua --noconfirm --cleanafter || { red "AUR update failed."; status=1; }
+  step "AUR packages (yay -Sua)" yay -Sua --noconfirm --cleanafter || status=1
 fi
 
 mapfile -t orphans < <(pacman -Qtdq 2>/dev/null || true)
 if (( ${#orphans[@]} )); then
-  green "Orphan packages"
-  printf '  %s\n' "${orphans[@]}"
+  yellow "Orphans: ${orphans[*]}"
   if (( unattended )) || confirm "Remove ${#orphans[@]} orphaned package(s)?"; then
-    sudo pacman -Rns --noconfirm "${orphans[@]}" || { yellow "Orphan removal failed."; status=1; }
-  else
-    echo "Keeping orphaned packages."
+    step "Remove orphans" sudo pacman -Rns --noconfirm "${orphans[@]}" || status=1
   fi
 fi
 
 if command -v mise >/dev/null; then
-  green "Update mise tools"
   # Same bypass of mise's release-age quarantine as the mup alias.
-  MISE_MINIMUM_RELEASE_AGE=0 mise up || { yellow "Some mise tools could not be updated."; status=1; }
+  MISE_MINIMUM_RELEASE_AGE=0 step "mise tools (mise up)" mise up || status=1
+fi
+
+if command -v chezmoi-autoupdate >/dev/null; then
+  chezmoi-autoupdate --sync
+  cz_status=$(chezmoi-autoupdate --status)
+  printf '\n### chezmoi\n%s\n' "$cz_status" >>"$LOG"
+  case $cz_status in
+    *failed*) red "✗ chezmoi: $cz_status"; status=1 ;;
+    *) green "✓ chezmoi: ${cz_status#* }" ;;
+  esac
 fi
 
 running_kernel=$(uname -r)
@@ -111,8 +164,10 @@ for builtin in /usr/lib/modules/*/modules.builtin; do
 done
 
 if (( kernel_updated )); then
-  green "Kernel was updated ($running_kernel is no longer installed)"
-  if confirm "Reboot $(hostname) now?"; then
+  yellow "Kernel updated: running $running_kernel is no longer installed."
+  if (( from_stdin )); then
+    (( status )) || status=3
+  elif confirm "Reboot $(hostname) now?"; then
     sudo systemctl reboot
   else
     yellow "Reboot $(hostname) when ready."
