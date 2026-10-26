@@ -81,31 +81,48 @@ ENTRY_DIRS=("$HOME/.local/share/applications" /usr/share/applications)
 APPS=(
   'spotify.desktop|special:spotify|^spotify$'
   'FC-Chat.desktop|2|'
+{{- if eq .chezmoi.hostname "fcoffice" }}
+  'FC-Tasks.desktop|2|'
+{{- else }}
   'FC-Tasks.desktop|3|'
+{{- end }}
   'DL-Chrome-Work.desktop|1|'
   'FC-Dialpad.desktop|2|'
-{{- if eq .chezmoi.hostname "omarchy" }}
+{{- if or (eq .chezmoi.hostname "omarchy") (eq .chezmoi.hostname "fcoffice") }}
   'FC-Gmail.desktop|1|'
 {{- else }}
   'FC-Gmail.desktop|2|'
 {{- end }}
+{{- if eq .chezmoi.hostname "fcoffice" }}
+  'Linear.desktop|2|'
+{{- else }}
   'Linear.desktop|3|'
+{{- end }}
 )
 
 # Columns "|" left to right, entries "," stacked top to bottom within a column.
-{{- if eq .chezmoi.hostname "omarchy" }}
+{{- if eq .chezmoi.hostname "fcoffice" }}
+LAYOUT_1='DL-Chrome-Work.desktop | FC-Gmail.desktop'
+WIDTHS_1=(0.752)
+LAYOUT_2='Linear.desktop | FC-Tasks.desktop,FC-Chat.desktop | FC-Dialpad.desktop'
+WIDTHS_2=(0.2254 0.5509)
+LAYOUT_3=''
+WIDTHS_3=()
+{{- else if eq .chezmoi.hostname "omarchy" }}
 LAYOUT_1='DL-Chrome-Work.desktop | FC-Gmail.desktop'
 WIDTHS_1=(0.698)
 LAYOUT_2='FC-Chat.desktop,FC-Dialpad.desktop'
 WIDTHS_2=()
+LAYOUT_3='Linear.desktop | FC-Tasks.desktop'
+WIDTHS_3=(0.343)
 {{- else }}
 LAYOUT_1=''
 WIDTHS_1=()
 LAYOUT_2='FC-Dialpad.desktop,FC-Chat.desktop | FC-Gmail.desktop'
 WIDTHS_2=(0.556)
-{{- end }}
 LAYOUT_3='Linear.desktop | FC-Tasks.desktop'
 WIDTHS_3=(0.343)
+{{- end }}
 
 BROWSER_CLASS='^chromium$'
 
@@ -518,8 +535,8 @@ for name in "${ENTRIES[@]}"; do
 done
 
 [[ -n "$LAYOUT_1" ]] && apply_layout 1 "$LAYOUT_1" ${WIDTHS_1[@]+"${WIDTHS_1[@]}"}
-apply_layout 2 "$LAYOUT_2" ${WIDTHS_2[@]+"${WIDTHS_2[@]}"}
-apply_layout 3 "$LAYOUT_3" ${WIDTHS_3[@]+"${WIDTHS_3[@]}"}
+[[ -n "$LAYOUT_2" ]] && apply_layout 2 "$LAYOUT_2" ${WIDTHS_2[@]+"${WIDTHS_2[@]}"}
+[[ -n "$LAYOUT_3" ]] && apply_layout 3 "$LAYOUT_3" ${WIDTHS_3[@]+"${WIDTHS_3[@]}"}
 
 [[ -n "$FOCUS_ADDR" ]] && focus_window "$FOCUS_ADDR"
 
