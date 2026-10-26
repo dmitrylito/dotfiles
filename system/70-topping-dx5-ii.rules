@@ -1,0 +1,5 @@
+# Topping DX5 II (Thesycon 152a:8750): give the logged-in seat user access to the
+# raw USB device and its HID interface, for Topping's control/firmware tools.
+# uaccess is applied by 73-seat-late.rules, so this file must sort before 73.
+SUBSYSTEM=="usb", ATTR{idVendor}=="152a", ATTR{idProduct}=="8750", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="152a", ATTRS{idProduct}=="8750", TAG+="uaccess"

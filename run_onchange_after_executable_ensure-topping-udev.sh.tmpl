@@ -1,0 +1,26 @@
+{{- if and (eq (.profile | lower) "omarchy") (not (dig "debug" false .)) -}}
+#!/bin/sh
+# Install the Topping DX5 II udev rule (system/70-topping-dx5-ii.rules) so the
+# desktop user can reach the DAC's USB and HID nodes.
+#
+# Usage: not run by hand. chezmoi runs it during `apply` whenever the rule or
+#        installer changes (hashes below). To install directly:
+#        sudo ~/.local/share/chezmoi/system/install-topping-udev.sh
+#
+# Never prompts for a password: if the rule is missing and passwordless sudo is
+# unavailable, it prints the command to run and exits 0 so apply continues.
+#
+#   {{ include "system/70-topping-dx5-ii.rules" | sha256sum }}
+#   {{ include "system/install-topping-udev.sh" | sha256sum }}
+set -eu
+
+installer="{{ joinPath .chezmoi.sourceDir "system/install-topping-udev.sh" }}"
+
+cmp -s "{{ joinPath .chezmoi.sourceDir "system/70-topping-dx5-ii.rules" }}" /etc/udev/rules.d/70-topping-dx5-ii.rules && exit 0
+
+if sudo -n true 2>/dev/null; then
+	sudo -n "$installer"
+else
+	echo "topping-udev: not in place; run: sudo $installer" >&2
+fi
+{{ end -}}
