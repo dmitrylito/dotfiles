@@ -89,9 +89,6 @@ source_if_exists "$XDG_CONFIG_HOME/zsh/remote-session-cleanup.zsh"
 source_if_exists "$XDG_CONFIG_HOME/zsh/tools.zsh"
 
 {{- if eq (.profile | lower) "omarchy" }}
-# hyprmon must write to the unmanaged file sourced by the managed Hyprland config.
-alias hyprmon='HYPRLAND_CONFIG="$HOME/.config/hypr/monitors.conf" command hyprmon'
-
 # Only replace a dead signature (a shell that outlived a Hyprland restart): a live one
 # may be deliberate, like the nested session `hypr-testbed env` exports.
 _sync_hypr_signature() {

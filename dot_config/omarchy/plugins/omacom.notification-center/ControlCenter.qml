@@ -296,8 +296,8 @@ ColumnLayout {
   readonly property real inputVolume: source && source.audio ? source.audio.volume : 0
 
   // Mute state comes from the audio server, not the PwNodes: Quickshell can keep
-  // unbound nodes around after a USB reconnect (see dmitrylito.audio).
-  readonly property string masterControl: Quickshell.env("HOME") + "/.config/omarchy/plugins/dmitrylito.audio/audio-master-control"
+  // unbound nodes around after a USB reconnect.
+  readonly property string masterControl: Quickshell.env("HOME") + "/.config/omarchy/plugins/omacom.notification-center/audio-master-control"
   property bool outputMuted: false
   property bool inputMuted: false
 

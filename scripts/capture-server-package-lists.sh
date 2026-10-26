@@ -11,7 +11,7 @@ git_lock="${TMPDIR:-/tmp}/chezmoi-git-$(id -u).lock"
 reconcile_marker="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/chezmoi-package-reconcile.active"
 mkdir -p "$state_dir"
 
-log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >"$log_file"; }
+log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$log_file"; }
 
 [[ $(chezmoi data | jq -r '.profile | ascii_downcase') == server ]] || exit 0
 [[ -e $reconcile_marker ]] && { log 'skipped: package reconciliation is active'; exit 0; }

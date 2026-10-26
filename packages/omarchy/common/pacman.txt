@@ -28,6 +28,8 @@ solaar
 spotify
 tailscale
 telegram-desktop
+trash-cli
+unarchiver
 uv
 voxtype-bin
 wev

@@ -11,7 +11,7 @@ large vendor binary; it means its owner and consumer are known.
 | `chezmoi-autoupdate` | throttled pull/apply helper | interactive Zsh | keep |
 | `chromium-profile-launch` | resolves named Chromium profiles and web apps | Omarchy launchers | keep |
 | `claude-prune-agents` | prunes stale completed agent entries | manual only; timer removed 2026-10-12 | keep |
-| `discord-ptm` | Discord push-to-mute | Omarchy keybind | keep |
+| `discord-ptm` | Discord push-to-mute | none (bind removed in 8641f5c) | removed 2026-10-26 |
 | `fc-daily-report` | cached daily evidence and personal timelines | all profiles, shared daily-report skill | keep; managed global command |
 | `fc-mypy`, `fc-dmypy` | Django-aware mypy wrappers | work role, Neovim | keep |
 | `herdr-remote-picker` | chooses an SSH target for Herdr | Omarchy/mac keybind | keep |

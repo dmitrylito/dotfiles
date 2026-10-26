@@ -3,7 +3,7 @@
 {{- $debug := dig "debug" false . -}}
 # Repo tooling — lives in the chezmoi source dir, never deployed to $HOME
 README.md
-package-lock.json
+mise.toml
 playbook.yml
 ansible.cfg
 packages/
@@ -22,8 +22,7 @@ system/
 .claude/projects/*/memory/
 
 # Bytecode regenerates on every run; managing it guarantees permanent drift.
-.claude/hooks/__pycache__/
-.local/libexec/fc-daily-report/__pycache__/
+**/__pycache__/
 
 {{ if and (ne $profile "omarchy") (ne $profile "mac") }}
 .config/ghostty/
@@ -53,11 +52,23 @@ system/
 .config/chromium/NativeMessagingHosts/dev.dmitrylito.window_time.json
 .local/share/window-time/
 .local/bin/window-time-tab-host
-.local/bin/discord-ptm
 .local/bin/work-mode
 .local/bin/lazygit
 .local/share/applications/
 .XCompose
+.config/claude-desktop-flags.conf
+.local/bin/hypr-testbed
+.local/share/hypr-testbed/
+.local/bin/input-remapper-control
+.local/bin/input-remapper-gtk
+.local/bin/nautilus
+.local/share/dbus-1/
+.local/bin/autoframe
+.config/systemd/user/autoframe.service
+.config/systemd/user/noisetorch.service
+.local/bin/window-time
+.config/systemd/user/window-time.service
+.config/systemd/user/pipewire-pulse.service.d/
 {{ end }}
 
 {{ if $debug }}
@@ -96,8 +107,6 @@ system/
 # would make chezmoi turn the symlink back into a directory.
 .config/chromium/
 .local/bin/autoframe
-.local/bin/discord-ptm
-.local/bin/ga-mcp-refresh-adc
 .local/bin/import-db
 .local/bin/import-db-fast
 .local/bin/input-remapper-control
@@ -116,6 +125,9 @@ system/
 # FC API login for fc-daily-report: work machines, plus DLCO-1, where the daily-report
 # skill and the ops center (which holds the same login) run.
 .config/secrets/fc-api.env
+.agents/skills/bill-service-visits/
+.claude/skills/bill-service-visits
+.codex/skills/bill-service-visits
 {{ end }}
 
 {{ if not $work }}
@@ -163,6 +175,7 @@ Projects/fleetchaser/
 .config/borders/
 .local/bin/ghostty-run
 Library/
+.config/omniwm/
 {{ end }}
 
 {{ if eq $profile "mac" }}
@@ -193,13 +206,14 @@ docker-appdata/
 # Production deployment is owned by DLCO-3, not every Linux host.
 .config/cer-production/
 .local/libexec/cer-production/
-.local/bin/cer-production-watch
 .config/systemd/user/cer-production-watch.service
 .config/systemd/user/cer-production-watch.timer
 {{ end }}
 
 {{ if ne $profile "server" }}
 .config/secrets/caddy.env
+# carapace is only installed on servers (packages/server/aur.txt).
+.config/carapace/
 {{ end }}
 
 # The Caddy + keepalived reverse-proxy stack runs only on the three VIP nodes.

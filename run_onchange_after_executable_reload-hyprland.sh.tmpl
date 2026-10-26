@@ -12,7 +12,7 @@
 # no-op when Hyprland is not running (TTY, server, apply over SSH).
 {{ if eq .profile "omarchy" -}}
 # hypr config hashes:
-{{ range (glob (joinPath .chezmoi.sourceDir "dot_config/hypr/*.lua")) -}}
+{{ range concat (glob (joinPath .chezmoi.sourceDir "dot_config/hypr/*.lua")) (glob (joinPath .chezmoi.sourceDir "dot_config/hypr/*.lua.tmpl")) -}}
 #   {{ base . }} {{ include . | sha256sum }}
 {{ end -}}
 set -eu

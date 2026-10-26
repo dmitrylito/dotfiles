@@ -8,6 +8,8 @@ Type=simple
 ExecStart=%h/.local/bin/autoframe
 Restart=always
 RestartSec=5
+# SIGTERM at logout ends it with 143; without this every logout logs a failure.
+SuccessExitStatus=143
 
 [Install]
 WantedBy=graphical-session.target

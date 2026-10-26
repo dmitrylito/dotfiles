@@ -81,11 +81,8 @@ export CLAUDE_CODE_NO_FLICKER=1
 # Labels this machine in the `remember` plugin's memory headers (server/omarchy/mac).
 export REMEMBER_BRANCH={{ .profile }}
 {{- if and (eq (.profile | lower) "omarchy") (eq .chezmoi.hostname "fcoffice") }}
-# Hyprland/Wayland only — nothing else on any profile reads these.
-export YDOTOOL_SOCKET="$HOME/.ydotool_socket"
 # HYPRLAND_CONFIG must NOT be exported globally: Omarchy v4's Hyprland treats it
 # as an explicit config override and skips the hyprland.lua provider entirely.
-# hyprmon gets it per-command via an alias in .zshrc.
 # Hide the Granite Ridge iGPU (gfx1036, 0000:0f:00.0) from ROCm so HIP device 0 is
 # always the 9070 XT (gfx1201) and no app can pick the raster iGPU as a compute
 # device. Index 0 is PCI-enumeration order (03:00.0 < 0f:00.0); if the slots ever
