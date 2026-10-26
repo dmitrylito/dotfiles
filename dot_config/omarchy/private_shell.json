@@ -1,5 +1,6 @@
 {
   "bar": {
+    "background": "glassy",
     "centerAnchor": "omarchy.clock",
     "layout": {
       "center": [
@@ -8,7 +9,25 @@
         },
         {
           "id": "omarchy.elsewhen",
-          "zones": "New York|America/New_York, London|Europe/London, Dubai|Asia/Dubai, Tokyo|Asia/Tokyo, Los Angeles|America/Los_Angeles"
+          "hour24": true,
+          "cities": [
+            {
+              "name": "New York",
+              "zone": "America/New_York"
+            },
+            {
+              "name": "Los Angeles",
+              "zone": "America/Los_Angeles"
+            },
+            {
+              "name": "Tokyo",
+              "zone": "Asia/Tokyo"
+            },
+            {
+              "name": "Beijing",
+              "zone": "Asia/Shanghai"
+            }
+          ]
         },
         {
           "format": "ddd d MMM HH:mm",
@@ -26,6 +45,8 @@
           "id": "omarchy.system-update"
         }
       ],
+      "centerBegin": [],
+      "centerEnd": [],
       "left": [
         {
           "id": "omarchy.menu"
@@ -53,11 +74,20 @@
         {
           "id": "omacom.notification-center"
         }
-      ]
+      ],
+      "tray": []
     },
-    "position": "top",
-    "transparent": false
+    "position": "top"
   },
+  "cloneSourceRestores": [
+    "dmitrylito.notifications",
+    "dmitrylito.reminders"
+  ],
+  "disabledPlugins": [
+    "omarchy.notifications",
+    "omarchy.reminders",
+    "omarchy.idle"
+  ],
   "idle": {
     "lock": 300,
     "screensaver": 150
@@ -79,14 +109,5 @@
       "id": "dmitrylito.window-time"
     }
   ],
-  "version": 1,
-  "disabledPlugins": [
-    "omarchy.notifications",
-    "omarchy.reminders",
-    "omarchy.idle"
-  ],
-  "cloneSourceRestores": [
-    "dmitrylito.notifications",
-    "dmitrylito.reminders"
-  ]
+  "version": 1
 }
