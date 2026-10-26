@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# server-update — `omarchy update` for the DLCO servers: pacman, AUR, orphans, mise, reboot check.
+#
+# Usage:
+#   server-update            update this host and offer a reboot if the kernel changed
+#   server-update -y         no prompts: remove orphans, report (don't do) a needed reboot
+#   server-update --all [-y] run on $SERVER_UPDATE_HOSTS (default: dlco-1 dlco-2) over
+#                            `ssh -t`, then on this host last so a local reboot can't
+#                            cut the loop short
+#
+# Needs: sudo with a password (asked once per host, then kept alive), pacman-contrib
+# (paccache), yay, mise. mise itself is a pacman package on these hosts, so `mise up`
+# only touches the tools it manages. A remote host that lacks this script gets it via
+# `chezmoi-autoupdate --sync` first.
+
+set -uo pipefail
+
+green() { printf '\e[32m\n%s\e[0m\n' "$*"; }
+yellow() { printf '\e[33m%s\e[0m\n' "$*" >&2; }
+red() { printf '\e[31m%s\e[0m\n' "$*" >&2; }
+
+unattended=0
+all=0
+for arg in "$@"; do
+  case $arg in
+    -y) unattended=1 ;;
+    --all) all=1 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    *) red "Unknown argument: $arg"; exit 2 ;;
+  esac
+done
+
+confirm() {
+  (( unattended )) && return 1
+  [[ -t 0 ]] || return 1
+  local reply
+  read -rp "$1 [y/N] " reply
+  [[ $reply == [yY]* ]]
+}
+
+if (( all )); then
+  flags=()
+  (( unattended )) && flags+=(-y)
+  failed=()
+  for host in ${SERVER_UPDATE_HOSTS:-dlco-1 dlco-2}; do
+    green "==== $host"
+    ssh -t "$host" "command -v server-update >/dev/null || chezmoi-autoupdate --sync; server-update ${flags[*]}" \
+      || { failed+=("$host"); yellow "$host: update exited non-zero (a reboot also ends the ssh session)"; }
+  done
+  green "==== $(hostname) (local)"
+  "$0" "${flags[@]}" || failed+=("$(hostname)")
+  (( ${#failed[@]} == 0 )) || { red "Hosts that need a look: ${failed[*]}"; exit 1; }
+  exit 0
+fi
+
+sudo_keepalive_pid=""
+authorize() {
+  sudo /usr/bin/true || exit 1
+  local update_pid=$$
+  (
+    trap 'exit 0' TERM
+    while sleep 60; do
+      kill -0 "$update_pid" 2>/dev/null || exit 0
+      sudo -n /usr/bin/true 2>/dev/null || exit 0
+    done
+  ) &
+  sudo_keepalive_pid=$!
+}
+cleanup() {
+  [[ -z $sudo_keepalive_pid ]] || kill "$sudo_keepalive_pid" 2>/dev/null
+  sudo -k
+}
+trap cleanup EXIT
+
+status=0
+authorize
+
+green "Prune package cache"
+sudo paccache -rk2 || yellow "Could not prune the package cache."
+
+green "Update system packages"
+sudo pacman -Syu --noconfirm || { red "pacman -Syu failed; stopping before AUR and mise."; exit 1; }
+
+if pacman -Qem >/dev/null 2>&1; then
+  green "Update AUR packages"
+  yay -Sua --noconfirm --cleanafter || { red "AUR update failed."; status=1; }
+fi
+
+mapfile -t orphans < <(pacman -Qtdq 2>/dev/null || true)
+if (( ${#orphans[@]} )); then
+  green "Orphan packages"
+  printf '  %s\n' "${orphans[@]}"
+  if (( unattended )) || confirm "Remove ${#orphans[@]} orphaned package(s)?"; then
+    sudo pacman -Rns --noconfirm "${orphans[@]}" || { yellow "Orphan removal failed."; status=1; }
+  else
+    echo "Keeping orphaned packages."
+  fi
+fi
+
+if command -v mise >/dev/null; then
+  green "Update mise tools"
+  # Same bypass of mise's release-age quarantine as the mup alias.
+  MISE_MINIMUM_RELEASE_AGE=0 mise up || { yellow "Some mise tools could not be updated."; status=1; }
+fi
+
+running_kernel=$(uname -r)
+kernel_updated=1
+for builtin in /usr/lib/modules/*/modules.builtin; do
+  [[ -f $builtin ]] && pacman -Qo "$builtin" >/dev/null 2>&1 || continue
+  [[ $(basename "$(dirname "$builtin")") == "$running_kernel" ]] && { kernel_updated=0; break; }
+done
+
+if (( kernel_updated )); then
+  green "Kernel was updated ($running_kernel is no longer installed)"
+  if confirm "Reboot $(hostname) now?"; then
+    sudo systemctl reboot
+  else
+    yellow "Reboot $(hostname) when ready."
+  fi
+fi
+
+exit $status

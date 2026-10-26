@@ -198,6 +198,7 @@ docker-appdata/
 .config/secrets/github-mcp.env
 .config/systemd/user/chezmoi-package-capture.service
 .config/systemd/user/chezmoi-package-capture.timer
+.local/bin/server-update
 {{ end }}
 
 {{ if eq $profile "server" }}
