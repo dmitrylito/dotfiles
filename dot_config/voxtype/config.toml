@@ -89,7 +89,7 @@ translate = false
 model = "parakeet-unified-en-0.6b"
 on_demand_loading = false
 streaming = true
-streaming_chunk_secs = 0.32
+streaming_chunk_secs = 0.56
 streaming_left_context_secs = 8
 streaming_right_context_secs = 1.2
 
