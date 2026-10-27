@@ -93,6 +93,11 @@ One invocation, one selection prompt, then apply. Agent-agnostic: lives in `~/.a
 
 ## Gotchas
 
+- Warranty is per piece of hardware: a replacement is free when the unit it replaced was
+  installed less than a year earlier, whatever the vehicle's age.
+- Vehicle records are sometimes reused (an old vehicle renamed for a new truck, e.g. Stronghold
+  "17 Volvo Jacob Trans", 2026-10). Earlier installs on such a record belong to the old truck,
+  so treat the visit as a move/new install, not a warranty repair.
 - FC app forms (Install Form 46, Device Repair 30, Service Visit 43; table `form_submission`)
   were barely used as of 2026-10-27: Service Visit had no submissions, Device Repair none after
   9/21, Install Form 6 in October. Use them as extra evidence, not as the task list.
