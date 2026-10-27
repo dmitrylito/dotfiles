@@ -26,6 +26,8 @@
 # The crop holds still while the face stays inside the --deadzone/--deadzone-y box (and its
 # size within --zoom-deadzone); it reframes only after the face has been outside
 # that box for --settle seconds, so leaning or glancing away does not move it.
+# Once the face has held still (within --still) for --recenter seconds, the crop also
+# recenters on it even if it never left the deadzone.
 
 import argparse
 import fcntl
@@ -128,6 +130,11 @@ class Framer:
         self.settle = args.settle
         self.tau = args.glide
         self.lost_hold = args.lost_hold
+        self.recenter = args.recenter
+        self.still = args.still
+        self.still_zoom = math.log(1 + args.still)
+        self.still_anchor = None
+        self.still_since = math.inf
         self.target = self.goal = self.cur = self.full
         self.last_seen = -math.inf
         self.outside_since = math.inf
@@ -150,13 +157,18 @@ class Framer:
         cy = (y0 + y1) / 2 + (0.5 - self.head_y) * h
         return self.clamp(Box((x0 + x1) / 2, cy, h))
 
-    def outside(self, t):
-        g = self.goal
+    def differs(self, t, ref, dx, dy, dzoom):
         return (
-            abs(t.cx - g.cx) > self.deadzone * g.h * self.aspect
-            or abs(t.cy - g.cy) > self.deadzone_y * g.h
-            or abs(math.log(t.h / g.h)) > self.zoom_deadzone
+            abs(t.cx - ref.cx) > dx * ref.h * self.aspect
+            or abs(t.cy - ref.cy) > dy * ref.h
+            or abs(math.log(t.h / ref.h)) > dzoom
         )
+
+    def outside(self, t):
+        return self.differs(t, self.goal, self.deadzone, self.deadzone_y, self.zoom_deadzone)
+
+    def moved(self, t, ref):
+        return self.differs(t, ref, self.still, self.still, self.still_zoom)
 
     def update(self, faces, now, dt):
         if faces:
@@ -173,9 +185,15 @@ class Framer:
                 self.outside_since = math.inf
             else:
                 self.outside_since = min(self.outside_since, now)
+            if self.still_anchor is None or self.moved(self.target, self.still_anchor):
+                self.still_anchor, self.still_since = self.target, now
+            elif self.recenter and now - self.still_since >= self.recenter and self.moved(self.target, self.goal):
+                self.goal = self.target
+                self.outside_since = math.inf
         elif now - self.last_seen > self.lost_hold:
             self.goal = self.full
             self.outside_since = math.inf
+            self.still_anchor = None
         a = 1 - math.exp(-dt / self.tau)
         self.cur = self.clamp(Box(*(c + (g - c) * a for c, g in zip(vars(self.cur).values(), vars(self.goal).values()))))
         b = self.cur
@@ -341,6 +359,8 @@ def main():
     p.add_argument("--deadzone-y", type=float, default=0.14, help="how far the face may drift up or down before reframing, share of the crop height")
     p.add_argument("--zoom-deadzone", type=float, default=0.45, help="how much the face size may change before reframing, share")
     p.add_argument("--settle", type=float, default=0.9, help="seconds the face must stay outside the deadzone before reframing")
+    p.add_argument("--recenter", type=float, default=5.0, help="seconds the face must hold still before recentering inside the deadzone, 0 disables")
+    p.add_argument("--still", type=float, default=0.03, help="movement below this share of the crop height counts as holding still")
     p.add_argument("--glide", type=float, default=0.7, help="reframe glide time constant, seconds")
     p.add_argument("--lost-hold", type=float, default=3.0, help="seconds without a face before zooming out")
     p.add_argument("--always-on", action="store_true", help="keep the camera open with no viewers")
