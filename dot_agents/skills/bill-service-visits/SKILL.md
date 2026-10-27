@@ -28,7 +28,14 @@ One invocation, one selection prompt, then apply. Agent-agnostic: lives in `~/.a
 
 ## Decisions already made (do not re-ask)
 
-- Service fee is **$150.00** per task (`--unit-price` only if Dmitry says otherwise).
+- Service fee is **$75.00 per vehicle worked on** (set 2026-10-27), as one line per task with
+  `quantity` = billable vehicles. Count only new installs (tracker and/or camera; a vehicle
+  getting both counts once) and tracker repairs (replaced tracker, tracker restored). Exclude
+  SIM swaps, camera repairs/swaps, and removals. A task with zero billable vehicles gets no
+  line. Check prior installs on the vehicle to tell a first install from a replacement.
+- Needs `quantity` on `service-visit-lines` (backend commit 1974a1d3b, branch
+  `dmitrylito/service-visit-quantity` off `billing-app`); older backends force qty 1.
+- Heaven and Earth Landscaping is exempt from service fees (Dmitry, 2026-10-27).
 - Service date = task `completed_at` in `America/New_York`. Show install-date mismatches as
   warnings; don't silently substitute.
 - Every task that receives a line, appended or new draft, moves **Bill → Completed**
@@ -54,6 +61,8 @@ One invocation, one selection prompt, then apply. Agent-agnostic: lives in `~/.a
    - Unresolved customer: pick from the printed suggestions, add
      `"<company name>": "<customer uuid>"` to `~/.local/state/service-visit-billing/customer-map.json`,
      rerun `evidence`. Never guess a customer.
+   - Set `quantity` per item in `manifest.json` (billable vehicles; see pricing above) and list
+     only those vehicles in `work_performed`.
    - Edit `work_performed` in `manifest.json` where the draft is wrong or the task text is the
      only source (say so in the prompt). Descriptions must describe backend-evidenced work, no
      installer notes, no task ids. The API prefixes `Service fee for site visit on <date>: `.
@@ -69,12 +78,17 @@ One invocation, one selection prompt, then apply. Agent-agnostic: lives in `~/.a
    (duplicate pair: which one; price override).
 5. `svb.py apply --keys fc-task:…,…` - resubmits the exact previewed items with `apply: true`
    (refuses if an item changed since preview), then DB readback. Verify every key came back
-   with product `service-fee`, qty 1, $150, expected invoice. Stop on any `error` row.
+   with product `service-fee`, the manifest's qty, $75 each, expected invoice. Stop on any
+   `error` row.
 6. `svb.py move-tasks --keys <same keys>` - Bill → Completed; confirm each prints `Completed`.
 7. Report: appended (task → invoice, new total), new drafts (task → invoice), skipped (still in
    Bill), warnings you overrode, artifact dir. Say plainly that nothing was exported.
 
 ## Gotchas
+
+- FC app forms (Install Form 46, Device Repair 30, Service Visit 43; table `form_submission`)
+  were barely used as of 2026-10-27: Service Visit had no submissions, Device Repair none after
+  9/21, Install Form 6 in October. Use them as extra evidence, not as the task list.
 
 - `discover` reads the ops-center mirror, which syncs continuously; the local backend DB is a
   nightly copy, so a task finished today has no install records yet (evidence warns

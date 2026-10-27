@@ -34,7 +34,7 @@ HERE = Path(__file__).resolve().parent
 STATE = Path.home() / ".local/state/service-visit-billing"
 DEFAULT_ENV = Path.home() / "Projects/billingapp/docker/envs/billingapp.env"
 DEFAULT_COMPOSE = Path.home() / "Projects/backend/docker/docker-compose.yml"
-DEFAULT_PRICE = "150.00"
+DEFAULT_PRICE = "75.00"
 COMPLETED_STATUS_ID = 4
 
 OPS_DUMP = r"""
@@ -152,13 +152,15 @@ def as_payload_items(items):
         "service_date": m["service_date"],
         "work_performed": m["work_performed"],
         "unit_price": m["unit_price"],
+        "quantity": int(m.get("quantity", 1)),
     } for m in items]
 
 
 def print_results(rows):
     for r in rows:
         print(f"{r.get('source_task_key'):14} {r.get('status'):15} {str(r.get('customer_name'))[:34]:34} "
-              f"inv={r.get('invoice_external_key') or 'NEW'} {r.get('error') or ''}")
+              f"inv={r.get('invoice_external_key') or 'NEW'} q={r.get('quantity', 1)} "
+              f"${r.get('total_price') or r.get('unit_price')} {r.get('error') or ''}")
 
 
 def cmd_discover(args):
@@ -197,7 +199,7 @@ def cmd_evidence(args):
         for w in m["warnings"]:
             print(f"   ⚠ {w}")
         print(f"   work_performed: {m['work_performed']}")
-    print(f"\n-> {d / 'manifest.json'}  (edit work_performed / unit_price there before preview)")
+    print(f"\n-> {d / 'manifest.json'}  (set quantity = billable vehicles and edit work_performed there before preview)")
 
 
 def cmd_preview(args):
