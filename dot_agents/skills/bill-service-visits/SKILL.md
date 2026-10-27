@@ -36,6 +36,13 @@ One invocation, one selection prompt, then apply. Agent-agnostic: lives in `~/.a
 - Needs `quantity` on `service-visit-lines` (backend commit 1974a1d3b, branch
   `dmitrylito/service-visit-quantity` off `billing-app`); older backends force qty 1.
 - Heaven and Earth Landscaping is exempt from service fees (Dmitry, 2026-10-27).
+- Warranty: no service fee for repair work on a vehicle created less than a year ago (e.g.
+  Appco 5051, 2026-10-27).
+- United of Carolinas is not charged a service fee for installs.
+- Moving hardware from a sold truck into a replacement truck is billed (Toro 715); ELS's
+  2026-10-21 move was a one-off exception.
+- Customer self-installs (install record under the customer's own login, e.g. Charlotte Steel
+  TK11) get no service fee. Check `created_by_user` on the install rows.
 - Service date = task `completed_at` in `America/New_York`. Show install-date mismatches as
   warnings; don't silently substitute.
 - Every task that receives a line, appended or new draft, moves **Bill → Completed**
