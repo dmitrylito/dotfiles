@@ -27,9 +27,6 @@ if [[ -z ${OMARCHY_PATH:-} ]]; then
 fi
 [[ :$PATH: == *":$OMARCHY_PATH/bin:"* ]] || export PATH="$OMARCHY_PATH/bin:$PATH"
 source_if_exists "$OMARCHY_PATH/default/bash/envs"
-export SSH_ASKPASS=/usr/bin/lxqt-openssh-askpass
-export SUDO_ASKPASS=/usr/bin/lxqt-openssh-askpass
-export SSH_ASKPASS_REQUIRE=prefer
 {{- end }}
 
 # Oh My Zsh initializes Zsh's completion system. Carapace loads afterward,

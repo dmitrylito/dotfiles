@@ -46,6 +46,10 @@ managed target (`~/.zshrc`, `~/.config/**`, `~/.claude/**`, …) is silently wip
 - Runtimes come from mise (`~/.config/mise/config.toml`); run `mise trust <dir>` after creating a
   folder or worktree that carries env config.
 - Avoid commands that trigger interactive `sudo` prompts unless asked.
+{{- if eq (.profile | lower) "omarchy" }}
+- When a command needs root, run it with `pkexec <cmd>`, not `sudo`: agent shells have no terminal,
+  and `pkexec` opens Omarchy's own polkit dialog.
+{{- end }}
 {{ if eq (.profile | lower) "server" }}
 ## Operating this box
 
