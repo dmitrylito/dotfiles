@@ -47,8 +47,8 @@ managed target (`~/.zshrc`, `~/.config/**`, `~/.claude/**`, …) is silently wip
   folder or worktree that carries env config.
 - Avoid commands that trigger interactive `sudo` prompts unless asked.
 {{- if eq (.profile | lower) "omarchy" }}
-- When a command needs root, run it with `pkexec <cmd>`, not `sudo`: agent shells have no terminal,
-  and `pkexec` opens Omarchy's own polkit dialog.
+- When a command needs root, run plain `sudo <cmd>` (not `sudo -n`, not `pkexec`): the cc-askpass
+  plugin asks Dmitry for the password in a pane, here and for `ssh host sudo …`.
 {{- end }}
 {{ if eq (.profile | lower) "server" }}
 ## Operating this box
