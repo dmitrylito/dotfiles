@@ -28,6 +28,12 @@
 # that box for --settle seconds, so leaning or glancing away does not move it.
 # Once the face has held still (within --still) for --recenter seconds, the crop also
 # recenters on it even if it never left the deadzone.
+#
+# `touch $XDG_RUNTIME_DIR/autoframe-snapshot.request` makes the daemon write the
+# current camera frame, with the detected faces (green) and the published crop (red)
+# drawn on it, to $XDG_RUNTIME_DIR/autoframe-snapshot.png and log how many frames
+# since the last snapshot had a face. The virtual camera itself cannot be read while a
+# viewer streams it, and a signal would interrupt the camera read.
 
 import argparse
 import fcntl
@@ -293,8 +299,26 @@ def run_file(args):
     log(f"wrote {n} frames to {args.output}")
 
 
+def runtime_path(name):
+    return Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / name
+
+
+def write_snapshot(frame, faces, rect, seen, frames):
+    img = frame.copy()
+    for x, y, w, h in faces:
+        cv2.rectangle(img, (int(x), int(y)), (int(x + w), int(y + h)), (0, 255, 0), 4)
+    x, y, w, h = rect
+    cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 4)
+    path = runtime_path("autoframe-snapshot.png")
+    cv2.imwrite(str(path), img)
+    log(f"snapshot: {len(faces)} face(s), crop {rect}, face in {seen}/{frames} frames since last, wrote {path}")
+
+
 def run_daemon(args):
     out_w, out_h = args.out_size
+    request = runtime_path("autoframe-snapshot.request")
+    snapshot = False
+    seen = frames = 0
     sink = Sink(args.sink, out_w, out_h)
     log(f"publishing {out_w}x{out_h} on {sink.path}, source {args.source}")
     idle = placeholder(out_w, out_h, "Camera starting...")
@@ -308,6 +332,9 @@ def run_daemon(args):
         now = time.monotonic()
         if now - last_poll >= VIEWER_POLL_SECONDS:
             last_poll = now
+            if request.exists():
+                request.unlink(missing_ok=True)
+                snapshot = True
             if args.always_on or sink.viewers():
                 last_viewer = now
         wanted = now - last_viewer < VIEWER_GONE_SECONDS
@@ -341,8 +368,15 @@ def run_daemon(args):
         now = time.monotonic()
         dt = min(now - last_frame, 0.2)
         last_frame = now
-        rect = framer.update(detector.faces(frame), now, dt)
+        faces = detector.faces(frame)
+        rect = framer.update(faces, now, dt)
         sink.write(reframe(frame, rect, out_w, out_h))
+        frames += 1
+        seen += bool(faces)
+        if snapshot:
+            snapshot = False
+            write_snapshot(frame, faces, rect, seen, frames)
+            seen = frames = 0
 
 
 def main():
