@@ -15,9 +15,9 @@ Item {
   readonly property string stayAwakePath: Quickshell.env("HOME") + "/.local/state/omarchy/indicators/stay-awake"
   property bool stayAwake: false
 
-  // omarchy-system-wake re-enables every output, including a laptop panel
-  // under a closed lid, so that panel is blanked again afterwards.
-  readonly property string wakeCommand: "omarchy-system-wake; omarchy-hw-laptop-closed && hyprctl dispatch 'hl.dsp.dpms({ action = \"disable\", monitor = \"eDP-1\" })'"
+  // display-relink runs omarchy-system-wake, re-blanks a closed-lid laptop
+  // panel, and re-trains an HDMI link amdgpu failed to bring up.
+  readonly property string wakeCommand: "display-relink"
 
   function run(command) {
     Quickshell.execDetached(["bash", "-lc", command])
