@@ -1,0 +1,17 @@
+[Unit]
+Description=Claude Code Remote Control server for ~/Work
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory={{ .chezmoi.homeDir }}/Work
+Environment=PATH={{ .chezmoi.homeDir }}/.local/share/mise/command-wrappers/bin:{{ .chezmoi.homeDir }}/.local/share/mise/shims:{{ .chezmoi.homeDir }}/.local/bin:/usr/local/bin:/usr/bin
+ExecStart={{ .chezmoi.homeDir }}/.local/share/mise/command-wrappers/bin/claude remote-control --name {{ .chezmoi.hostname }}-work --permission-mode auto
+# The TUI status line redraws every second; only stderr is worth keeping in the journal.
+StandardOutput=null
+StandardError=journal
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -165,6 +165,8 @@ Projects/fleetchaser/
 .local/bin/voxtype
 .config/systemd/user/voxtype.service
 .config/systemd/user/voxtype.service.d/
+# Remote Control daemon for ~/Work, which only fcoffice has.
+.config/systemd/user/claude-rc-work.service
 {{ end }}
 
 {{ if and (eq $profile "omarchy") (eq .chezmoi.hostname "fcoffice") }}
