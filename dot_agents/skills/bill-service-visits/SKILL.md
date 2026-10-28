@@ -1,115 +1,110 @@
 ---
 name: bill-service-visits
-description: Bill Fleet Chaser service visits from the Installs/Bill workboard column - discover live tasks, gather install evidence, dry-run the service-visit-lines API, ask Dmitry which tasks to bill via a selection prompt, apply, verify, and move billed tasks to Completed. Use when asked to "do the service billing", "bill the tasks", "run service visit billing", or "bill the Bill column".
+description: Bill Fleet Chaser service visits from the Installs/Bill workboard column - discover live tasks, classify each vehicle with the service-fee rules, dry-run the service-visit-lines API, ask Dmitry which tasks to bill via a selection prompt, apply, verify, move billed tasks to Completed, then preflight and export the drafts to ChargeOver prod with the tracker/camera handoff CSVs. Use when asked to "do the service billing", "bill the tasks", "run service visit billing", "bill the Bill column", or "export the invoices to ChargeOver".
 ---
 
 # Bill service visits
 
-One invocation, one selection prompt, then apply. Agent-agnostic: lives in `~/.agents/skills/bill-service-visits/`
-(symlinked from `~/.claude/skills` and `~/.codex/skills`). Driver: `~/.agents/skills/bill-service-visits/svb.py`
-(stdlib, run from any cwd, `--help` for flags). Artifacts land in
-`~/.local/state/service-visit-billing/<date>/`; nothing is written to the backend until `apply`.
+One invocation, one selection prompt, then apply; export is a second, explicit OK. Agent-agnostic:
+lives in `~/.agents/skills/bill-service-visits/` (symlinked from `~/.claude/skills` and
+`~/.codex/skills`). Driver: `~/.agents/skills/bill-service-visits/svb.py` (stdlib, run from any
+cwd, `--help` for flags). Artifacts land in `~/.local/state/service-visit-billing/<date>/`;
+nothing is written to the backend until `apply`, and nothing reaches ChargeOver until
+`export --yes`.
 
 ## Requirements (read before running)
 
-- **The target backend must serve the billing app**: `POST /api/billing/service-visit-lines/`
-  and the `billing` models (`Invoice`, `InvoiceLineItem`, product `service-fee`). As of
-  2026-09-17 that exists only on branch `dmitrylito/billing-app` (+ `service-visit-candidates`
-  worktree), not on master/prod. Until billing is merged and deployed, the only valid target
-  is the local stack (`backend.dlco.us` == `localhost:8000`, same DB).
-- **Prod later**: when billing ships, point `BACKEND_API_URL` / `BACKEND_API_TOKEN` (env or
-  `--env-file`) at prod with an admin API key, and run `evidence`/readback against a checkout +
-  DB that mirror prod (the nightly local copy is fine for evidence; readback must query the
-  DB the API wrote to). The API is the contract; the driver has no prod-only code paths.
+- **The target backend must serve the billing app** on the local stack (`backend.dlco.us` ==
+  `localhost:8000`, same DB): `POST /api/billing/service-visit-lines/` with `quantity`,
+  `GET /api/billing/billable-groups/`, and payment scheduling in the export. As of 2026-10-27
+  that is `dmitrylito/billing-app` at or after `44d431c0b` (local checkout; not on master/prod).
 - Containers: `ops-backend` (ops-center, live FC task mirror + `update_fc_task`) and the backend
-  compose stack at `~/Projects/backend/docker/docker-compose.yml`. Pass `--checkout <path>`
-  when the main checkout lacks the billing models (it sets `PROJECT_PATH` for compose).
+  compose stack at `~/Projects/backend/docker/docker-compose.yml`, including
+  `fleetchaser-fleet_worker-1`, which runs the export task. After changing billing code,
+  `docker restart fleetchaser-fleet_worker-1`. `--checkout <path>` sets `PROJECT_PATH` for the
+  helper containers.
 - Env file default: `~/Projects/billingapp/docker/envs/billingapp.env`. Never print the token.
+  ChargeOver prod credentials come from the backend's `docker/.env`.
+- **The 05:00 nightly `import-db` wipes local drafts and skips.** Apply and export the same day.
 
 ## Decisions already made (do not re-ask)
 
-- Service fee is **$75.00 per vehicle worked on** (set 2026-10-27), as one line per task with
-  `quantity` = billable vehicles. Count only new installs (tracker and/or camera; a vehicle
-  getting both counts once) and tracker repairs (replaced tracker, tracker restored). Exclude
-  SIM swaps, camera repairs/swaps, and removals. A task with zero billable vehicles gets no
-  line. Check prior installs on the vehicle to tell a first install from a replacement.
-- Needs `quantity` on `service-visit-lines` (backend commit 1974a1d3b, branch
-  `dmitrylito/service-visit-quantity` off `billing-app`); older backends force qty 1.
-- Heaven and Earth Landscaping is exempt from service fees (Dmitry, 2026-10-27).
-- Warranty: no service fee for repair work on a vehicle created less than a year ago (e.g.
-  Appco 5051, 2026-10-27).
-- United of Carolinas is not charged a service fee for installs.
-- Moving hardware from a sold truck into a replacement truck is billed (Toro 715); ELS's
-  2026-10-21 move was a one-off exception.
-- Customer self-installs (install record under the customer's own login, e.g. Charlotte Steel
-  TK11) get no service fee. Check `created_by_user` on the install rows.
+- Service fee is **$75.00 per vehicle worked on**: one line per task, `quantity` = billable
+  vehicles. `evidence` computes it per vehicle:
+  - counts: new tracker/camera install (a vehicle getting both counts once), hardware moved
+    from a sold truck into a replacement truck (Toro 715), tracker replaced when the old unit
+    is a year old or more, tracking restored on a tracker a year old or more (vehicle named in
+    the task).
+  - does not count: camera swaps/repairs, SIM swaps, removals, warranty work (the replaced or
+    restored unit is under a year old, whatever the vehicle's age), customer self-installs
+    (install row created by a non-staff login, e.g. Charlotte Steel TK11, Wood Harvest).
+- Exemptions live in `~/.local/state/service-visit-billing/exemptions.json`
+  (`{"<customer name or uuid>": "<reason>"}`); Heaven and Earth Landscaping is exempt.
+  One-off calls (United's PT-53 install, ELS's 10-21 move, Helms, EGC on 2026-10-27) are made
+  in the selection prompt, not added to the file.
+- Hold a visit whose hardware is still inside the 5-day billing wait; evidence warns.
 - Service date = task `completed_at` in `America/New_York`. Show install-date mismatches as
   warnings; don't silently substitute.
-- Every task that receives a line, appended or new draft, moves **Bill → Completed**
-  (Installs status id 4) right after apply. Not "Billed" (5); Bill column means "unbilled".
-- Skipped tasks stay in Bill. Never move a task that got no line.
+- Every task that receives a line moves **Bill → Completed** (Installs status id 4) right after
+  apply. Not "Billed" (5). Skipped tasks stay in Bill; never move a task that got no line.
 - Customers with `telemetry_unit_price = 0` (e.g. Carolina Curb & Gutter) have free tracker
-  hardware by design; don't flag their trackers as missed billing.
-- No ChargeOver export here. Export is the separate admin flow in backend `docs/billing.md`.
+  hardware by design.
+- Export schedule = ChargeOver's "Invoice now, charge in 30 days": an `inv` step tomorrow
+  (Eastern; ChargeOver rejects same-day dates) that makes ChargeOver email the invoice, then
+  100% on the newest ACH (else newest card) at invoice date + 30. No ACH/card → email step only.
+  Never call ChargeOver's `_action/email` (Dmitry, 2026-10-27).
 
 ## Procedure
 
 1. `svb.py discover` - live Installs/Bill tasks from ops-backend → `tasks.json`. If empty, stop.
-2. `svb.py [--checkout …] evidence` → `manifest.json` + review printout per task: customer
-   match, target (`append <invoice>` / `NEW draft`), install/camera/vehicle records ±4/3 days,
-   warnings (date mismatch, shared hardware records between two tasks, existing line, no
-   evidence, unbilled customer), and a drafted customer-facing `work_performed`.
-   - Evidence kinds: `*_install`, `*_removed` (re-saved rows and swaps filtered out), and
-     `tracker_online` — a vehicle whose tracker data resumed after a silence with no install
-     (plug-in or wiring fix). Vehicles named in the task text are checked 14 days back with a
-     4-day silence; others only within ±1 day of the visit after 7+ days silent, and are
-     listed but left out of the draft (fleets resume idle units every Monday). Confirm an
-     unnamed `tracker_online` row before adding it to `work_performed`.
+2. `svb.py evidence` → `manifest.json` + per task: customer, target draft, one line per vehicle
+   (`✔`/`✘` with the reason: new, moved from X, warranty with old-unit date, camera swap,
+   self-install by <login>, `[app: new_vehicle|replacement]` from billable-groups when the
+   hardware is still pending), warnings, and `=> N vehicle(s) x $75 = $… : <work_performed>`
+   or `=> no line: <reason>`.
+   - Unnamed `tracker_online` vehicles are listed but never counted; add one only if Dmitry
+     confirms (edit `quantity` and `work_performed` in `manifest.json`).
    - Unresolved customer: pick from the printed suggestions, add
-     `"<company name>": "<customer uuid>"` to `~/.local/state/service-visit-billing/customer-map.json`,
-     rerun `evidence`. Never guess a customer.
-   - Set `quantity` per item in `manifest.json` (billable vehicles; see pricing above) and list
-     only those vehicles in `work_performed`.
-   - Edit `work_performed` in `manifest.json` where the draft is wrong or the task text is the
-     only source (say so in the prompt). Descriptions must describe backend-evidenced work, no
-     installer notes, no task ids. The API prefixes `Service fee for site visit on <date>: `.
-3. `svb.py preview` - dry run of every resolvable item. All rows must be `ready` or
-   `already_exists`; fix `error` rows before the prompt.
-4. **Selection prompt**, multi-select, one round. Claude Code: `AskUserQuestion`, up to 4
-   questions × 4 options per call, so group tasks 4 per question ("Bill which of these? (1/4)");
-   more than 16 tasks → a second call. Agents without a question tool: print the same numbered
-   list and wait for the reply before doing anything else. Option label: `#4037 Axtraction → append 10000006` or `→ NEW draft`.
-   Description: evidence one-liner + warnings (⚠ date mismatch, ⚠ same visit as #4007, ⚠ no
-   hardware records). Unselected = skip. Tasks with `already_exists` are informational, not
-   options. Add a fourth question only when something needs a decision beyond select/skip
-   (duplicate pair: which one; price override).
-5. `svb.py apply --keys fc-task:…,…` - resubmits the exact previewed items with `apply: true`
-   (refuses if an item changed since preview), then DB readback. Verify every key came back
-   with product `service-fee`, the manifest's qty, $75 each, expected invoice. Stop on any
-   `error` row.
-6. `svb.py move-tasks --keys <same keys>` - Bill → Completed; confirm each prints `Completed`.
-7. Report: appended (task → invoice, new total), new drafts (task → invoice), skipped (still in
-   Bill), warnings you overrode, artifact dir. Say plainly that nothing was exported.
+     `"<company name>": "<customer uuid>"` to `customer-map.json`, rerun `evidence`. Never guess.
+   - Overrides go in `manifest.json` (`quantity`, `work_performed`). Descriptions describe
+     backend-evidenced work only; the API prefixes `Service fee for site visit on <date>: `.
+3. `svb.py preview` - dry run of every item with quantity > 0. All rows `ready` or
+   `already_exists`; fix `error` rows first.
+4. **Selection prompt**, multi-select, one task per option (Dmitry prefers individual options
+   over groups): `AskUserQuestion`, 4 questions × 4 options per call, more calls as needed.
+   Label `#4037 Axtraction → append 10000006` / `→ NEW draft`; description = vehicles, $ and
+   the reasons/warnings. List the no-line tasks with their reasons in the question text so
+   skips are visible. Unselected = skip.
+5. `svb.py apply --keys fc-task:…` then check the readback (service-fee, qty, $75, invoice).
+6. `svb.py move-tasks --keys <same keys>`; confirm each prints `Completed`.
+7. `svb.py preflight` - read-only ChargeOver checks on every local draft: inactive customer
+   (export would fail; reactivate with `POST /customer/<id>/_action/setActive` only if Dmitry
+   says so), no ACH/card (email only), newest card expired (30-day charge will fail). Show the
+   list and totals and get an explicit OK.
+8. `svb.py export --all-drafts --yes` (or `--invoices k,k`): reruns preflight, skips inactive
+   customers, queues the same `ExportSelectedInvoicesTask` as the admin "Send reviewed drafts to
+   ChargeOver (prod)" action, waits, reads back each invoice (local status, ChargeOver id and
+   total, schedule), writes the tracker/NGVR handoff CSVs and copies them to
+   `$SSH_CLIENT_HOST:~/Downloads`. Without `--yes` it is a dry run.
+9. Report: lines added (task → invoice), skipped tasks and why, exported invoices with schedule,
+   anything flagged (no pay method, expired card, failed export), handoff file paths.
 
 ## Gotchas
 
-- Warranty is per piece of hardware: a replacement is free when the unit it replaced was
-  installed less than a year earlier, whatever the vehicle's age.
 - Vehicle records are sometimes reused (an old vehicle renamed for a new truck, e.g. Stronghold
-  "17 Volvo Jacob Trans", 2026-10). Earlier installs on such a record belong to the old truck,
-  so treat the visit as a move/new install, not a warranty repair.
-- FC app forms (Install Form 46, Device Repair 30, Service Visit 43; table `form_submission`)
-  were barely used as of 2026-10-27: Service Visit had no submissions, Device Repair none after
-  9/21, Install Form 6 in October. Use them as extra evidence, not as the task list.
-
-- `discover` reads the ops-center mirror, which syncs continuously; the local backend DB is a
-  nightly copy, so a task finished today has no install records yet (evidence warns
-  "no hardware records"). Bill from task text only if Dmitry accepts that in the prompt.
-- Two tasks sharing the same install records is one visit billed twice; the warning names the
-  pair. Offer one, default the earlier task id.
+  "17 Volvo Jacob Trans"). Evidence then reads earlier installs as a replacement and warns
+  "reused vehicle record?"; Dmitry treats it as a move, so override to billable.
+- Two tasks sharing install records is one visit billed twice; the warning names the pair and
+  each task counts every shared vehicle. Split them by task text or offer one.
+- FC app forms (Install Form 46, Device Repair 30, Service Visit 43) were barely used as of
+  2026-10-27; extra evidence at most.
+- `discover` reads the live ops-center mirror; the local backend DB is a nightly copy, so a task
+  finished today has no install records yet ("no hardware records").
 - `already_exists` with identical values is safe; a reused key with different values fails
-  closed. Never bypass by changing the key.
+  closed. Never bypass by changing the key. To change a line already applied, edit it in Django
+  admin (or the ORM) and recalculate the invoice total.
+- A failed cross-database export is not retryable by the task. Only if ChargeOver shows no
+  invoice for that customer, set the local invoice back to `draft` and export again.
+- ChargeOver staging (`fleetchaser-staging2`) returned "Trial Expired" (HTTP 402) on
+  2026-10-27; there is no safe sandbox.
 - Cloudflare fronts `backend.dlco.us`; the driver sends a User-Agent so urllib isn't 403'd.
-- Replaces the former backend/ops-center project skill `service-visit-billing` (removed 2026-09-17).
-  Policy it carried: describe only backend-evidenced work, never guess a customer, reuse source
-  keys, no export or Linear writes from this flow.

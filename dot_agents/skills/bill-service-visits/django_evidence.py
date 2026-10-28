@@ -5,6 +5,12 @@ Evidence per task, in the task's window: hardware installs and removals (re-save
 and same-hour swaps filtered out), trackers whose data resumed after SILENCE with no install
 (a plug-in or wiring fix leaves no install record), and vehicles created.
 
+Each vehicle is then classified with Dmitry's service-fee rules ($ per vehicle worked on):
+new tracker/camera install (including hardware moved from a sold truck) and tracker repairs
+count; camera swaps, SIM swaps and removals do not; a repair of hardware installed less than
+WARRANTY ago is free; installs under a customer's own (non-staff) login are self-installs.
+The sum is the item's `quantity`, and `work_performed` lists only billable vehicles.
+
 Needs the billing app models (Invoice, InvoiceLineItem) in the mounted checkout.
 """
 
@@ -17,6 +23,8 @@ from zoneinfo import ZoneInfo
 from accounting.models import Customer
 from django.db import connection
 from django.db.models import Q
+from django.utils import timezone
+from billing import DAYS_BEFORE_CAN_BILL
 from billing.models import Invoice, InvoiceLineItem
 from dvr.models import CameraInstall as LegacyCameraInstall
 from ng_dvr.models import CameraInstall
@@ -57,6 +65,11 @@ SILENCE_NAMED = datetime.timedelta(days=4)
 SILENCE_OTHER = datetime.timedelta(days=7)
 ONLINE_NEAR = datetime.timedelta(days=1)
 NAMED_LOOKBACK = datetime.timedelta(days=14)
+# Per-hardware warranty: replacing or restoring hardware installed less than a year earlier is free.
+WARRANTY = datetime.timedelta(days=365)
+# An INST task whose "replaced" hardware is this young usually means a reused vehicle record
+# (an old vehicle renamed for a new truck), which Dmitry treats as a move, not a warranty repair.
+REUSED_RECORD_HINT = datetime.timedelta(days=60)
 
 INSTALL_MODELS = (
     ("tracker", "tracker", TrackerInstall, "tracker_id"),
@@ -86,6 +99,30 @@ def _named_in(text, identifier):
     return re.search(rf"(?<![\w-]){re.escape(identifier.strip())}(?![\w-])", text, re.I) is not None
 
 
+def _install_facts(o, hw_class, hw, tz):
+    """Who installed it, what it replaced on the vehicle, and where the unit came from."""
+    models = [m for _, cls, m, _ in INSTALL_MODELS if cls == hw_class]
+    device = getattr(o, hw)
+    before = o.created - RESAVE_GAP
+    prior = [m.objects.filter(vehicle_id=o.vehicle_id, created__lt=before).order_by("-created").first()
+             for m in models]
+    prior = max((p for p in prior if p), key=lambda p: p.created, default=None)
+    moved = type(o).objects.filter(**{hw: device}, created__lt=before).exclude(
+        vehicle_id=o.vehicle_id).select_related("vehicle").order_by("-created").first()
+    user = getattr(o, "created_by_user", None)
+    return {
+        "hw": hw_class, "vehicle_id": o.vehicle_id,
+        "serial": getattr(getattr(o, hw_class, None), "serial", None),
+        "installer": getattr(user, "email", None) or (str(user) if user else None),
+        "installer_staff": user.is_staff if user else None,
+        "replaced_installed": prior.created.astimezone(tz).date().isoformat() if prior else None,
+        "replaced_age_days": (o.created - prior.created).days if prior else None,
+        "same_unit_reinstalled": bool(prior and getattr(prior, hw) == device),
+        "moved_from": moved.vehicle.identifier if moved and moved.vehicle else None,
+        "installed_at": o.created.isoformat(),
+    }
+
+
 def _evidence(customer, day, before, after, tz, text):
     lo = datetime.datetime.combine(day - datetime.timedelta(days=before), datetime.time.min, tz)
     hi = datetime.datetime.combine(day + datetime.timedelta(days=after + 1), datetime.time.min, tz)
@@ -110,7 +147,7 @@ def _evidence(customer, day, before, after, tz, text):
                                   duration__endswith__gte=o.created - RESAVE_GAP,
                                   duration__endswith__lte=o.created + RESAVE_GAP).exclude(pk=o.pk)
             if not resaved.exists():
-                row(f"{label}_install", o.created, o.vehicle, o.pk)
+                row(f"{label}_install", o.created, o.vehicle, o.pk, **_install_facts(o, hw_class, hw, tz))
         ended = base.filter(duration__endswith__gte=lo, duration__endswith__lt=hi).select_related("vehicle")
         for o in capped(f"{label}_removed", ended.order_by("modified")):
             end = o.duration.upper
@@ -146,8 +183,11 @@ def _evidence(customer, day, before, after, tz, text):
                   f"first tracker data {resumed.astimezone(tz):%m-%d %H:%M}")
         is_named = vehicle_id in named
         detail += "; named in task" if is_named else "; not named in task, not in draft"
+        current = TrackerInstall.objects.filter(vehicle_id=vehicle_id, created__lte=resumed).order_by("-created").first()
         row("tracker_online", resumed, vehicle, f"{vehicle_id}:{resumed.isoformat()}", detail,
-            named=is_named)
+            named=is_named, vehicle_id=vehicle_id,
+            unit_installed=current.created.astimezone(tz).date().isoformat() if current else None,
+            unit_age_days=(resumed - current.created).days if current else None)
 
     for v in capped("vehicle_created", Vehicle.objects.filter(
             customer=customer, created__gte=lo, created__lt=hi).order_by("created")):
@@ -162,39 +202,92 @@ def _join(names):
     return ", ".join(names[:-1]) + (", and " if len(names) > 2 else " and ") + names[-1]
 
 
-def _draft_description(task, evidence):
-    verb = "Installed"
-    lower = (task["name"] or "").lower()
-    if lower.startswith("replace"):
-        verb = "Replaced"
-    elif lower.startswith("fix"):
-        verb = "Serviced"
+def _classify(evidence, app_status):
+    """Per-vehicle service-fee verdicts from the evidence rows (see module docstring)."""
+    by_vehicle = {}
+    for e in evidence:
+        if e["kind"] in ("vehicle_created",) or (e["kind"] == "tracker_online" and not e.get("named")):
+            continue
+        by_vehicle.setdefault(e["vehicle"], []).append(e)
 
-    def of(*kinds):
-        return [e["vehicle"] for e in evidence if e["kind"] in kinds]
+    vehicles = []
+    for name, rows in by_vehicle.items():
+        actions, notes, installers = set(), [], set()
+        self_install = False
+        for e in rows:
+            kind = e["kind"]
+            if kind.endswith("_removed"):
+                notes.append(f"{kind[:-len('_removed')].replace('legacy_cam', 'camera')} removed (not billed)")
+                continue
+            if kind == "tracker_online":
+                age = e.get("unit_age_days")
+                if age is not None and age < WARRANTY.days:
+                    notes.append(f"warranty: tracking restored on a tracker from {e['unit_installed']}")
+                else:
+                    actions.add("restored")
+                    notes.append("tracking restored")
+                continue
+            hw = e["hw"]
+            if e.get("installer"):
+                installers.add(e["installer"])
+            if e.get("installer_staff") is False:
+                self_install = True
+            app = app_status.get(e.get("serial") or "")
+            tag = f" [app: {app}]" if app else ""
+            if e.get("same_unit_reinstalled"):
+                notes.append(f"same {hw} re-installed (not billed){tag}")
+            elif e.get("replaced_installed") is None:
+                actions.add(f"new_{hw}")
+                moved = f", moved from {e['moved_from']}" if e.get("moved_from") else ""
+                notes.append(f"new {hw}{moved}{tag}")
+            elif hw == "camera":
+                notes.append(f"camera swap, old unit from {e['replaced_installed']} (not billed){tag}")
+            elif e["replaced_age_days"] < WARRANTY.days:
+                notes.append(f"warranty: tracker replaced, old unit from {e['replaced_installed']}{tag}")
+            else:
+                actions.add("replaced_tracker")
+                notes.append(f"tracker replaced, old unit from {e['replaced_installed']}{tag}")
+        if self_install:
+            notes.append(f"self-install by {', '.join(sorted(installers))} (not billed)")
+            actions = set()
+        vehicles.append({"vehicle": name, "billable": bool(actions), "actions": sorted(actions),
+                         "notes": list(dict.fromkeys(notes)), "installers": sorted(installers)})
+    return vehicles
 
-    def hardware(action, prep, trackers, cameras):
-        both = [v for v in trackers if v in cameras]
-        t_only = [v for v in trackers if v not in both]
-        c_only = [v for v in cameras if v not in both]
-        out = []
-        if both:
-            out.append(f"{action} a camera and tracker {prep} {_join(both)}")
-        if t_only:
-            out.append(f"{action} tracker{'s' if len(set(t_only)) > 1 else ''} {prep} {_join(t_only)}")
-        if c_only:
-            out.append(f"{action} camera{'s' if len(set(c_only)) > 1 else ''} {prep} {_join(c_only)}")
-        return out
 
-    parts = hardware(verb.lower(), "on", of("tracker_install"), of("camera_install", "legacy_cam_install"))
-    parts += hardware("removed", "from", of("tracker_removed"), of("camera_removed", "legacy_cam_removed"))
-    # Fleets have idle vehicles resuming every Monday; only claim restores the task names.
-    if online := [e["vehicle"] for e in evidence if e["kind"] == "tracker_online" and e.get("named")]:
-        parts.append(f"restored tracking on {_join(online)}")
+PHRASES = {
+    "both": ("installed a camera and tracker on", "installed a camera and tracker on"),
+    "new_tracker": ("installed a tracker on", "installed trackers on"),
+    "new_camera": ("installed a camera on", "installed cameras on"),
+    "replaced_tracker": ("replaced the tracker on", "replaced the trackers on"),
+    "restored": ("restored tracking on", "restored tracking on"),
+}
+
+
+def _describe(vehicles):
+    groups = {}
+    for v in vehicles:
+        a = set(v["actions"])
+        if {"new_tracker", "new_camera"} <= a:
+            groups.setdefault("both", []).append(v["vehicle"])
+        elif a & {"new_tracker", "new_camera"}:
+            groups.setdefault(next(iter(a & {"new_tracker", "new_camera"})), []).append(v["vehicle"])
+        if "replaced_tracker" in a:
+            groups.setdefault("replaced_tracker", []).append(v["vehicle"])
+        if "restored" in a and not a & {"new_tracker", "replaced_tracker"}:
+            groups.setdefault("restored", []).append(v["vehicle"])
+    parts = [f"{PHRASES[k][len(names) > 1]} {_join(names)}" for k, names in groups.items()]
     if not parts:
         return ""
     text = _join(parts)
-    return text[0].upper() + text[1:].rstrip(".") + "."
+    return text[0].upper() + text[1:] + "."
+
+
+def _exemption(customer, exemptions):
+    for key, reason in exemptions.items():
+        if key == str(customer.pk) or key.strip().lower() == customer.name.strip().lower():
+            return reason
+    return None
 
 
 def _task_text(desc):
@@ -246,8 +339,24 @@ def run(raw):
             if dates and item["service_date"] not in dates:
                 item["warnings"].append(f"completed {item['service_date']} but hardware records are on {sorted(dates)}")
         if not item["evidence"]:
-            item["warnings"].append("no hardware records in window; description from task text only")
-        item["work_performed"] = _draft_description(task, item["evidence"]) or item["task_text"][:300]
+            item["warnings"].append("no hardware records in window")
+        item["vehicles"] = _classify(item["evidence"], p.get("app_status", {}))
+        item["quantity"] = sum(v["billable"] for v in item["vehicles"])
+        item["work_performed"] = _describe(item["vehicles"])
+        if reason := _exemption(customer, p.get("exemptions", {})):
+            item["skip_reason"] = f"customer exempt: {reason}"
+            item["quantity"] = 0
+        elif not item["quantity"]:
+            item["skip_reason"] = "no billable vehicle (see notes)"
+        cutoff = timezone.now() - datetime.timedelta(days=DAYS_BEFORE_CAN_BILL)
+        if any(e.get("installed_at") and datetime.datetime.fromisoformat(e["installed_at"]) > cutoff
+               for e in item["evidence"] if e["kind"].endswith("_install")):
+            item["warnings"].append(f"hardware installed within the {DAYS_BEFORE_CAN_BILL}-day billing wait; hold so fee and hardware go out together")
+        for e in item["evidence"]:
+            age = e.get("replaced_age_days")
+            if (age is not None and age < REUSED_RECORD_HINT.days and not e.get("same_unit_reinstalled")
+                    and (task["name"] or "").upper().startswith("INST")):
+                item["warnings"].append(f"{e['vehicle']}: replaced {e['hw']} was only {age} days old on an install task; reused vehicle record? (treat as a move)")
         items.append(item)
 
     seen = {}

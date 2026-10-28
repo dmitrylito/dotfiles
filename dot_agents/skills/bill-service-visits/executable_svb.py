@@ -5,10 +5,19 @@ Runs from any cwd; stdlib only. Each step writes to an artifact dir
 (~/.local/state/service-visit-billing/<date>/, chmod 700) and later steps read it.
 
   svb.py discover                      live Installs/Bill tasks from ops-backend -> tasks.json
-  svb.py evidence                      customer match, drafts, install evidence -> manifest.json
-  svb.py preview  [--keys k,k]         POST apply=false with manifest items    -> preview-*.json
+  svb.py evidence                      customer match, drafts, evidence, per-vehicle verdicts and
+                                       quantity                                 -> manifest.json
+  svb.py preview  [--keys k,k]         POST apply=false (billable items only)   -> preview-*.json
   svb.py apply    --keys k,k           POST apply=true, then DB readback        -> apply-*.json
   svb.py move-tasks --keys k,k         Bill -> Completed (status 4) via ops-backend update_fc_task
+  svb.py preflight [--invoices k,k]    read-only ChargeOver checks on drafts     -> preflight.json
+  svb.py export (--invoices k,k | --all-drafts) --yes
+                                       queue the backend prod export, wait, read back invoices and
+                                       schedules, write handoff CSVs, copy them to $SSH_CLIENT_HOST
+  svb.py handoff --invoices k,k        tracker/NGVR handoff CSVs for sent invoices
+
+State files in ~/.local/state/service-visit-billing/: customer-map.json (company -> customer
+uuid), exemptions.json (customer name or uuid -> reason; quantity forced to 0).
 
 Preconditions
   - docker containers: ops-backend (ops-center) and the backend compose stack
@@ -30,12 +39,17 @@ import urllib.request
 from datetime import date
 from pathlib import Path
 
+import base64
+import time
+
 HERE = Path(__file__).resolve().parent
 STATE = Path.home() / ".local/state/service-visit-billing"
 DEFAULT_ENV = Path.home() / "Projects/billingapp/docker/envs/billingapp.env"
 DEFAULT_COMPOSE = Path.home() / "Projects/backend/docker/docker-compose.yml"
 DEFAULT_PRICE = "75.00"
 COMPLETED_STATUS_ID = 4
+EXPORT_TIMEOUT_SECONDS = 900
+EXPORT_POLL_SECONDS = 10
 
 OPS_DUMP = r"""
 import json
@@ -110,7 +124,7 @@ def backend_shell(args, script: str):
     return extract_json(proc.stdout)
 
 
-def api(args, payload: dict) -> dict:
+def api_target(args):
     env = {}
     for line in Path(args.env_file).read_text().splitlines():
         if "=" in line and not line.startswith("#"):
@@ -120,11 +134,33 @@ def api(args, payload: dict) -> dict:
     token = os.environ.get("BACKEND_API_TOKEN") or env.get("BACKEND_API_TOKEN")
     if not url or not token:
         sys.exit("BACKEND_API_URL / BACKEND_API_TOKEN missing (env or --env-file)")
+    return url.rstrip("/"), {"X-API-KEY": token, "Content-Type": "application/json", "User-Agent": "svb/1.0"}
+
+
+def app_install_status(args) -> dict:
+    """serial -> install_status from the billing app's billable-groups list (pending hardware only)."""
+    url, headers = api_target(args)
+    req = urllib.request.Request(url + "/billing/billable-groups/", headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            body = json.loads(resp.read())
+    except (urllib.error.URLError, TimeoutError) as e:
+        print(f"(billable-groups unavailable: {e}; continuing without app install status)")
+        return {}
+    return {i["serial"]: i["install_status"] for g in body.get("groups", []) for i in g.get("items", [])}
+
+
+def ops_script(args, call: str, payload):
+    script = (HERE / "django_billing_ops.py").read_text() + f"\n{call}({json.dumps(payload)!r})\n"
+    return backend_shell(args, script)
+
+
+def api(args, payload: dict) -> dict:
+    url, headers = api_target(args)
     req = urllib.request.Request(
-        url.rstrip("/") + "/billing/service-visit-lines/",
+        url + "/billing/service-visit-lines/",
         data=json.dumps(payload).encode(),
-        headers={"X-API-KEY": token, "Content-Type": "application/json",
-                 "User-Agent": "svb/1.0"},
+        headers=headers,
         method="POST",
     )
     try:
@@ -136,6 +172,8 @@ def api(args, payload: dict) -> dict:
 
 def selected(manifest, keys):
     items = [m for m in manifest["items"] if m.get("customer_id")]
+    if not keys:
+        items = [m for m in items if int(m.get("quantity", 0)) > 0]
     if keys:
         wanted = set(keys)
         items = [m for m in items if m["source_task_key"] in wanted]
@@ -178,9 +216,13 @@ def cmd_evidence(args):
     cmap_path = STATE / "customer-map.json"
     if not cmap_path.exists():
         save(cmap_path, {})
+    exempt_path = STATE / "exemptions.json"
+    if not exempt_path.exists():
+        save(exempt_path, {})
     payload = {
         "tasks": tasks, "customer_map": load(cmap_path), "unit_price": args.unit_price,
         "tz": args.tz, "window_before": 4, "window_after": 3,
+        "exemptions": load(exempt_path), "app_status": app_install_status(args),
     }
     script = (HERE / "django_evidence.py").read_text() + f"\nrun({json.dumps(payload)!r})\n"
     manifest = backend_shell(args, script)
@@ -194,12 +236,21 @@ def cmd_evidence(args):
             target = "?"
         print(f"\n{m['source_task_key']} #{m['number']} {m['name']}")
         print(f"   customer: {cust}   target: {target}   date: {m['service_date']}")
-        for e in m["evidence"]:
-            print(f"   {e['kind']:18} {e['date']} {e['vehicle']}  {e.get('detail', '')}".rstrip())
+        for v in m.get("vehicles", []):
+            mark = "✔" if v["billable"] else "✘"
+            print(f"   {mark} {v['vehicle']}: {'; '.join(v['notes'])}")
+        unnamed = [e["vehicle"] for e in m["evidence"] if e["kind"] == "tracker_online" and not e.get("named")]
+        if unnamed:
+            print(f"   (back online, not named in task, not counted: {', '.join(unnamed)})")
         for w in m["warnings"]:
             print(f"   ⚠ {w}")
-        print(f"   work_performed: {m['work_performed']}")
-    print(f"\n-> {d / 'manifest.json'}  (set quantity = billable vehicles and edit work_performed there before preview)")
+        qty = int(m.get("quantity", 0))
+        if qty:
+            amount = qty * float(m["unit_price"])
+            print(f"   => {qty} vehicle(s) x ${m['unit_price']} = ${amount:.2f}: {m['work_performed']}")
+        else:
+            print(f"   => no line: {m.get('skip_reason')}")
+    print(f"\n-> {d / 'manifest.json'}  (override quantity / work_performed there before preview)")
 
 
 def cmd_preview(args):
@@ -256,6 +307,88 @@ def cmd_move(args):
         print(f"{r['task_id']} -> {r['status_name']} (workflow {r['workflow_id']})")
 
 
+def print_preflight(rows):
+    for r in rows:
+        flag = "⚠ " + "; ".join(r["problems"]) if r["problems"] else "ok"
+        print(f"{r['invoice']} {r['status']:7} {r['customer'][:32]:32} ${r['total']:>9} charge={r['charge'] or '-':10} {flag}")
+
+
+def cmd_preflight(args):
+    d = art_dir(args)
+    rows = ops_script(args, "preflight", {"environment": args.environment, "keys": args.invoices})
+    save(d / "preflight.json", rows)
+    print_preflight(rows)
+
+
+def copy_to_client(paths):
+    host = os.environ.get("SSH_CLIENT_HOST")
+    if not host:
+        print("SSH_CLIENT_HOST unset; files not copied")
+        return
+    subprocess.run(["scp", "-q", *map(str, paths), f"{host}:Downloads/"], check=True)
+    listing = subprocess.run(["ssh", host, "ls -l " + " ".join(f"~/Downloads/{Path(p).name}" for p in paths)],
+                             capture_output=True, text=True)
+    print(f"copied to {host}:~/Downloads\n{listing.stdout.strip()}")
+
+
+def write_handoff(args, d, keys):
+    out = ops_script(args, "handoff", keys)
+    paths = []
+    for f in out["files"]:
+        path = d / f["name"]
+        path.write_bytes(base64.b64decode(f["b64"]))
+        paths.append(path)
+        print(f"handoff: {path}")
+    if not args.no_copy:
+        copy_to_client(paths)
+
+
+def cmd_handoff(args):
+    if not args.invoices:
+        sys.exit("--invoices is required")
+    write_handoff(args, art_dir(args), args.invoices)
+
+
+def cmd_export(args):
+    d = art_dir(args)
+    if not (args.invoices or args.all_drafts):
+        sys.exit("pass --invoices k,k or --all-drafts")
+    rows = ops_script(args, "preflight", {"environment": args.environment, "keys": args.invoices})
+    rows = [r for r in rows if r["status"] == "draft"]
+    print_preflight(rows)
+    blocked = [r["invoice"] for r in rows if any("export will fail" in p for p in r["problems"])]
+    keys = [r["invoice"] for r in rows if r["invoice"] not in blocked]
+    if blocked:
+        print(f"skipping (inactive ChargeOver customer): {', '.join(blocked)}")
+    if not keys:
+        sys.exit("nothing to export")
+    if not args.yes:
+        sys.exit(f"dry run: would export {len(keys)} invoice(s) to ChargeOver {args.environment}; rerun with --yes")
+    queued = ops_script(args, "export_queue", {"environment": args.environment, "keys": keys})
+    save(d / "export-queued.json", queued)
+    print(f"queued {len(queued['queued'])} (cross-database={queued['cross_database']})")
+    deadline = time.monotonic() + args.timeout
+    while True:
+        status = ops_script(args, "export_status", queued["queued"])
+        pending = [k for k, s in status.items() if s in ("draft", "exporting")]
+        if not pending:
+            break
+        if time.monotonic() > deadline:
+            sys.exit(f"timed out after {args.timeout}s; still pending: {pending}")
+        time.sleep(EXPORT_POLL_SECONDS)
+    rb = ops_script(args, "export_readback", {"environment": args.environment, "keys": queued["queued"]})
+    save(d / "export-readback.json", rb)
+    for r in rb:
+        steps = " | ".join(f"{s['paymethod']}{'#' + str(s['id']) if s['id'] else ''} {s['date']} {s['share']}" for s in r["schedule"])
+        problem = r["export_error"] or r["schedule_error"]
+        mismatch = r["co_total"] is not None and float(r["co_total"]) != float(r["total"])
+        print(f"{r['invoice']} {r['status']:7} co={r['co_invoice'] or '-':6} ${r['total']:>9} "
+              f"{'⚠ CO total ' + str(r['co_total']) + ' ' if mismatch else ''}{steps} {('⚠ ' + problem) if problem else ''}")
+    sent = [r["invoice"] for r in rb if r["status"] == "sent"]
+    if sent:
+        write_handoff(args, d, sent)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--date", default=date.today().isoformat(), help="artifact dir name")
@@ -280,6 +413,26 @@ def main():
         if name == "move-tasks":
             s.add_argument("--status-id", type=int, default=COMPLETED_STATUS_ID)
         s.set_defaults(fn=fn)
+
+    keys_type = lambda v: [k.strip() for k in v.split(",") if k.strip()]  # noqa: E731
+    s = sub.add_parser("preflight")
+    s.add_argument("--invoices", type=keys_type)
+    s.add_argument("--environment", default="prod")
+    s.set_defaults(fn=cmd_preflight)
+
+    s = sub.add_parser("export")
+    s.add_argument("--invoices", type=keys_type)
+    s.add_argument("--all-drafts", action="store_true")
+    s.add_argument("--environment", default="prod")
+    s.add_argument("--yes", action="store_true", help="actually queue the export")
+    s.add_argument("--timeout", type=int, default=EXPORT_TIMEOUT_SECONDS)
+    s.add_argument("--no-copy", action="store_true")
+    s.set_defaults(fn=cmd_export)
+
+    s = sub.add_parser("handoff")
+    s.add_argument("--invoices", type=keys_type)
+    s.add_argument("--no-copy", action="store_true")
+    s.set_defaults(fn=cmd_handoff)
 
     args = p.parse_args()
     args.fn(args)
