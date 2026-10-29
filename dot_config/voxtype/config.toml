@@ -48,6 +48,10 @@ driver_order = ["dotool", "clipboard"]
 
 pre_type_delay_ms = 25
 
+# Fork-only (local/stop-grace): keep typing what Parakeet decodes after the
+# stop key, for at most this long. The last ~1-2s of speech only decodes then.
+streaming_stop_grace_ms = 1000
+
 [output.notification]
 on_recording_start = false
 on_recording_stop = false
@@ -79,7 +83,7 @@ icon_theme = "omarchy"
 gpu_isolation = false
 on_demand_loading = false
 flash_attention = false
-eager_processing = true
+eager_processing = false
 model = ""
 mode = "local"
 language = "auto"
