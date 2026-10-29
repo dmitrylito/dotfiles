@@ -49,7 +49,7 @@ import sys
 
 HOME = "{{ .chezmoi.homeDir }}"
 HOME_READ_RULE = f"Reading any file under {HOME} with cat/head/sed/grep/strings, including binaries and log files, and shell introspection such as echo of environment variables"
-MOSHI_COMMAND = "'" + HOME + "/.local/bin/moshi-hook-claude-guard' claude-hook"
+MOSHI_COMMAND = "'" + HOME + "/.local/bin/moshi-hook' claude-hook"
 MOSHI_BINARIES = ("moshi-hook", "moshi-hook-claude-guard", "moshi")
 
 STYLE_GUARD = "python3 '" + HOME + "/.claude/hooks/style-guard.py' "
