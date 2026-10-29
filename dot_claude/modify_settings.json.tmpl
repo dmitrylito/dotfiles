@@ -36,11 +36,11 @@
 #     list — enabledPlugins already exists on every established box, so a BASELINE false
 #     would be skipped by fill_defaults and never take. Re-enabling one means deleting it
 #     from the list HERE; a /plugin toggle is reverted on the next apply.
-#   - hooks are ENFORCED: every moshi hook command is forced back to the guard wrapper and
-#     any missing event/matcher is re-added. Without this, `moshi-hook service install`
-#     silently repoints the hooks at raw moshi-hook, bypassing Herdr binding repair and
-#     making the Moshi app show the wrong conversation. Hooks the user added
-#     themselves are left alone.
+#   - hooks are ENFORCED: every moshi hook command is forced to raw moshi-hook and any
+#     missing event/matcher is re-added. moshi-hook 0.4.0 `status` only accepts the exact
+#     `'<home>/.local/bin/moshi-hook' claude-hook` shape; anything else (including the
+#     moshi-hook-claude-guard wrapper) is reported stale and the Moshi app withholds Chat
+#     View. Hooks the user added themselves are left alone.
 #
 # A live file that will not parse is replaced by BASELINE — it was already broken.
 
