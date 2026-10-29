@@ -33,7 +33,6 @@ system/
 .config/hypr/
 .config/voxtype/
 .config/omarchy/
-.local/bin/display-relink
 # Keeps hotplugged displays blank while the Omarchy session is locked.
 .local/bin/omarchy-lock-dpms-guard
 .config/systemd/user/omarchy-lock-dpms-guard.service
