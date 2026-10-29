@@ -160,7 +160,7 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
             if profile != "mac":
                 expected.append({"hooks": [{
                     "type": "command",
-                    "command": f"'{home}/.local/bin/moshi-hook-codex-guard' codex-hook",
+                    "command": f"'{home}/.local/bin/moshi-hook' codex-hook",
                 }]})
             assert merged["hooks"].get(event, []) == expected, f"{label}: {event} hooks"
         if initial:
