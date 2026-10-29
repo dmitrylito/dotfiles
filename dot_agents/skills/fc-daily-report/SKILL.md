@@ -180,7 +180,11 @@ areas from the evidence, he decides. Dmitry's areas (2026-10-08):
 - **Sales**: customer contact for adding vehicles, quotes, hardware drop-offs not
   tied to a fix, and customer questions about the product.
 - **Billing**.
-- **Internal Tools**: tooling, engineering and the ops pipeline.
+- **Internal Tools**: tooling, engineering and the ops pipeline. A Claude/Codex
+  session goes to the area of what it was for, not here by default (2026-10-29):
+  SIM, task, ticket and customer-data work → Support; ChargeOver/invoice work →
+  Billing; quote/email/Loom drafting → Sales. Set each with `--day --area --set
+  session:<host>/<id>=<area>`.
 - **Business Development**: internal meetings and product work (e.g. customer
   product feedback sessions), vendors, research.
 - **Misc**: audio tools and music; its own row in the management report.
