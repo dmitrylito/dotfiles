@@ -10,7 +10,7 @@ USER_HOME = "{{ .chezmoi.homeDir }}"
 MOSHI_ENABLED = {{ if eq .profile "mac" }}False{{ else }}True{{ end }}
 # Quotes and the trailing `codex-hook` are load-bearing: this is the exact shape
 # `moshi-hook status` matches, and anything else is reported as stale wiring.
-MOSHI_COMMAND = "'" + USER_HOME + "/.local/bin/moshi-hook-codex-guard' codex-hook"
+MOSHI_COMMAND = "'" + USER_HOME + "/.local/bin/moshi-hook' codex-hook"
 MOSHI_BINARIES = ("moshi-hook-codex-guard", "moshi-codex-hook", "moshi-hook", "moshi")
 EVENTS = ("PermissionRequest", "SessionStart", "Stop", "UserPromptSubmit")
 
