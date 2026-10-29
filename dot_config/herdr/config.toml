@@ -15,7 +15,8 @@ panel_bg = "black"
 new_cwd = "follow"
 
 [keys]
-prefix = "ctrl+space"
+# iPadOS eats ctrl+space (input-language switch) before Moshi sees it; ctrl+b covers the iPad.
+prefix = ["ctrl+space", "ctrl+b"]
 
 # Config and help
 reload_config = "prefix+q"
