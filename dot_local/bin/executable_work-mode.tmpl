@@ -2,14 +2,18 @@
 #
 # work-mode — open the "work" apps and place them predictably.
 #
-{{- if eq .chezmoi.hostname "omarchy" }}
+{{- if eq .chezmoi.hostname "fcoffice" }}
+#   ws 1 : work browser (chromium, "Work" profile) | FC Gmail
+#   ws 3 : Linear | FC Tasks over FC Chat | Dialpad
+{{- else if eq .chezmoi.hostname "omarchy" }}
 #   ws 1 : work browser (chromium, "Work" profile) | FC Gmail
 #   ws 2 : FC Chat over Dialpad
+#   ws 3 : Linear | FC Tasks
 {{- else }}
 #   ws 1 : work browser (chromium, "Work" profile)
 #   ws 2 : Dialpad over FC Chat | FC Gmail
-{{- end }}
 #   ws 3 : Linear | FC Tasks
+{{- end }}
 #   scratchpad : Spotify
 #
 # Every app is its ~/.local/share/applications entry, launched through uwsm-app
@@ -80,34 +84,34 @@ ENTRY_DIRS=("$HOME/.local/share/applications" /usr/share/applications)
 # <desktop entry>|<workspace>|<class regex, only where it cannot be derived>
 APPS=(
   'spotify.desktop|special:spotify|^spotify$'
-  'FC-Chat.desktop|2|'
 {{- if eq .chezmoi.hostname "fcoffice" }}
-  'FC-Tasks.desktop|2|'
+  'FC-Chat.desktop|3|'
 {{- else }}
-  'FC-Tasks.desktop|3|'
+  'FC-Chat.desktop|2|'
 {{- end }}
+  'FC-Tasks.desktop|3|'
   'DL-Chrome-Work.desktop|1|'
+{{- if eq .chezmoi.hostname "fcoffice" }}
+  'FC-Dialpad.desktop|3|'
+{{- else }}
   'FC-Dialpad.desktop|2|'
+{{- end }}
 {{- if or (eq .chezmoi.hostname "omarchy") (eq .chezmoi.hostname "fcoffice") }}
   'FC-Gmail.desktop|1|'
 {{- else }}
   'FC-Gmail.desktop|2|'
 {{- end }}
-{{- if eq .chezmoi.hostname "fcoffice" }}
-  'Linear.desktop|2|'
-{{- else }}
   'Linear.desktop|3|'
-{{- end }}
 )
 
 # Columns "|" left to right, entries "," stacked top to bottom within a column.
 {{- if eq .chezmoi.hostname "fcoffice" }}
 LAYOUT_1='DL-Chrome-Work.desktop | FC-Gmail.desktop'
 WIDTHS_1=(0.752)
-LAYOUT_2='Linear.desktop | FC-Tasks.desktop,FC-Chat.desktop | FC-Dialpad.desktop'
-WIDTHS_2=(0.2254 0.5509)
-LAYOUT_3=''
-WIDTHS_3=()
+LAYOUT_2=''
+WIDTHS_2=()
+LAYOUT_3='Linear.desktop | FC-Tasks.desktop,FC-Chat.desktop | FC-Dialpad.desktop'
+WIDTHS_3=(0.2254 0.5509)
 {{- else if eq .chezmoi.hostname "omarchy" }}
 LAYOUT_1='DL-Chrome-Work.desktop | FC-Gmail.desktop'
 WIDTHS_1=(0.698)
