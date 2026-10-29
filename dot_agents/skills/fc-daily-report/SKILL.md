@@ -151,7 +151,11 @@ uncategorized. Never decide a category for him.
   locked (displays go off after five idle minutes). Any other
   time without keyboard/mouse input is `idle` (whatever its length) or `watching`
   when a window held the screen awake (video, Meet without a call). Call time is
-  never idle. Present them as such; Dmitry categorizes idle and watching himself.
+  never idle. Idle is work by Dmitry's standing rule (2026-10-29): the `idle: work`
+  rule in FCOffice's `~/.config/fc-daily-report/categories.json` puts it in
+  `work_seconds`; pass that file with `--categories` when collecting elsewhere.
+  Show idle as its own line, never drop it from work totals. Dmitry categorizes
+  watching himself.
 - **Timeline**: a chronological table from `buckets`/`blocks` with the concrete
   work/customer behind each window. Identify recurring workstreams and switches
   without judging productivity. Mark unexplained gaps instead of naming them lunch,
