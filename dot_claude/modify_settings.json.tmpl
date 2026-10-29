@@ -364,7 +364,10 @@ def enforce_style_hooks(hooks):
         if not isinstance(groups, list):
             groups = hooks[event] = []
         groups[:] = [g for g in groups if not is_style_group(g)]
-        groups.append(
+        # First, not appended: moshi-hook 0.4.0 `status` reports an event stale unless its
+        # own group is the last one.
+        groups.insert(
+            0,
             {
                 "hooks": [
                     {
