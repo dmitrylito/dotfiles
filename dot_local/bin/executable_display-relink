@@ -4,15 +4,22 @@
 # Usage: display-relink   (run by the dmitrylito.display-idle shell plugin on activity)
 # Waking from DPMS off, amdgpu sometimes logs "enabling link N failed: 19" for the
 # HDMI monitor: Hyprland still reports the output on, but the panel stays black.
-# Cycling that output's DPMS re-trains the link.
-# Env: DISPLAY_RELINK_SETTLE seconds to wait before checking the kernel log (default 3),
-#      DISPLAY_RELINK_RETRIES DPMS cycles before giving up (default 3).
+# Cycling that output's DPMS re-trains the link, but cycles in the first ~20s after
+# a wake fail too (2026-10-29: 3 cycles 6s apart all failed; one 10 min later worked),
+# so retries back off.
+# Env: DISPLAY_RELINK_SETTLE seconds before the first kernel-log check (default 3),
+#      DISPLAY_RELINK_BACKOFF seconds to wait before each DPMS cycle (default "5 10 20 40"),
+#      DISPLAY_RELINK_OFF seconds an output stays off during a cycle (default 3).
+# Logs each step to the journal: journalctl --user -t display-relink
 # Needs: journalctl -k readable without sudo, jq, a Hyprland session.
 
 set -uo pipefail
 
 settle="${DISPLAY_RELINK_SETTLE:-3}"
-retries="${DISPLAY_RELINK_RETRIES:-3}"
+read -ra backoff <<<"${DISPLAY_RELINK_BACKOFF:-5 10 20 40}"
+off="${DISPLAY_RELINK_OFF:-3}"
+
+log() { logger -t display-relink "$*"; }
 
 dpms() {
   hyprctl dispatch "hl.dsp.dpms({ action = \"$1\", monitor = \"$2\" })" >/dev/null 2>&1
@@ -29,16 +36,20 @@ omarchy-hw-laptop-closed && dpms disable eDP-1
 mapfile -t hdmi < <(hyprctl monitors -j 2>/dev/null | jq -r '.[].name | select(startswith("HDMI-"))')
 ((${#hdmi[@]})) || exit 0
 
-for ((attempt = 1; attempt <= retries; attempt++)); do
-  sleep "$settle"
-  link_failed_since "$since" || exit 0
+sleep "$settle"
+link_failed_since "$since" || { log "wake: links ok"; exit 0; }
+log "wake: link failed on ${hdmi[*]}"
+
+for wait in "${backoff[@]}"; do
+  sleep "$wait"
   since=$(date +%s)
   for output in "${hdmi[@]}"; do dpms disable "$output"; done
-  sleep 2
+  sleep "$off"
   for output in "${hdmi[@]}"; do dpms enable "$output"; done
+  sleep "$settle"
+  link_failed_since "$since" || { log "cycle after ${wait}s wait: link ok"; exit 0; }
+  log "cycle after ${wait}s wait: link failed"
 done
 
-sleep "$settle"
-link_failed_since "$since" || exit 0
-echo "display-relink: HDMI link still failing after $retries DPMS cycles" >&2
+log "giving up after ${#backoff[@]} cycles"
 exit 1
