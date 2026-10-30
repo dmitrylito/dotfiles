@@ -1093,13 +1093,14 @@ def test_areas_are_exclusive_and_calls_own_their_span(timeline_module):
     ]
     calls = [
         {"start": 50, "end": 150, "ref": "call:1", "company": "Paragon"},
-        {"start": 140, "end": 170, "ref": "call:2", "company": "Acme"},
+        {"start": 140, "end": 170, "ref": "call:2", "company": "Acme", "category": "fix"},
     ]
     areas = {
         "site:console": "Support",
         "site:billing": "Billing",
         "call:call:1": "Sales",
-        "call_company:Acme": "Support",
+        "call_category:fix": "Support",
+        "call_company:Acme": "Billing",
     }
     result = {
         a["area"]: a["seconds"]

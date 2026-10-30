@@ -195,6 +195,8 @@ def call_keys(call):
     keys = []
     if call.get("ref"):
         keys.append(f"call:{call['ref']}")
+    if call.get("category"):
+        keys.append(f"call_category:{call['category']}")
     if call.get("meet_code"):
         keys.append(f"meet:{call['meet_code']}")
     if call.get("event"):
@@ -550,6 +552,7 @@ def dialpad_calls(rows):
             "kind": "dialpad",
             "ref": row.get("ref") or f"call:{row['id']}",
             "company": row.get("company"),
+            "category": row.get("pipeline_category"),
             "direction": row.get("direction"),
             "dialpad_seconds": row.get("duration_seconds"),
         }

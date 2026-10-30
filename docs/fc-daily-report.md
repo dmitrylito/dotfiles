@@ -87,7 +87,7 @@ which wins for that day only. `work_seconds` is work-categorized time plus calls
 Broad areas for the management report are a second rule set (`"areas"` in the same
 files): `fc-daily-report categorize --run RUN_DIR --area --set 'site:dialpad.com=Customer
 Support & Troubleshooting' [--day]`. Calls are keyed `call:<ref>`, `meet:<code>`,
-`call_event:<title>` and `call_company:<name>`. `timeline.json` `areas` gives exclusive
+`call_event:<title>`, `call_category:<category>` (the ops-center pipeline's category for that call, most frequent across its case proposals and linked issues) and `call_company:<name>`. Map calls by `call_category`, not by company: one customer calls about support one day and sales the next. `timeline.json` `areas` gives exclusive
 time per area: a call owns its span, the rest goes to each segment's area, personal
 time is excluded, and the areas sum to the tracked total.
 

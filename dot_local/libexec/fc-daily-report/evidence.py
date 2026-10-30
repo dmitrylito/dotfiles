@@ -271,8 +271,16 @@ def source_queries(bounds, person, snippet_chars):
     dialpad_time = lambda key: (
         f"CASE WHEN x.raw_payload->>'{key}' ~ '^[0-9]+$' THEN to_timestamp((x.raw_payload->>'{key}')::bigint / 1000.0) END"
     )
+    pipeline_category = (
+        "(SELECT coalesce(p.payload->'case_definition'->>'category', i.category) AS category"
+        " FROM ops_decisionsource s JOIN ops_decisionproposal p ON p.source_id=s.id"
+        " LEFT JOIN ops_issue i ON i.id::text=p.issue_id"
+        " WHERE s.source_ref='call:'||x.id"
+        " AND coalesce(p.payload->'case_definition'->>'category', i.category) IS NOT NULL"
+        " GROUP BY 1 ORDER BY count(*) DESC, 1 LIMIT 1)"
+    )
     queries = {
-        "call": f"SELECT {common}, x.dialpad_call_id, x.operator_email, x.direction, x.state, x.duration_seconds, {dialpad_time('date_connected')} AS connected_at, {dialpad_time('date_ended')} AS ended_at, {short('x.content_summary')} AS snippet, length(coalesce(x.transcript,''))>0 AS has_transcript, CASE WHEN length(coalesce(x.transcript,''))>0 THEN md5(x.transcript) END AS transcript_hash FROM calls x {join} WHERE {span} AND lower(x.operator_email)={who}",
+        "call": f"SELECT {common}, x.dialpad_call_id, x.operator_email, x.direction, x.state, x.duration_seconds, {dialpad_time('date_connected')} AS connected_at, {dialpad_time('date_ended')} AS ended_at, {short('x.content_summary')} AS snippet, length(coalesce(x.transcript,''))>0 AS has_transcript, CASE WHEN length(coalesce(x.transcript,''))>0 THEN md5(x.transcript) END AS transcript_hash, {pipeline_category} AS pipeline_category FROM calls x {join} WHERE {span} AND lower(x.operator_email)={who}",
         "sms": f"SELECT {common}, x.direction, {short('x.message_text')} AS snippet, x.raw_payload->'target'->>'email' AS line_email FROM sms x {join} WHERE {span} AND lower(x.raw_payload->'target'->>'email')={who}",
         "email": f"SELECT {common}, x.message_id, x.rfc822_message_id, x.thread_id, x.subject AS title, x.from_addr, x.to_addr, x.mailbox, x.direction, x.event_type, x.is_draft, {short('x.content_summary')} AS snippet FROM emails x {join} WHERE {span} AND (lower(x.mailbox)={who} OR lower(x.from_addr) LIKE '%' || {who} || '%') AND NOT x.is_draft",
         "chat": f"SELECT {common}, x.sender_email, x.channel_id, {short('x.message_text')} AS snippet FROM chat_messages x {join} WHERE {span}",
