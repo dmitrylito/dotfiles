@@ -307,6 +307,7 @@ def collect_ops_with(reader, bounds, person, config):
                 "task": "fc_tasks",
                 "calendar_event": "calendar_events",
                 "linear_local": "ops_linearhumanaction",
+                "issue_category": "ops_linearissuelink",
             }[source]
             reader.call("describe_schema", {"table": table})
             offset = 0
@@ -348,6 +349,8 @@ def collect_ops_with(reader, bounds, person, config):
                 if source in {"task", "calendar_event"}
                 else "occurred_at"
                 if source == "linear_local"
+                else "last_synced_at"
+                if source == "issue_category"
                 else "timestamp"
             )
             fresh = sql_rows(
@@ -699,6 +702,64 @@ def collect_agents(bounds, config):
     }
 
 
+def collect_truck(bounds, config):
+    """The truck's movement states from the companion backend database, a
+    nightly restore of production, so the current day is usually missing."""
+    vehicle = int(config["truck_vehicle"])
+    start = (parse_when(bounds["start"]) - timedelta(days=1)).isoformat()
+    query = (
+        "BEGIN READ ONLY; SELECT coalesce(jsonb_agg(r ORDER BY r.start), '[]')::text FROM ("
+        "SELECT id, type, extract(epoch FROM lower(duration)) AS start,"
+        " extract(epoch FROM upper(duration)) AS \"end\","
+        " ST_Y(point) AS lat, ST_X(point) AS lon FROM tracker_vehiclestate"
+        f" WHERE vehicle_id={vehicle} AND duration && tstzrange("
+        f"{sql_literal(start)}, {sql_literal(bounds['cutoff'])})) r;"
+        f" SELECT to_json(max(upper(duration))) FROM tracker_vehiclestate WHERE vehicle_id={vehicle};"
+        " ROLLBACK;"
+    )
+    result = subprocess.run(
+        runtime_command(
+            [
+                "docker",
+                "exec",
+                "-i",
+                config["fleet_db_container"],
+                "psql",
+                "-U",
+                "fleetchaser",
+                "-d",
+                "fleetchaser",
+                "-At",
+            ],
+            config,
+        ),
+        input=query,
+        capture_output=True,
+        text=True,
+        timeout=config["timeout_seconds"],
+        check=False,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            redact(result.stderr)[-config["error_chars"] :] or "psql failed"
+        )
+    lines = [line for line in result.stdout.splitlines() if line not in {"BEGIN", "ROLLBACK"}]
+    states, latest = json.loads(lines[0]), json.loads(lines[1])
+    return {
+        "status": "collected",
+        "latest": latest,
+        "vehicle": vehicle,
+        "rows": [
+            state
+            | {
+                "source_type": "truck",
+                "timestamp": datetime.fromtimestamp(state["start"], UTC).isoformat(),
+            }
+            for state in states
+        ],
+    }
+
+
 def lookup_task_names(run, config):
     screen = read(run / "screen.json")
     if not screen:
@@ -829,7 +890,9 @@ def write_index(run, manifest):
     rows = activity_index(sources, manifest["person"], manifest["bounds"])
     projected = []
     for row in rows:
-        if row["source_type"] == "browser" or row.get("is_draft"):
+        if row["source_type"] in {"browser", "truck", "issue_category"} or row.get(
+            "is_draft"
+        ):
             continue
         preview = {key: value for key, value in row.items() if key != "text"}
         if "text" in row:
@@ -914,6 +977,8 @@ def collect(args):
             "agent_prompt_chars",
             "categories",
             "fc_api_base",
+            "truck_vehicle",
+            "fleet_db_container",
         ]
     }
     if existing:
@@ -978,6 +1043,8 @@ def collect(args):
         jobs["agents"] = lambda: collect_agents(bounds, config)
     if not args.skip_fc_api:
         jobs["fc_api"] = lambda: fc_api.collect(bounds, config)
+    if not args.skip_truck and config.get("truck_vehicle"):
+        jobs["truck"] = lambda: collect_truck(bounds, config)
     with ThreadPoolExecutor(max_workers=config["collector_workers"]) as pool:
         futures = {pool.submit(job): name for name, job in jobs.items()}
         for future in as_completed(futures):
@@ -1253,6 +1320,9 @@ def main():
     command.add_argument("--categories", default=str(CATEGORY_FILE))
     command.add_argument("--fc-api-base", default=fc_api.API_BASE)
     command.add_argument("--skip-fc-api", action="store_true")
+    command.add_argument("--truck-vehicle", type=positive, default=6912)
+    command.add_argument("--fleet-db-container", default="fleetchaser-db-1")
+    command.add_argument("--skip-truck", action="store_true")
     command.add_argument(
         "--companion-container", default="fleetchaser-backend-1"
     )

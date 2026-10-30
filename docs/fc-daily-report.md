@@ -43,7 +43,18 @@ the session last prompted on that host), off-desk agent time (`remote` segments:
 while the desktop is locked or off, a FCOffice/DLCO-1 session's logged activity plus
 up to `REMOTE_REPLY_SECONDS` (300) of reading and typing before each prompt, counted
 once across parallel sessions — how phone and iPad Claude Code use is measured;
-`totals.remote_agent_seconds`, `remote_seconds` per session), calls with the screen activity during
+`totals.remote_agent_seconds`, `remote_seconds` per session), off-desk phone work
+(`phone` segments: up to `PHONE_LEAD_SECONDS` (300) before each of Dmitry's own texts,
+emails, team-chat messages, Linear and FC task actions while the desktop is locked,
+outside calls and remote agent time; each carries the ops pipeline's category —
+texts by SMS thread, emails by message, Linear issues and FC tasks through their
+linked issue — keyed `pipeline_category:<category>`, then `phone:<source>`, then
+`phone`; `totals.phone_seconds`), truck `locations` and `off_desk` (away time not
+covered by calls, remote or phone work, by where the truck was: `driving`, a saved
+place from the rules file's `places` section — `{"Office": {"lat", "lon", "radius"}}`
+— coordinates, `unknown`, or `no truck data`; read from the companion backend
+database's `tracker_vehiclestate` for `--truck-vehicle`, a nightly production
+restore, so today's states are usually missing), calls with the screen activity during
 each, call attempts, scheduled meetings that nothing measured, FC tasks and
 Linear issues touched (actions plus on-screen seconds from `taskId=` and
 `/issue/` URLs), chronological blocks and per-bucket summaries.

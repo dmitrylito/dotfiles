@@ -1134,6 +1134,51 @@ def test_remote_sessions_count_only_while_desktop_is_away(timeline_module):
     assert all(s["kind"] == "remote" for s in segments)
 
 
+def test_phone_actions_fill_locked_time_outside_calls(timeline_module):
+    bounds = {"start": "1970-01-01T00:00:00+00:00", "cutoff": "1970-01-01T01:00:00+00:00"}
+    person = "me@fc.com"
+    rows = [
+        {"source_type": "issue_category", "id": 1, "identifier": "OPS-1", "fc_task_id": "77", "category": "fix"},
+        {"source_type": "sms", "direction": "outbound", "timestamp": "1970-01-01T00:20:00+00:00", "pipeline_category": "sales", "company": "Acme"},
+        {"source_type": "sms", "direction": "inbound", "timestamp": "1970-01-01T00:21:00+00:00"},
+        {"source_type": "linear_live", "timestamp": "1970-01-01T00:22:00+00:00", "identifier": "OPS-1", "actor": {"email": "Me@fc.com"}},
+        {"source_type": "task_audit", "timestamp": "1970-01-01T00:25:00+00:00", "task_id": "77", "actor_match": True, "action": "t:u", "metadata": {"changes": {"name": {}, "description": {}}}},
+        {"source_type": "email", "direction": "outbound", "timestamp": "1970-01-01T00:26:00+00:00", "from_addr": "me@fc.com", "to_addr": "me@fc.com"},
+    ]
+    events = timeline_module.phone_events(rows, person)
+    assert [(e[1], e[2]) for e in events] == [("sms", "sales"), ("linear_live", "fix")]
+    away = [{"start": 0, "end": 3600}]
+    busy = [(1000, 1150)]
+    segments = timeline_module.phone_segments(events, away, busy, bounds)
+    spans = [(s["start"], s["end"], s["pipeline_category"]) for s in segments]
+    assert spans == [(900, 1000, "sales"), (1150, 1200, "sales"), (1200, 1320, "fix")]
+    assert timeline_module.keys_of(segments[0])[0] == "pipeline_category:sales"
+
+
+def test_truck_locations_name_places_and_fill_gaps(timeline_module):
+    bounds = {"start": "1970-01-01T00:00:00+00:00", "cutoff": "1970-01-01T01:00:00+00:00"}
+    places = {"Office": {"lat": 35.0853, "lon": -80.6353, "radius": 350}}
+    rows = [
+        {"source_type": "truck", "type": 1, "start": 0, "end": 600, "lat": 35.0854, "lon": -80.6352},
+        {"source_type": "truck", "type": 3, "start": 700, "end": 1000, "lat": None, "lon": None},
+        {"source_type": "truck", "type": 2, "start": 1200, "end": 1200, "lat": None, "lon": None},
+        {"source_type": "truck", "type": 1, "start": 1300, "end": 2000, "lat": 35.0, "lon": -80.7},
+    ]
+    locations = timeline_module.build_locations(rows, places, bounds)
+    assert [(l["start"], l["end"], l["place"]) for l in locations] == [
+        (0, 700, "Office"),
+        (700, 1000, "driving"),
+        (1000, 2000, "35.0000,-80.7000"),
+    ]
+    away = [{"start": 500, "end": 2500}]
+    assert timeline_module.off_desk(away, [(1500, 1600)], locations) == {
+        "35.0000,-80.7000": 900,
+        "no truck data": 500,
+        "driving": 300,
+        "Office": 200,
+    }
+
+
 def test_path_keys_go_from_specific_to_general(timeline_module):
     url = "https://backend.dlco.us/admin/billing/invoice/caac/change/"
     assert timeline_module.path_prefixes(url) == [

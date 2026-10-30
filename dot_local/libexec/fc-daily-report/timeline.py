@@ -24,6 +24,7 @@ idle rows count as idle unless locked.
 """
 
 import json
+import math
 import re
 from collections import defaultdict
 from datetime import datetime
@@ -98,6 +99,8 @@ MIN_BLOCK_SECONDS = 60
 TOP_TITLES = 3
 TOP_DURING_CALL = 8
 REMOTE_REPLY_SECONDS = 300
+PHONE_LEAD_SECONDS = 300
+TRUCK_DRIVING = 3
 
 
 def ts(value):
@@ -158,6 +161,9 @@ def site_of(span):
 def keys_of(segment):
     """Rule keys for a segment, most specific first."""
     kind = segment["kind"]
+    if kind == "phone":
+        keys = [f"pipeline_category:{segment['pipeline_category']}"] if segment.get("pipeline_category") else []
+        return keys + [f"phone:{segment['source']}", "phone"]
     if kind in {"terminal", "remote"}:
         keys = []
         if session := segment.get("session"):
@@ -257,6 +263,8 @@ def build_areas(segments, calls, areas):
 def review_key(segment):
     """The key a segment is listed under for end-of-day review."""
     keys = keys_of(segment)
+    if segment["kind"] == "phone":
+        return f"phone:{segment['source']}"
     if segment["kind"] in {"terminal", "remote"}:
         return next((k for k in keys if k.startswith("project:")), keys[-1])
     if segment["kind"] == "browser":
@@ -528,6 +536,8 @@ def label_of(segment, sessions):
         return "idle"
     if segment["kind"] == "remote":
         return f"{segment['host']} {session_label(sessions[segment['session']])} (off desk)"
+    if segment["kind"] == "phone":
+        return f"phone {segment['title']}"[:120]
     if segment["kind"] == "terminal":
         session = sessions.get(segment.get("session"))
         if session:
@@ -709,6 +719,156 @@ def remote_segments(sessions, away, bounds):
             )
         taken = merge(taken + [(a, b)])
     return segments
+
+
+def phone_events(rows, person):
+    """Dmitry's own outbound actions, each with the ops pipeline's category."""
+    by_identifier, by_task = {}, {}
+    for row in rows:
+        if row.get("source_type") == "issue_category":
+            if row.get("identifier"):
+                by_identifier[row["identifier"]] = row["category"]
+            if row.get("fc_task_id"):
+                by_task[str(row["fc_task_id"])] = row["category"]
+    who = person.lower()
+    events = []
+    if not who:
+        return events
+    for row in rows:
+        source, at = row.get("source_type"), ts(row.get("timestamp"))
+        if at is None:
+            continue
+        if source == "sms" and row.get("direction") == "outbound":
+            event = (row.get("pipeline_category"), row.get("company"))
+        elif (
+            source == "email"
+            and row.get("direction") == "outbound"
+            and who in (row.get("from_addr") or "").lower()
+            and who not in (row.get("to_addr") or "").lower()
+        ):
+            event = (row.get("pipeline_category"), row.get("company") or row.get("title"))
+        elif source == "chat" and (row.get("sender_email") or "").lower() == who:
+            event = (None, "team chat")
+        elif source == "linear_live" and ((row.get("actor") or {}).get("email") or "").lower() == who:
+            event = (by_identifier.get(row.get("identifier")), row.get("identifier"))
+        elif source == "task_audit" and row.get("actor_match"):
+            changes = set(((row.get("metadata") or {}).get("changes") or {}))
+            # The daily SIM/camera count job renames tasks under Dmitry's account.
+            if row.get("action") == "t:u" and changes == {"name", "description"}:
+                continue
+            event = (by_task.get(str(row.get("task_id"))), row.get("title"))
+        else:
+            continue
+        events.append((at, source, *event))
+    return sorted(events, key=lambda e: e[0])
+
+
+def phone_segments(events, away, busy, bounds):
+    """Off-desk work from Dmitry's own texts, emails, chat, Linear and FC task
+    actions: up to PHONE_LEAD_SECONDS before each action, while the desktop is
+    locked or off, outside calls and remote agent time, counted once."""
+    start, cutoff = ts(bounds["start"]), ts(bounds["cutoff"])
+    locks = [(a["start"], a["end"]) for a in away]
+    pieces, previous = [], None
+    for at, source, category, label in events:
+        if not start <= at < cutoff:
+            continue
+        lead = PHONE_LEAD_SECONDS if previous is None else min(PHONE_LEAD_SECONDS, at - previous)
+        previous = at
+        for lock_start, lock_end in locks:
+            a, b = max(at - lead, lock_start), min(at, lock_end)
+            if b > a:
+                pieces.append((a, b, source, category, label))
+    segments, taken = [], merge(busy)
+    for a, b, source, category, label in sorted(pieces, key=lambda p: p[:2]):
+        for lo, hi in subtract(a, b, taken):
+            segments.append(
+                {
+                    "start": lo,
+                    "end": hi,
+                    "kind": "phone",
+                    "class": "phone",
+                    "source": source,
+                    "pipeline_category": category,
+                    "title": f"{source}: {label or ''}",
+                    "site": None,
+                    "url": None,
+                    "profile": None,
+                }
+            )
+        taken = merge(taken + [(a, b)])
+    return segments
+
+
+def place_of(lat, lon, places):
+    for name, place in places.items():
+        north = math.radians(lat - place["lat"])
+        east = math.radians(lon - place["lon"]) * math.cos(math.radians(lat))
+        if 6371000 * math.hypot(north, east) <= place.get("radius", 350):
+            return name
+    return f"{lat:.4f},{lon:.4f}"
+
+
+def build_locations(rows, places, bounds):
+    """Where the truck was: driving, or stopped at a saved place or coordinates.
+    Gaps between states take the next stop's point unless the truck drove."""
+    start, cutoff = ts(bounds["start"]), ts(bounds["cutoff"])
+    states = sorted(
+        (r for r in rows if r.get("source_type") == "truck"), key=lambda r: r["start"]
+    )
+
+    def point_from(index):
+        for state in states[index:]:
+            if state["type"] == TRUCK_DRIVING:
+                return None
+            if state.get("lat") is not None:
+                return place_of(state["lat"], state["lon"], places)
+        return None
+
+    spans = []
+    for i, state in enumerate(states):
+        moving = state["type"] == TRUCK_DRIVING
+        here = "driving" if moving else (
+            place_of(state["lat"], state["lon"], places)
+            if state.get("lat") is not None
+            else point_from(i + 1)
+        )
+        spans.append((state["start"], state["end"], here))
+        following = states[i + 1]["start"] if i + 1 < len(states) else None
+        if following and following > state["end"]:
+            gap = point_from(i + 1) if moving else here or point_from(i + 1)
+            spans.append((state["end"], following, gap))
+    locations = []
+    for a, b, place in spans:
+        a, b = max(a, start), min(b, cutoff)
+        if b <= a:
+            continue
+        place = place or "unknown"
+        if locations and locations[-1]["place"] == place and a - locations[-1]["end"] < 1:
+            locations[-1]["end"] = b
+        else:
+            locations.append({"start": a, "end": b, "place": place})
+    return locations
+
+
+def off_desk(away, busy, locations):
+    """Away time not already counted as calls, remote agent or phone work, by
+    where the truck was."""
+    by_place = defaultdict(float)
+    for period in away:
+        for a, b in subtract(period["start"], period["end"], merge(busy)):
+            cursor = a
+            for spot in locations:
+                lo, hi = max(a, spot["start"]), min(b, spot["end"])
+                if hi <= lo:
+                    continue
+                if lo > cursor:
+                    by_place["no truck data"] += lo - cursor
+                by_place[spot["place"]] += hi - lo
+                cursor = max(cursor, hi)
+            if b > cursor:
+                by_place["no truck data"] += b - cursor
+    return {k: round(v) for k, v in sorted(by_place.items(), key=lambda i: -i[1])}
 
 
 def build_terminal(segments, sessions):
@@ -1099,7 +1259,14 @@ def build(run, categories_path=CATEGORY_FILE):
     calls, attempts, scheduled = build_calls(rows, screen, focus, bounds)
     extra, away = idle_segments(screen, focus, bounds, calls)
     remote = remote_segments(sessions, away, bounds)
-    segments = sorted(focus + extra + remote, key=lambda s: s["start"])
+    busy = [(c["start"], c["end"]) for c in calls] + [
+        (s["start"], s["end"]) for s in remote
+    ]
+    phone = phone_segments(phone_events(rows, manifest.get("person", "")), away, busy, bounds)
+    busy += [(s["start"], s["end"]) for s in phone]
+    places = load_rules(categories_path, run / DAY_CATEGORY_FILE, section="places")
+    locations = build_locations(rows, places, bounds)
+    segments = sorted(focus + extra + remote + phone, key=lambda s: s["start"])
     finish_segments(segments, sessions, rules)
     attach_during(calls, segments)
     by_category, by_kind, by_app = (
@@ -1121,7 +1288,7 @@ def build(run, categories_path=CATEGORY_FILE):
     screen_intervals = [
         (s["start"], s["end"])
         for s in segments
-        if s["kind"] not in {"idle", "watching", "remote"}
+        if s["kind"] not in {"idle", "watching", "remote", "phone"}
     ]
     work_intervals = [
         (s["start"], s["end"]) for s in segments if s["category"] == "work"
@@ -1141,18 +1308,23 @@ def build(run, categories_path=CATEGORY_FILE):
             "idle_rows": bool(screen.get("idle")),
             "lock_rows": bool(screen.get("locks")),
             "rules": len(rules),
+            "truck": {
+                k: v for k, v in sources.get("truck", {}).items() if k != "rows"
+            },
+            "places": sorted(places),
         },
         "totals": {
             "screen_seconds": round(
                 sum(
                     v
                     for k, v in by_kind.items()
-                    if k not in {"idle", "watching", "remote"}
+                    if k not in {"idle", "watching", "remote", "phone"}
                 )
             ),
             "watching_seconds": round(by_kind.get("watching", 0)),
             "idle_seconds": round(by_kind.get("idle", 0)),
             "remote_agent_seconds": round(by_kind.get("remote", 0)),
+            "phone_seconds": round(by_kind.get("phone", 0)),
             "away_seconds": round(sum(a["seconds"] for a in away)),
             "by_category": {k: round(v) for k, v in by_category.items()},
             "uncategorized_seconds": round(by_category.get(UNCATEGORIZED, 0)),
@@ -1184,6 +1356,8 @@ def build(run, categories_path=CATEGORY_FILE):
         "review": build_review(segments),
         "areas": build_areas(segments, calls, areas),
         "away": away,
+        "locations": locations,
+        "off_desk": off_desk(away, busy, locations),
         "blocks": build_blocks(segments, zone),
         "buckets": build_buckets(segments, calls, zone, bucket_minutes),
     }
