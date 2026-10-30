@@ -97,6 +97,7 @@ BLOCK_MERGE_GAP = 60
 MIN_BLOCK_SECONDS = 60
 TOP_TITLES = 3
 TOP_DURING_CALL = 8
+REMOTE_REPLY_SECONDS = 300
 
 
 def ts(value):
@@ -157,7 +158,7 @@ def site_of(span):
 def keys_of(segment):
     """Rule keys for a segment, most specific first."""
     kind = segment["kind"]
-    if kind == "terminal":
+    if kind in {"terminal", "remote"}:
         keys = []
         if session := segment.get("session"):
             keys.append(f"session:{session[0]}/{session[1]}")
@@ -256,7 +257,7 @@ def build_areas(segments, calls, areas):
 def review_key(segment):
     """The key a segment is listed under for end-of-day review."""
     keys = keys_of(segment)
-    if segment["kind"] == "terminal":
+    if segment["kind"] in {"terminal", "remote"}:
         return next((k for k in keys if k.startswith("project:")), keys[-1])
     if segment["kind"] == "browser":
         return next(
@@ -436,7 +437,7 @@ def finish_segments(segments, sessions, rules):
         segment["label"] = label_of(segment, sessions)
         segment["group"] = (
             segment["label"]
-            if segment["kind"] in {"terminal", "watching", "idle"}
+            if segment["kind"] in {"terminal", "remote", "watching", "idle"}
             else segment["site"] or segment["class"]
         )
         segment["category"], segment["decided_by"] = categorize(segment, rules)
@@ -525,6 +526,8 @@ def label_of(segment, sessions):
         return f"watching: {segment['title'] or segment['class']}"[:120]
     if segment["kind"] == "idle":
         return "idle"
+    if segment["kind"] == "remote":
+        return f"{segment['host']} {session_label(sessions[segment['session']])} (off desk)"
     if segment["kind"] == "terminal":
         session = sessions.get(segment.get("session"))
         if session:
@@ -665,12 +668,59 @@ def attach_during(calls, segments):
         ][:TOP_DURING_CALL]
 
 
+def remote_segments(sessions, away, bounds):
+    """Agent sessions driven while the desktop is locked or off (phone, iPad):
+    the agent's logged activity plus up to REMOTE_REPLY_SECONDS of reading and
+    typing before each prompt. Overlapping sessions count once."""
+    start, cutoff = ts(bounds["start"]), ts(bounds["cutoff"])
+    locks = [(a["start"], a["end"]) for a in away]
+    pieces = []
+    for key, session in sessions.items():
+        active = [tuple(a) for a in session.get("active", [])]
+        windows = list(active)
+        for prompt in session.get("prompts", []):
+            at = prompt["at"]
+            before = max((b for _, b in active if b < at), default=None)
+            reply = REMOTE_REPLY_SECONDS if before is None else at - before
+            windows.append((at - min(reply, REMOTE_REPLY_SECONDS), at))
+        for a, b in merge(windows):
+            for lock_start, lock_end in locks:
+                lo, hi = max(a, lock_start, start), min(b, lock_end, cutoff)
+                if hi > lo:
+                    pieces.append((lo, hi, key))
+    segments, taken = [], []
+    for a, b, key in sorted(pieces):
+        for lo, hi in subtract(a, b, taken):
+            segments.append(
+                {
+                    "start": lo,
+                    "end": hi,
+                    "kind": "remote",
+                    "class": "remote",
+                    "title": sessions[key].get("title") or "",
+                    "host": key[0],
+                    "session": key,
+                    "project": project_of(sessions[key].get("cwd")),
+                    "site": None,
+                    "url": None,
+                    "profile": None,
+                    "attribution": "remote",
+                }
+            )
+        taken = merge(taken + [(a, b)])
+    return segments
+
+
 def build_terminal(segments, sessions):
     by_session = defaultdict(float)
+    remote = defaultdict(float)
     by_host = defaultdict(float)
     unattributed = defaultdict(float)
     attribution = defaultdict(float)
     for segment in segments:
+        if segment["kind"] == "remote":
+            remote[segment["session"]] += segment["end"] - segment["start"]
+            continue
         if segment["kind"] != "terminal":
             continue
         seconds = segment["end"] - segment["start"]
@@ -694,15 +744,22 @@ def build_terminal(segments, sessions):
                 "cwd": session.get("cwd"),
                 "branch": session.get("branch"),
                 "focus_seconds": round(by_session.get(key, 0)),
+                "remote_seconds": round(remote.get(key, 0)),
                 "agent_active_seconds": round(
                     sum(b - a for a, b in session.get("active", []))
                 ),
                 "prompts": session.get("prompts", []),
             }
         )
-    listed.sort(key=lambda s: (-s["focus_seconds"], -len(s["prompts"])))
+    listed.sort(
+        key=lambda s: (
+            -s["focus_seconds"] - s["remote_seconds"],
+            -len(s["prompts"]),
+        )
+    )
     return {
         "seconds": round(sum(by_host.values())),
+        "remote_seconds": round(sum(remote.values())),
         "by_host": {k: round(v) for k, v in by_host.items()},
         "attribution_seconds": {k: round(v) for k, v in attribution.items()},
         "sessions": listed,
@@ -1041,7 +1098,8 @@ def build(run, categories_path=CATEGORY_FILE):
     focus, sessions = build_segments(screen, agents, bounds)
     calls, attempts, scheduled = build_calls(rows, screen, focus, bounds)
     extra, away = idle_segments(screen, focus, bounds, calls)
-    segments = sorted(focus + extra, key=lambda s: s["start"])
+    remote = remote_segments(sessions, away, bounds)
+    segments = sorted(focus + extra + remote, key=lambda s: s["start"])
     finish_segments(segments, sessions, rules)
     attach_during(calls, segments)
     by_category, by_kind, by_app = (
@@ -1063,7 +1121,7 @@ def build(run, categories_path=CATEGORY_FILE):
     screen_intervals = [
         (s["start"], s["end"])
         for s in segments
-        if s["kind"] not in {"idle", "watching"}
+        if s["kind"] not in {"idle", "watching", "remote"}
     ]
     work_intervals = [
         (s["start"], s["end"]) for s in segments if s["category"] == "work"
@@ -1089,11 +1147,12 @@ def build(run, categories_path=CATEGORY_FILE):
                 sum(
                     v
                     for k, v in by_kind.items()
-                    if k not in {"idle", "watching"}
+                    if k not in {"idle", "watching", "remote"}
                 )
             ),
             "watching_seconds": round(by_kind.get("watching", 0)),
             "idle_seconds": round(by_kind.get("idle", 0)),
+            "remote_agent_seconds": round(by_kind.get("remote", 0)),
             "away_seconds": round(sum(a["seconds"] for a in away)),
             "by_category": {k: round(v) for k, v in by_category.items()},
             "uncategorized_seconds": round(by_category.get(UNCATEGORIZED, 0)),

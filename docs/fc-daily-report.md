@@ -39,7 +39,11 @@ Every collect also writes `timeline.json`, built offline from the run by
 
 Output: totals by category, `work_seconds` (work screen time ∪ calls), terminal
 time per session (`herdr` when pane tracking covered it, else `prompt-inferred`:
-the session last prompted on that host), calls with the screen activity during
+the session last prompted on that host), off-desk agent time (`remote` segments:
+while the desktop is locked or off, a FCOffice/DLCO-1 session's logged activity plus
+up to `REMOTE_REPLY_SECONDS` (300) of reading and typing before each prompt, counted
+once across parallel sessions — how phone and iPad Claude Code use is measured;
+`totals.remote_agent_seconds`, `remote_seconds` per session), calls with the screen activity during
 each, call attempts, scheduled meetings that nothing measured, FC tasks and
 Linear issues touched (actions plus on-screen seconds from `taskId=` and
 `/issue/` URLs), chronological blocks and per-bucket summaries.

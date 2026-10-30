@@ -1110,6 +1110,30 @@ def test_areas_are_exclusive_and_calls_own_their_span(timeline_module):
     assert sum(result.values()) == 200
 
 
+def test_remote_sessions_count_only_while_desktop_is_away(timeline_module):
+    bounds = {"start": "1970-01-01T00:00:00+00:00", "cutoff": "1970-01-01T01:00:00+00:00"}
+    reply = timeline_module.REMOTE_REPLY_SECONDS
+    sessions = {
+        ("dlco-1", "a"): {
+            "title": "paragon",
+            "cwd": "/home/x/ops-center",
+            "prompts": [{"at": 1000}, {"at": 2000}, {"at": 3000}],
+            "active": [[1000, 1200], [2000, 2100], [3000, 3100]],
+        },
+        ("dlco-1", "b"): {
+            "title": "billing",
+            "cwd": "/home/x/backend",
+            "prompts": [{"at": 2050}],
+            "active": [[2050, 2300]],
+        },
+    }
+    away = [{"start": 1500, "end": 2500}]
+    segments = timeline_module.remote_segments(sessions, away, bounds)
+    spans = [(s["start"], s["end"], s["session"][1]) for s in segments]
+    assert spans == [(2000 - reply, 2100, "a"), (2100, 2300, "b")]
+    assert all(s["kind"] == "remote" for s in segments)
+
+
 def test_path_keys_go_from_specific_to_general(timeline_module):
     url = "https://backend.dlco.us/admin/billing/invoice/caac/change/"
     assert timeline_module.path_prefixes(url) == [
