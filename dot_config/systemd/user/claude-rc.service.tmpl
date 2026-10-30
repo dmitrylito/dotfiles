@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 WorkingDirectory={{ .chezmoi.homeDir }}
 Environment=PATH={{ .chezmoi.homeDir }}/.local/share/mise/shims:{{ .chezmoi.homeDir }}/.local/bin:/usr/local/bin:/usr/bin
-ExecStart={{ .chezmoi.homeDir }}/.local/bin/claude remote-control --name {{ .chezmoi.hostname }}-home --permission-mode auto
+ExecStart={{ .chezmoi.homeDir }}/.local/share/mise/shims/claude remote-control --name {{ .chezmoi.hostname }}-home --permission-mode auto
 # The TUI status line redraws every second; only stderr is worth keeping in the journal.
 StandardOutput=null
 StandardError=journal
