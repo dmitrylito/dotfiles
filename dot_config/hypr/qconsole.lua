@@ -16,17 +16,11 @@ local CONSOLE = "special:qconsole"
 local LIMIT = 4
 
 local patches = {
-	{
-		'local seed = "[workspace " .. CONSOLE .. " silent] omarchy-agent"',
-		'local seed = "[workspace " .. CONSOLE .. " silent] herdr-agent"',
-	},
+	{ 'hl.exec_cmd("omarchy-agent",', 'hl.exec_cmd("herdr-agent",' },
 	-- The top half holds two windows; a third needs the bottom half too.
 	{ "local share = 0.5", "local share = 0.5\nlocal share_for = ..." },
 	{ "local tall = math.floor(height * share)", "local tall = math.floor(height * (share_for and share_for(share) or share))" },
-	{
-		"    on_created_empty = seed,",
-		'    on_created_empty = seed,\n    layout = "lua:qconsole-quarters",',
-	},
+	{ "    no_border = true,", '    no_border = true,\n    layout = "lua:qconsole-quarters",' },
 }
 
 -- Arrival order, so a window keeps its quarter while others open and close.
