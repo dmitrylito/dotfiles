@@ -39,5 +39,6 @@ if upstream.count(DEFAULTS_ANCHOR) != 1:
 
 before, after = upstream.split(ANCHOR)
 rendered = before + ANCHOR + "\n\n" + CUSTOM_MODULE + after
-rendered = rendered.replace(DEFAULTS_ANCHOR, QCONSOLE_OVERRIDE + "\n" + DEFAULTS_ANCHOR)
+if (omarchy_path / "default/hypr/qconsole.lua").exists():
+    rendered = rendered.replace(DEFAULTS_ANCHOR, QCONSOLE_OVERRIDE + "\n" + DEFAULTS_ANCHOR)
 sys.stdout.write(rendered.rstrip() + "\n")

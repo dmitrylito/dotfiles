@@ -5,6 +5,10 @@
        promptStringOnce returns the stored "omarchy" on re-init. */ -}}
 {{- $debug := or (eq $profile "debug") (dig "debug" false .) -}}
 {{- if $debug }}{{ $profile = "omarchy" }}{{ end -}}
+{{- /* omarchyChannel is "stable" on hosts tracking the Omarchy stable package, whose
+       Hyprland API lacks edge features (qconsole, o.rebind, o.workspaces). Set it by
+       hand in [data]; unset means edge. */ -}}
+{{- $omarchyChannel := dig "omarchyChannel" "edge" . -}}
 # This repo is public, so anything secret must be committed encrypted.
 # The identity lives outside the source tree and is never committed; copy it to a new
 # machine out of band before the first `chezmoi apply`, or encrypted files stay unreadable.
@@ -16,6 +20,7 @@ useBuiltinAge = true
     profile = {{ $profile | quote }}
     work = {{ $work }}
     debug = {{ $debug }}
+    omarchyChannel = {{ $omarchyChannel | quote }}
 
 [age]
     identity = {{ (joinPath .chezmoi.homeDir ".config" "chezmoi" "key.txt") | quote }}

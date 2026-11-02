@@ -28,6 +28,10 @@ system/
 .config/ghostty/
 {{ end }}
 
+{{ if eq (dig "omarchyChannel" "edge" .) "stable" }}
+.config/hypr/qconsole.lua
+{{ end }}
+
 {{ if ne $profile "omarchy" }}
 .claude/rules/hyprland.md
 .config/hypr/

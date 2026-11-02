@@ -153,6 +153,7 @@ hl.bind("SUPER + P", pseudopanel.toggle, {
 -- Scratchpads
 -- ---------------------------------------------------------------------------
 
+{{ if ne (dig "omarchyChannel" "edge" .) "stable" -}}
 require("hypr.qconsole")
 
 local function qconsole_toggle()
@@ -166,6 +167,7 @@ local function qconsole_toggle()
 	end
 	hl.dispatch(hl.dsp.workspace.toggle_special("qconsole"))
 end
+{{- end }}
 
 -- Focusing a window on a hidden special workspace does not reveal it, so toggle the
 -- workspace; chezmoi.lua's rule is silent (work-mode needs that), so a cold launch
@@ -193,10 +195,12 @@ local function spotify_toggle()
 	hl.dispatch(hl.dsp.workspace.toggle_special("spotify"))
 end
 
+{{ if ne (dig "omarchyChannel" "edge" .) "stable" -}}
 -- Omarchy moved the console to special:qconsole on Super+Grave and left Super+S a
 -- plain scratchpad; Super+S stays the console here.
 hl.unbind("SUPER + S") -- Omarchy default: Toggle scratchpad
 hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle Quake console" })
+{{- end }}
 -- omarchy-shell instead of { ipc = ... }: Omarchy 4.0.4's o.bind has no ipc branch and
 -- passes the table to hl.bind, which rejects it (helpers.lua:105).
 o.bind("SUPER + E", "Toggle notification center", "omarchy-shell -q shell toggle omacom.notification-center")
@@ -263,7 +267,11 @@ o.bind("RETURN", "Stop dictation", "voxtype record stop", { non_consuming = true
 -- System
 -- ---------------------------------------------------------------------------
 
+{{ if eq (dig "omarchyChannel" "edge" .) "stable" -}}
+o.bind("SUPER + M", "Show key bindings", "omarchy-menu-keybindings")
+{{- else -}}
 o.rebind("SUPER + M", "Show key bindings", "omarchy-menu-keybindings")
+{{- end }}
 o.bind("SUPER + CTRL + ALT + L", "Suspend", "systemctl suspend", { locked = true })
 
 -- This host never sleeps or locks (system/install-never-sleep.sh): closing the
