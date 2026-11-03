@@ -18,6 +18,8 @@ Volume=/data/docker-appdata/homeassistant:/config:Z
 Volume=/etc/localtime:/etc/localtime:ro
 # Host BlueZ over the system bus; the bluetooth integration needs it (bluez must be installed and running on the host).
 Volume=/run/dbus:/run/dbus:ro
+Volume=%h/.config/containers/homeassistant-pyhook:/opt/pyhook:ro,Z
+Environment=PYTHONPATH=/opt/pyhook
 
 [Install]
 WantedBy=default.target
