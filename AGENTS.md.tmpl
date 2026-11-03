@@ -46,10 +46,9 @@ managed target (`~/.zshrc`, `~/.config/**`, `~/.claude/**`, …) is silently wip
 - Runtimes come from mise (`~/.config/mise/config.toml`); run `mise trust <dir>` after creating a
   folder or worktree that carries env config.
 - Avoid commands that trigger interactive `sudo` prompts unless asked.
-{{- if eq (.profile | lower) "omarchy" }}
 - When a command needs root, run plain `sudo <cmd>` (not `sudo -n`, not `pkexec`): the cc-askpass
-  plugin asks Dmitry for the password in a pane, here and for `ssh host sudo …`.
-{{- end }}
+  plugin asks Dmitry for the password in a pane, here and for `ssh host sudo …`. The pane cannot
+  show in the mobile app or Remote Control from a phone; there, sudo fails and he runs it himself.
 {{ if eq (.profile | lower) "server" }}
 ## Operating this box
 
