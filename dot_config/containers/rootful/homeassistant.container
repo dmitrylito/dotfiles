@@ -1,13 +1,17 @@
+# Rootful: installed to /etc/containers/systemd/ by hand (chezmoi only deploys under ~).
+# Root is needed for NET_ADMIN/NET_RAW on the host network, which HA's Bluetooth stack requires.
 [Unit]
 Description=Home Assistant
 After=network-online.target
+Wants=network-online.target
 RequiresMountsFor=/data
 
 [Container]
 Image=ghcr.io/home-assistant/home-assistant:stable
 AutoUpdate=registry
-# HomeKit Bridge and device discovery need mDNS on the LAN itself, so this stays out of media.pod.
+# HomeKit Bridge and device discovery need mDNS on the LAN itself.
 Network=host
+AddCapability=NET_ADMIN NET_RAW
 Environment=TZ=America/New_York
 HealthCmd=curl --fail http://127.0.0.1:8123
 HealthInterval=60s
@@ -16,13 +20,10 @@ HealthRetries=5
 HealthStartPeriod=300s
 Volume=/data/docker-appdata/homeassistant:/config:Z
 Volume=/etc/localtime:/etc/localtime:ro
-# Host BlueZ over the system bus; the bluetooth integration needs it (bluez must be installed and running on the host).
 Volume=/run/dbus:/run/dbus:ro
-Volume=%h/.config/containers/homeassistant-pyhook:/opt/pyhook:ro,Z
-Environment=PYTHONPATH=/opt/pyhook
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 
 [Service]
 Restart=always
