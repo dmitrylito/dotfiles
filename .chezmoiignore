@@ -244,6 +244,7 @@ docker-appdata/caddy/
 {{ range list "seerr" "prowlarr" "flaresolverr" "homepage" "audiobookshelf" "calibre-web" "shelfmark" "homeassistant" "matter-server" "scrypted" }}
 .config/containers/systemd/{{ . }}.container
 {{ end }}
+.config/containers/homeassistant-pyhook/
 .config/containers/storage.conf
 executable_sync-media-homepage.sh
 .config/systemd/user/media-podman-tunnel.service
