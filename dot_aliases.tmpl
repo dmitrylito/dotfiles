@@ -19,6 +19,10 @@ lazydocker() {
 }
 alias lzd="lazydocker"
 alias lzp='lazypodman'
+{{- if eq .chezmoi.hostname "DLCO-3" }}
+# Root's podman (Home Assistant) without sudo, via the docker-group socket from podman.socket.
+alias rpodman='podman --url unix:///run/podman/podman.sock'
+{{- end }}
 alias cz="chezmoi"
 alias czr="chezmoi re-add"
 {{- if eq (.profile | lower) "omarchy" }}
