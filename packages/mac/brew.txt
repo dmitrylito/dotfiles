@@ -16,6 +16,8 @@ ghostscript
 git
 git-delta
 go
+gogcli
+herdr
 imagemagick
 jq
 lazydocker
@@ -31,6 +33,7 @@ ripgrep
 ripgrep-all
 sevenzip
 starship
+tailscale
 tectonic
 tesseract
 tesseract-lang
@@ -38,5 +41,6 @@ tree-sitter-cli
 uv
 wget
 yazi
+yt-dlp
 zoxide
 zsh

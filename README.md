@@ -184,7 +184,7 @@ prevents reconciliation transactions from being published back as new intent.
   including `agy` on all three profiles; server Codex remains native-owned.
 - `dot_config/herdr/`: universal terminal workspace/multiplexer. tmux,
   Tmuxifier, and sesh are intentionally retired.
-- `dot_local/bin/moshi-*`, Moshi hook modifiers, and Linux user units: keep
+- `dot_local/bin/executable_moshi-*`, Moshi hook modifiers, and Linux user units: keep
   Claude/Codex conversations bound to the correct Herdr pane. macOS receives
   the guards and config, but Codex Moshi handlers are removed on the Mac profile.
   Linux bootstraps the vendor binary, agent hooks,
@@ -202,13 +202,6 @@ prevents reconciliation transactions from being published back as new intent.
   rules, and plugins.
 - `Projects/fleetchaser/`, Fleet Chaser helpers/skills, work launchers, and
   `work-mode`: work-role-only configuration.
-
-## Local binary ownership
-
-`docs/local-bin-audit.md` records the audited `~/.local/bin` categories, their
-owners, consumers, and subsequent migrations. New custom scripts should be
-added under `dot_local/bin/executable_*`; vendor binaries stay vendor-owned and
-CLI tools should be declared in mise instead of wrapped by ad-hoc scripts.
 
 ## Validation before applying
 
@@ -228,8 +221,3 @@ The validator uses disposable configuration, a generated age identity, and
 nonsecret fixtures. It runs modifiers, but never deployment hooks. See
 [docs/validation.md](docs/validation.md) for prerequisites, coverage, and the
 optional check against installed Omarchy.
-
-A fresh GitHub mirror audited on 2026-09-18 contained 6.97 MiB of packed objects,
-no Elephant paths, and no blobs over 10 MiB. No remote history rewrite is needed.
-See [docs/git-history-audit.md](docs/git-history-audit.md) for scope and evidence;
-the size of an existing local `.git` directory is not the fresh-clone size.

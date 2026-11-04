@@ -20,6 +20,7 @@ This is the **chezmoi source directory** (`~/.local/share/chezmoi`) — the Git-
 - The `gpg` group is also backup-only. It stores the signing/encryption key and revocation certificate as base64 inside the age-encrypted YAML; the passphrase is held separately by the user. Restore into a private tmpfs workspace, then import the key with GnuPG; never render the private key as a managed target.
 - **`~/.codex/config.toml` is also a `modify_` target** (`dot_codex/modify_private_config.toml.tmpl`). Codex writes project trust, hook hashes, and desktop state into this file at runtime. The encrypted seed lives at `scripts/codex-config-baseline.toml.age`; the modifier fills missing baseline keys while preserving existing live values, except for paths listed in `SYNCHRONIZED_SETTINGS`, including the shared status line. Update the baseline to change the shared statusline; do not capture routine runtime churn. The modifier uses `uv` with pinned `tomlkit` so synchronization does not depend on the active Python's packages. An uncached dependency needs network access on first use; dependency failures fail apply rather than silently preserving stale settings.
 - **Three files feed Claude Code's config, each via its own `modify_` script.** `dot_claude/modify_settings.json.tmpl` → `~/.claude/settings.json`; `dot_claude/modify_settings.local.json.tmpl` → `~/.claude/settings.local.json`; `modify_private_dot_claude.json.tmpl` → `~/.claude.json` (90KB of per-machine state — machineID, userID, per-project history — so only enforced keys are touched and it writes with no trailing newline and `ensure_ascii=False` to avoid rewriting the whole file every apply). Settings that must be identical everywhere go in `ENFORCED_SCALARS`, not `BASELINE`: `BASELINE` only fills keys the live file lacks, so a box that already wrote the key keeps its old value forever. `outputStyle` is enforced in settings.json **and** stripped from settings.local.json, because `/config` writes it to the Local tier, which outranks User.
+- **`~/.local/bin` ownership:** custom scripts go in `dot_local/bin/executable_*`; CLI tools are declared in `dot_config/mise/config.toml.tmpl`, never wrapped by ad-hoc scripts; vendor installers keep their own binaries.
 - **The active profile and role** are chosen at `chezmoi init`: `.profile` is `omarchy`, `server`, or `mac`; `.work` gates Fleet Chaser tooling independently of platform. Templates and `.chezmoiignore` must respect both dimensions.
 - **`debug` is the minimal Omarchy debug-USB profile.** Answering `debug` at init stores `profile = "omarchy"` plus `debug = true`, so desktop templates render unchanged. Read the flag with `dig "debug" false .` (older configs lack the key). It ignores daemons and apps it does not install (`.chezmoiignore` debug block), skips Ansible reconciliation, moshi units and never-sleep, and bootstraps from `packages/debug/pacman.txt` via `run_onchange_before_executable_debug-bootstrap.sh.tmpl`.
 
@@ -42,13 +43,13 @@ After moving/renaming source files, verify with `chezmoi execute-template` (temp
 
 `.chezmoiignore` is itself a template and uses **target ($HOME) paths**, not source paths. It does two jobs:
 1. **Per-profile config gating** — e.g. `.config/hypr/` only deploys on omarchy; `.config/aerospace/`, `.config/sketchybar/` only on mac. If you add a profile-specific config, gate it here or it deploys everywhere.
-2. **Keeping repo tooling out of `$HOME`** — `packages/`, `scripts/`, `docs/`, `playbook.yml`, `package-lock.json`, and `README.md` live in the repo but must never be deployed. `AGENTS.md` is intentionally *not* ignored (it deploys as the global agent guide).
+2. **Keeping repo tooling out of `$HOME`** — `packages/`, `scripts/`, `docs/`, `playbook.yml`, and `README.md` live in the repo but must never be deployed. `AGENTS.md` is intentionally *not* ignored (it deploys as the global agent guide).
 
 When adding a new top-level tooling file or directory, add it to `.chezmoiignore` or it will land in `$HOME`.
 
 Hyprland's `hyprland.lua` is a special ownership boundary: `dot_config/hypr/modify_hyprland.lua`
 reads Omarchy's currently installed entrypoint and injects `require("hypr.chezmoi")` after
-the standard toggles. Keep custom post-default behavior in `dot_config/hypr/chezmoi.lua`;
+the standard toggles. Keep custom post-default behavior in `dot_config/hypr/chezmoi.lua.tmpl`;
 do not copy Omarchy's entrypoint back into the repository.
 
 ## Package management architecture

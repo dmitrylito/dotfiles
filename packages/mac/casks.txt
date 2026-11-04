@@ -1,6 +1,8 @@
 aerospace
+flutter
 font-jetbrains-mono-nerd-font
 font-symbols-only-nerd-font
 gcloud-cli
 ghostty
+omniwm
 voxtype

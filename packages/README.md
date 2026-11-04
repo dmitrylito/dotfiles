@@ -27,8 +27,6 @@ single-command setup flow.
   server-profile Arch machines.
 - `server/hosts/<hostname>/added-pacman.txt`: native packages kept only on
   that server; capture excludes them from the shared list.
-- `server/hosts/<hostname>/added-aur.txt`: AUR packages kept only on that
-  server; capture excludes them from the shared list.
 - `server/hosts/<hostname>/excluded-pacman.txt`: shared native packages not
   installed on that server; capture retains them in the shared list.
 - `mac/{brew,casks,taps}.txt`: desired Homebrew set.
@@ -89,6 +87,6 @@ apply never undoes a local removal before the review records a decision. Declare
 packages that pacman records as dependencies are marked explicit, so an orphan
 sweep cannot take them. Server
 profiles repeatedly remove undeclared explicit leaves, then mark any remaining
-undeclared hard dependencies non-explicit so both servers converge without
+undeclared hard dependencies non-explicit so all servers converge without
 breaking dependency chains. Neither profile sweeps unrelated orphans. During an AUR build, the temporary sudoers
 entry permits only `/usr/bin/pacman *` and is removed in an `always` block.
