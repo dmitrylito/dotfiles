@@ -141,3 +141,8 @@ enabled = false
 # Claude turn-end with no visible notification (see herdr-agent-sounds memory)
 [ui.sound]
 enabled = false
+
+# Restoring the scratchpad session re-ran `claude --resume <id>` next to the
+# fresh Super+S launch, leaving duplicate chats.
+[session]
+resume_agents_on_restore = false

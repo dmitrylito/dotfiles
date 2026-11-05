@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Open the default coding agent (omarchy-agent, i.e. claude in ~/Work) inside a
+# Open the Claude agent view (`claude agents` in ~/Work) inside a
 # dedicated herdr session, in a terminal window. SUPER+S launches this when the
 # scratchpad is empty (see qconsole_refit in ~/.config/hypr/bindings.lua).
 #
@@ -11,7 +11,7 @@
 #
 # The session outlives the window: closing it detaches, and the next launch
 # re-attaches to the same agent. If no pane is running an agent (it was exited),
-# omarchy-agent restarts in an idle shell pane, or in a new "Claude" workspace
+# the agent view restarts in an idle shell pane, or in a new "Claude" workspace
 # in ~/Work when there is none.
 set -euo pipefail
 
@@ -44,7 +44,7 @@ if ! h pane list | jq -e '.result.panes | any(.agent != null)' >/dev/null; then
   if [[ -z $pane ]]; then
     pane=$(h workspace create --cwd "$HOME/Work" --label Claude --focus | jq -r '.result.root_pane.pane_id')
   fi
-  h pane run "$pane" omarchy-agent --inline >/dev/null
+  h pane run "$pane" cd "$HOME/Work" "&&" claude agents --permission-mode auto >/dev/null
 fi
 
 [[ ${1:-} == --ensure ]] && exit 0
