@@ -273,7 +273,8 @@ def build(today: str, dump, cameras, results, prev_date, prev) -> tuple[list[dic
         return out
 
     has = lambda r, f: f in r["flags"].split()
-    ops = Counter(r["operator"] or "(no network info)" for r in rows)
+    ops = Counter(r["operator"] or ("(not checked)" if has(r, "not_checked") else "(no network info)")
+                  for r in rows)
     tm = [r for r in rows if has(r, "tmobile")]
     lines = [
         f"Camera SIM check {today}: {len(rows)} installed cameras, DB as of {dump:%Y-%m-%d %H:%M %Z}"
