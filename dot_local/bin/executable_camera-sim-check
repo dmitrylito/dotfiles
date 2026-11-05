@@ -1,0 +1,343 @@
+#!/usr/bin/python3
+"""camera-sim-check — daily carrier/network check of every installed camera's SIM through BICS.
+
+Waits for today's nightly `import-db` restore to finish ("[Finish" line in
+~/Logs/import_db.log), reads the installed ng_dvr cameras (active install, vehicle not hidden)
+and their SIMs from the local fleetchaser DB, then calls BICS `/fetchNetworkStatus` once per
+camera SIM. Tracker SIMs are never called. The BICS calls are read-only GETs, but they hit the
+live BICS account in the local backend container's env (fleetchaser-backend-1), which is a
+separate account from the one prod backend uses, so this scan doesn't eat prod's rate limit.
+
+Writes to ~/reports/camera-sims/ (override with CAMERA_SIM_DIR):
+  YYYY-MM-DD.csv           one row per installed camera, carrier now vs the previous run and vs
+                           the first time the SIM was seen (first_operator/first_seen carry
+                           forward from the previous CSV; 2026-10-20.csv is a hand-made seed
+                           from the first T-Mobile check)
+  YYYY-MM-DD-summary.txt   moved since last run, moved since first seen, still on T-Mobile by
+                           customer, SIM offline, SIM online but no snapshot in 24h
+  YYYY-MM-DD.status.json   terminal marker {outcome, exit_code, finished, ...}, written last and
+                           atomically; a missing marker means the run did not finish
+Sends the summary to the Moshi inbox (moshi-hook notify, best effort).
+
+Usage:   camera-sim-check [--no-wait] [--no-notify]
+Cron:    30 6 * * * ~/.local/bin/camera-sim-check >> ~/Logs/camera-sim-check.log 2>&1
+Config (env): CAMERA_SIM_WAIT_MINUTES (default 240) and CAMERA_SIM_POLL_SECONDS (default 120)
+  for the import wait; CAMERA_SIM_BICS_RATE max BICS requests per second across all workers
+  (default 2; BICS 429s back off inside sim.bics) and CAMERA_SIM_BICS_WORKERS parallel requests
+  (default 4, so call latency doesn't cap the rate);
+  CAMERA_SIM_STALE_HOURS snapshot age that counts as not working (default 24).
+Snapshot age is measured from the newest snapshot in the DB (≈ when the prod dump was taken),
+not from now, because the DB is a nightly copy.
+Chezmoi-managed: dot_local/bin/executable_camera-sim-check (DLCO-1 only).
+"""
+
+import csv
+import datetime
+import json
+import os
+import subprocess
+import sys
+import time
+from collections import Counter
+from pathlib import Path
+
+IMPORT_LOG = Path.home() / "Logs" / "import_db.log"
+OUT_DIR = Path(os.environ.get("CAMERA_SIM_DIR", Path.home() / "reports" / "camera-sims"))
+WAIT_MINUTES = int(os.environ.get("CAMERA_SIM_WAIT_MINUTES", "240"))
+POLL_SECONDS = int(os.environ.get("CAMERA_SIM_POLL_SECONDS", "120"))
+BICS_RATE = float(os.environ.get("CAMERA_SIM_BICS_RATE", "2"))
+BICS_WORKERS = int(os.environ.get("CAMERA_SIM_BICS_WORKERS", "4"))
+STALE_HOURS = float(os.environ.get("CAMERA_SIM_STALE_HOURS", "24"))
+BACKEND_READY_MINUTES = 15
+DB_CONTAINER = "fleetchaser-db-1"
+BACKEND_CONTAINER = "fleetchaser-backend-1"
+TMOBILE = "T-Mobile USA"
+
+SQL = r"""
+select json_build_object(
+  'dump_time', (select max(datetime) from ng_dvr_snapshot),
+  'cameras', coalesce(json_agg(r order by r.customer, r.vehicle), '[]'::json))
+from (
+  select s.iccid, s.provider, s.status sim_status, c.serial camera, v.id vehicle_id,
+    v.identifier vehicle, cu.name customer, snap.last last_snapshot
+  from ng_dvr_camerainstall ci
+  join ng_dvr_camera c on c.id = ci.camera_id
+  join vehicle_vehicle v on v.id = ci.vehicle_id and v.visibility <> 2
+  join accounting_customer cu on cu.id = v.customer_id
+  join sim_sim s on s.iccid = c.sim_id
+  left join lateral (
+    select max(datetime) last from ng_dvr_snapshot sn where sn.install_id = ci.id) snap on true
+  where ci.active
+) r
+"""
+
+SCAN = r"""
+import json, threading, time
+from concurrent.futures import ThreadPoolExecutor
+from sim.bics import Bics
+rows = json.loads(%r)
+rate, workers = %r, %r
+apis = {prov: Bics(prov) for prov in {p for _, p in rows}}
+for api in apis.values():
+    api.token
+lock = threading.Lock()
+next_slot = [0.0]
+
+def throttle():
+    with lock:
+        now = time.monotonic()
+        wait = next_slot[0] - now
+        next_slot[0] = max(now, next_slot[0]) + 1 / rate
+    if wait > 0:
+        time.sleep(wait)
+
+def fetch(api, iccid):
+    throttle()
+    res, _ = api._get("/fetchNetworkStatus", iccid=iccid)
+    if "Response" not in res:
+        with lock:
+            api._token = None
+            api.token
+        throttle()
+        res, _ = api._get("/fetchNetworkStatus", iccid=iccid)
+    return res
+
+def check(iccid, prov):
+    out = {"iccid": iccid}
+    try:
+        r = fetch(apis[prov], iccid).get("Response") or {}
+        n = (r.get("responseParam") or {}).get("networkStatusInfo") or {}
+        out.update(
+            operator=n.get("operatorName") or "",
+            mccmnc=(n.get("operatorMCC", "") + "-" + n.get("operatorMNC", "")).strip("-"),
+            network_status=n.get("networkStatus") or "",
+            rat=n.get("ratType") or n.get("rat") or "",
+            note="" if n else (r.get("resultParam") or {}).get("resultDescription", "no response"),
+        )
+    except Exception as e:
+        out.update(operator="", error=repr(e)[:200])
+    with lock:
+        print("@@ROW@@" + json.dumps(out), flush=True)
+
+with ThreadPoolExecutor(workers) as pool:
+    list(pool.map(lambda r: check(*r), rows))
+"""
+
+FIELDS = [
+    "iccid", "customer", "vehicle", "vehicle_id", "camera", "operator", "mccmnc",
+    "network_status", "rat", "note", "error", "sim_status", "provider", "last_snapshot",
+    "snapshot_age_h", "prev_operator", "prev_date", "first_operator", "first_seen", "flags",
+]
+
+
+def log(msg: str) -> None:
+    print(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {msg}", flush=True)
+
+
+def import_finished_today() -> bool:
+    today = datetime.date.today().isoformat()
+    try:
+        lines = IMPORT_LOG.read_text(errors="replace").splitlines()
+    except FileNotFoundError:
+        return False
+    return any(l.startswith(today) and "[Start" in l for l in lines) and any(
+        l.startswith(today) and "[Finish" in l for l in lines
+    )
+
+
+def wait_for_import() -> None:
+    deadline = time.monotonic() + WAIT_MINUTES * 60
+    while not import_finished_today():
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"import-db has not finished today after {WAIT_MINUTES} min")
+        log(f"waiting for import-db to finish (poll {POLL_SECONDS}s)")
+        time.sleep(POLL_SECONDS)
+
+
+def wait_for_backend() -> None:
+    deadline = time.monotonic() + BACKEND_READY_MINUTES * 60
+    while True:
+        proc = subprocess.run(
+            ["docker", "exec", BACKEND_CONTAINER, "python", "manage.py", "shell", "-c", "print('ok')"],
+            capture_output=True, text=True,
+        )
+        if proc.returncode == 0 and "ok" in proc.stdout:
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"{BACKEND_CONTAINER} not ready: {proc.stderr.strip()[-500:]}")
+        time.sleep(20)
+
+
+def installed_cameras() -> tuple[datetime.datetime | None, list[dict]]:
+    proc = subprocess.run(
+        ["docker", "exec", "-i", DB_CONTAINER, "psql", "-U", "postgres", "-d", "fleetchaser",
+         "-v", "ON_ERROR_STOP=1", "-At"],
+        input=SQL, capture_output=True, text=True,
+    )
+    if proc.returncode:
+        raise RuntimeError(f"psql failed: {proc.stderr.strip()[-2000:]}")
+    data = json.loads(proc.stdout)
+    if not data["cameras"]:
+        raise RuntimeError("no installed cameras found; DB empty or restore incomplete")
+    dump = datetime.datetime.fromisoformat(data["dump_time"]) if data["dump_time"] else None
+    return dump, data["cameras"]
+
+
+def scan(cameras: list[dict]) -> dict[str, dict]:
+    pairs = json.dumps([[c["iccid"], c["provider"]] for c in cameras])
+    proc = subprocess.Popen(
+        ["docker", "exec", "-i", BACKEND_CONTAINER, "python", "manage.py", "shell"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    proc.stdin.write(SCAN % (pairs, BICS_RATE, BICS_WORKERS))
+    proc.stdin.close()
+    results: dict[str, dict] = {}
+    for line in proc.stdout:
+        if line.startswith("@@ROW@@"):
+            row = json.loads(line[len("@@ROW@@"):])
+            results[row["iccid"]] = row
+            if len(results) % 200 == 0:
+                log(f"scanned {len(results)}/{len(cameras)}")
+    stderr = proc.stderr.read()
+    if proc.wait() or not results:
+        raise RuntimeError(f"BICS scan failed: {stderr.strip()[-2000:]}")
+    return results
+
+
+def previous_run(today: str) -> tuple[str | None, dict[str, dict]]:
+    runs = sorted(p for p in OUT_DIR.glob("????-??-??.csv") if p.stem < today)
+    if not runs:
+        return None, {}
+    with runs[-1].open() as f:
+        return runs[-1].stem, {r["iccid"]: r for r in csv.DictReader(f)}
+
+
+def write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text)
+    tmp.replace(path)
+
+
+def build(today: str, dump, cameras, results, prev_date, prev) -> tuple[list[dict], str]:
+    rows = []
+    for c in cameras:
+        r = results.get(c["iccid"], {"operator": "", "error": "not scanned"})
+        p = prev.get(c["iccid"], {})
+        op = r.get("operator", "")
+        last = datetime.datetime.fromisoformat(c["last_snapshot"]) if c["last_snapshot"] else None
+        age = round((dump - last).total_seconds() / 3600, 1) if dump and last else None
+        first_op = p.get("first_operator") or p.get("operator") or op
+        first_seen = p.get("first_seen") or (prev_date if p.get("operator") else "") or (today if op else "")
+        flags = []
+        if op and p.get("operator") and op != p["operator"]:
+            flags.append("moved")
+        if op and first_op and op != first_op:
+            flags.append("moved_since_first")
+        if op == TMOBILE:
+            flags.append("tmobile")
+        if not op:
+            flags.append("sim_offline")
+        elif age is None or age > STALE_HOURS:
+            flags.append("no_snapshot")
+        rows.append({
+            **{k: c[k] for k in ("iccid", "customer", "vehicle", "vehicle_id", "camera",
+                                 "sim_status", "provider", "last_snapshot")},
+            **{k: r.get(k, "") for k in ("operator", "mccmnc", "network_status", "rat", "note", "error")},
+            "snapshot_age_h": "" if age is None else age,
+            "prev_operator": p.get("operator", ""), "prev_date": prev_date or "",
+            "first_operator": first_op or "", "first_seen": first_seen or "",
+            "flags": " ".join(flags),
+        })
+
+    def line(r):
+        return f"  {r['customer']} | {r['vehicle']} | camera {r['camera']} | {r['iccid']}"
+
+    def section(title, sel, detail):
+        out = [f"{title}: {len(sel)}"]
+        out += [f"{line(r)} | {detail(r)}" for r in sel]
+        return out
+
+    has = lambda r, f: f in r["flags"].split()
+    ops = Counter(r["operator"] or "(no network info)" for r in rows)
+    tm = [r for r in rows if has(r, "tmobile")]
+    lines = [
+        f"Camera SIM check {today}: {len(rows)} installed cameras, DB as of {dump:%Y-%m-%d %H:%M %Z}"
+        if dump else f"Camera SIM check {today}: {len(rows)} installed cameras",
+        "Carriers now: " + ", ".join(f"{k} {v}" for k, v in ops.most_common()),
+        f"Compared with: {prev_date or 'no previous run'}",
+        "",
+        *section("Moved since last run", [r for r in rows if has(r, "moved")],
+                 lambda r: f"{r['prev_operator']} -> {r['operator']}"),
+        "",
+        *section("Moved since first seen", [r for r in rows if has(r, "moved_since_first")],
+                 lambda r: f"{r['first_operator']} ({r['first_seen']}) -> {r['operator']}"),
+        "",
+        f"Still on T-Mobile: {len(tm)}",
+        *[f"  {n} {cust}" for cust, n in Counter(r["customer"] for r in tm).most_common()],
+        "",
+        *section("Not working: SIM offline (no network info, suspended or error)",
+                 [r for r in rows if has(r, "sim_offline")],
+                 lambda r: f"{r['note'] or r['error']} | sim {r['sim_status']} | last snapshot "
+                           f"{r['snapshot_age_h'] or 'never'}h | was {r['prev_operator'] or '-'}"),
+        "",
+        *section(f"Not working: SIM online, no snapshot in {STALE_HOURS:g}h",
+                 [r for r in rows if has(r, "no_snapshot")],
+                 lambda r: f"{r['operator']} {r['network_status']} | last snapshot "
+                           f"{r['snapshot_age_h'] or 'never'}h"),
+    ]
+    return rows, "\n".join(lines) + "\n"
+
+
+def notify(title: str, body: str, error: bool) -> None:
+    cmd = ["moshi-hook", "notify", "--source", "camera-sim-check", "--title", title]
+    if error:
+        cmd.append("--error")
+    try:
+        subprocess.run(cmd, input=body, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log(f"notify failed: {e}")
+
+
+def main() -> int:
+    args = set(sys.argv[1:])
+    today = datetime.date.today().isoformat()
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    status_path = OUT_DIR / f"{today}.status.json"
+    started = datetime.datetime.now().isoformat(timespec="seconds")
+    status = {"started": started, "outcome": "failed", "exit_code": 1}
+    try:
+        if "--no-wait" not in args:
+            wait_for_import()
+        wait_for_backend()
+        dump, cameras = installed_cameras()
+        log(f"{len(cameras)} installed cameras; scanning BICS at {BICS_RATE:g} req/s, {BICS_WORKERS} workers")
+        results = scan(cameras)
+        prev_date, prev = previous_run(today)
+        rows, summary = build(today, dump, cameras, results, prev_date, prev)
+        csv_path = OUT_DIR / f"{today}.csv"
+        tmp = csv_path.with_suffix(".csv.tmp")
+        with tmp.open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=FIELDS)
+            w.writeheader()
+            w.writerows(rows)
+        tmp.replace(csv_path)
+        write_atomic(OUT_DIR / f"{today}-summary.txt", summary)
+        errors = sum(1 for r in rows if r["error"])
+        status.update(outcome="ok" if not errors else "partial", exit_code=0, cameras=len(rows),
+                      bics_errors=errors, csv=str(csv_path))
+        log(f"wrote {csv_path} ({errors} BICS errors)")
+        if "--no-notify" not in args:
+            notify(f"Camera SIMs {today}", summary.split("\nStill on T-Mobile")[0][:3500]
+                   + f"\nFull report: {OUT_DIR}/{today}-summary.txt", error=bool(errors))
+    except Exception as e:
+        status["error"] = str(e)[-2000:]
+        log(f"failed: {e}")
+        if "--no-notify" not in args:
+            notify(f"Camera SIM check failed {today}", str(e)[-1000:], error=True)
+    status["finished"] = datetime.datetime.now().isoformat(timespec="seconds")
+    write_atomic(status_path, json.dumps(status, indent=2) + "\n")
+    return status["exit_code"]
+
+
+if __name__ == "__main__":
+    sys.exit(main())
