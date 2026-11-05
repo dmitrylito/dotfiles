@@ -7,6 +7,8 @@ and their SIMs from the local fleetchaser DB, then calls BICS `/fetchNetworkStat
 camera SIM. Tracker SIMs are never called. The BICS calls are read-only GETs, but they hit the
 live BICS account in the local backend container's env (fleetchaser-backend-1), which is a
 separate account from the one prod backend uses, so this scan doesn't eat prod's rate limit.
+A provider whose account can't log in (locally: xtend, no BICS_XTEND_* credentials) is skipped and
+its cameras are flagged not_checked instead of offline.
 
 Writes to ~/reports/camera-sims/ (override with CAMERA_SIM_DIR):
   YYYY-MM-DD.csv           one row per installed camera, carrier now vs the previous run and vs
@@ -23,7 +25,8 @@ Usage:   camera-sim-check [--no-wait] [--no-notify]
 Cron:    30 6 * * * ~/.local/bin/camera-sim-check >> ~/Logs/camera-sim-check.log 2>&1
 Config (env): CAMERA_SIM_WAIT_MINUTES (default 240) and CAMERA_SIM_POLL_SECONDS (default 120)
   for the import wait; CAMERA_SIM_BICS_RATE max BICS requests per second across all workers
-  (default 2; BICS 429s back off inside sim.bics) and CAMERA_SIM_BICS_WORKERS parallel requests
+  (default 2, the fleet_chaser account's X-Rate-Limit-TPS header; 429s back off inside sim.bics)
+  and CAMERA_SIM_BICS_WORKERS parallel requests
   (default 4, so call latency doesn't cap the rate);
   CAMERA_SIM_STALE_HOURS snapshot age that counts as not working (default 24).
 Snapshot age is measured from the newest snapshot in the DB (≈ when the prod dump was taken),
@@ -77,9 +80,13 @@ from concurrent.futures import ThreadPoolExecutor
 from sim.bics import Bics
 rows = json.loads(%r)
 rate, workers = %r, %r
-apis = {prov: Bics(prov) for prov in {p for _, p in rows}}
-for api in apis.values():
-    api.token
+apis, skipped = {}, {}
+for prov in {p for _, p in rows}:
+    try:
+        apis[prov] = Bics(prov)
+        apis[prov].token
+    except Exception as e:
+        skipped[prov] = f"{prov} account: {e}"[:200]
 lock = threading.Lock()
 next_slot = [0.0]
 
@@ -104,6 +111,11 @@ def fetch(api, iccid):
 
 def check(iccid, prov):
     out = {"iccid": iccid}
+    if prov in skipped:
+        out.update(operator="", skipped=skipped[prov])
+        with lock:
+            print("@@ROW@@" + json.dumps(out), flush=True)
+        return
     try:
         r = fetch(apis[prov], iccid).get("Response") or {}
         n = (r.get("responseParam") or {}).get("networkStatusInfo") or {}
@@ -235,14 +247,17 @@ def build(today: str, dump, cameras, results, prev_date, prev) -> tuple[list[dic
             flags.append("moved_since_first")
         if op == TMOBILE:
             flags.append("tmobile")
-        if not op:
+        if r.get("skipped"):
+            flags.append("not_checked")
+        elif not op:
             flags.append("sim_offline")
         elif age is None or age > STALE_HOURS:
             flags.append("no_snapshot")
         rows.append({
             **{k: c[k] for k in ("iccid", "customer", "vehicle", "vehicle_id", "camera",
                                  "sim_status", "provider", "last_snapshot")},
-            **{k: r.get(k, "") for k in ("operator", "mccmnc", "network_status", "rat", "note", "error")},
+            **{k: r.get(k, "") for k in ("operator", "mccmnc", "network_status", "rat", "error")},
+            "note": r.get("note") or r.get("skipped", ""),
             "snapshot_age_h": "" if age is None else age,
             "prev_operator": p.get("operator", ""), "prev_date": prev_date or "",
             "first_operator": first_op or "", "first_seen": first_seen or "",
@@ -265,6 +280,8 @@ def build(today: str, dump, cameras, results, prev_date, prev) -> tuple[list[dic
         if dump else f"Camera SIM check {today}: {len(rows)} installed cameras",
         "Carriers now: " + ", ".join(f"{k} {v}" for k, v in ops.most_common()),
         f"Compared with: {prev_date or 'no previous run'}",
+        *[f"Not checked: {n} ({note})" for note, n in
+          Counter(r["note"] for r in rows if has(r, "not_checked")).items()],
         "",
         *section("Moved since last run", [r for r in rows if has(r, "moved")],
                  lambda r: f"{r['prev_operator']} -> {r['operator']}"),
@@ -323,8 +340,10 @@ def main() -> int:
         tmp.replace(csv_path)
         write_atomic(OUT_DIR / f"{today}-summary.txt", summary)
         errors = sum(1 for r in rows if r["error"])
-        status.update(outcome="ok" if not errors else "partial", exit_code=0, cameras=len(rows),
-                      bics_errors=errors, csv=str(csv_path))
+        not_checked = sum(1 for r in rows if "not_checked" in r["flags"].split())
+        status.update(outcome="ok" if not (errors or not_checked) else "partial", exit_code=0,
+                      cameras=len(rows), bics_errors=errors, not_checked=not_checked,
+                      csv=str(csv_path))
         log(f"wrote {csv_path} ({errors} BICS errors)")
         if "--no-notify" not in args:
             notify(f"Camera SIMs {today}", summary.split("\nStill on T-Mobile")[0][:3500]
