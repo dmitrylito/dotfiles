@@ -9,8 +9,9 @@ fc-daily-report collect --date YYYY-MM-DD --mode timeline
 The default MCP path reads the existing remote Ops Center service, using the
 chezmoi-managed shared `OPS_CENTER_MCP_API_KEY`. The credential comes from the
 environment or private managed `~/.config/secrets/shared.env`, and the command is
-installed on all device profiles/roles. `--transport docker` executes the existing deployed `kb.services.sql` reader in
-`ops-backend`, with SELECT-only credentials and rolled-back read-only transactions.
+installed on all device profiles/roles. `--transport docker` calls the same deployed
+`kb.services` readers (`activity.activity`, `sql.run_sql`) inside `ops-backend`, with
+SELECT-only credentials and rolled-back read-only transactions.
 The helper code travels over stdin: it does not require new code in the app image,
 sync records, or repoint a shared container. Browser history uses the existing
 read-only helper (locally on FCOffice, SSH elsewhere). Live Linear uses the deployed query-only client, complete
@@ -36,10 +37,31 @@ are separate: never judge resolution from a short index snippet.
 
 ## Existing Ops Center MCP
 
-When exposed to the agent, use the already-connected tools directly:
-`describe_schema` for the relevant table, paginated `run_sql` for discovery, and
-`get_document` for selected complete sources. `source_queries` in `~/.local/libexec/fc-daily-report/evidence.py`
-defines the reviewed queries; use the same timezone/cutoff and pagination rules.
+The collector reads each ops source with the `fleetchaser-kb` `activity` tool, one
+`source_types` value per call, paged with `offset`/`next_offset` (`--page-size`, at
+most the server's `item_cap`) and its per-source `freshness` stored as `latest`:
+
+| Collector source | `activity` call |
+|---|---|
+| `call`, `sms`, `email`, `calendar_event` | `staff=<person>` (call operator, SMS line, mailbox or sender, calendar or attendee) |
+| `chat`, `linear_local` (`linear_action`) | no staff filter: everyone's messages and ticket actions, for context |
+| `task` | no staff filter (tasks have no actor, so `staff` would leave them out) |
+
+`since` is the day start and `until` the cutoff minus one microsecond (calendar: day
+end minus one microsecond), because `activity` bounds are inclusive and the day
+window is not; calendar events that only end at the day start are dropped. A page
+whose `total` changes mid-paging, or any `sources_left_out`, is a gap.
+`evidence.py` maps each item back to the row shape `timeline.py` reads
+(`activity_row`), then one `run_sql` lookup by row id (`ENRICHMENT`) adds what the
+feed lacks: `pipeline_category` (call, sms, email), the call `transcript_hash`, email
+`message_id`, task and calendar `synced_at`, calendar `attendees` with responses, and
+`linear_issue_id`. `issue_category` stays a paginated `run_sql` query
+(`ISSUE_CATEGORY_QUERY`). Snippets are the feed's whitespace-collapsed text, clipped
+to `--snippet-chars`; email prefers the AI summary over the stored body excerpt when
+one exists. `company` falls back to the contact's company when the event has none.
+
+When exposed to the agent, the same tools work directly: `activity` with the same
+bounds for discovery and `get_document` for selected complete sources.
 Company timelines supply sibling-contact follow-up when an outcome is unresolved.
 Do not use semantic search as an exhaustive daily activity inventory.
 

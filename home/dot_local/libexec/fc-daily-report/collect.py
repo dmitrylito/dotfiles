@@ -38,11 +38,16 @@ from zoneinfo import ZoneInfo
 
 import fc_api
 from evidence import (
+    ENRICHMENT,
+    ISSUE_CATEGORY_QUERY,
+    OPS_SOURCES,
+    activity_arguments,
+    activity_row,
+    enrichment_query,
     deduplicate,
     normalize_gmail,
     parse_when,
     redact,
-    source_queries,
     sql_literal,
     window,
 )
@@ -57,7 +62,15 @@ from timeline import build as build_timeline
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_STATE = Path.home() / ".local/state/ops-center/daily-reports"
-ALLOWED_TOOLS = {"describe_schema", "run_sql", "get_document"}
+ALLOWED_TOOLS = {"describe_schema", "run_sql", "get_document", "activity"}
+KB_TOOLS = """
+import json
+from kb.services import activity, documents, sql
+from kb.services.params import dumps, parse_when as kb_when
+def kb_activity(since, until, **arguments):
+    return json.loads(dumps(activity.activity(since=kb_when(since), until=kb_when(until, end_of_day=True), **arguments)))
+KB_TOOLS = {'run_sql': sql.run_sql, 'describe_schema': sql.describe_schema, 'get_document': documents.get_document, 'activity': kb_activity}
+"""
 
 
 def save(path, value):
@@ -137,11 +150,9 @@ class DockerTransport:
     def call(self, tool, arguments):
         if tool not in ALLOWED_TOOLS:
             raise ValueError("unsupported read tool")
-        code = (SCRIPT_DIR / "evidence.py").read_text() + "\n"
-        code += "\nfrom kb.services import documents, sql\n"
+        code = (SCRIPT_DIR / "evidence.py").read_text() + "\n" + KB_TOOLS
         code += f"tool={tool!r}\narguments={arguments!r}\n"
-        code += "function={'run_sql':sql.run_sql,'describe_schema':sql.describe_schema,'get_document':documents.get_document}[tool]\n"
-        code += "print(json.dumps(redact(function(**arguments)),default=str))\n"
+        code += "print(json.dumps(redact(KB_TOOLS[tool](**arguments)),default=str))\n"
         return process(
             [
                 "docker",
@@ -293,78 +304,95 @@ def sql_rows(result):
     ]
 
 
+def collect_activity(reader, source, bounds, person, config, rows):
+    arguments = activity_arguments(source, bounds, person)
+    kb_type = arguments["source_types"][0]
+    offset, total, latest = 0, None, None
+    for _ in range(config["max_pages"]):
+        page = reader.call(
+            "activity",
+            arguments | {"limit": config["page_size"], "offset": offset},
+        )
+        if page.get("sources_left_out"):
+            raise ValueError(f"activity left out {page['sources_left_out']}")
+        if total is not None and page["total"] != total:
+            raise ValueError("activity rows changed while paging; refresh")
+        total = page["total"]
+        latest = latest or page["freshness"][kb_type]["latest"]
+        rows.extend(
+            row
+            for item in page["items"]
+            if (row := activity_row(source, item, bounds, config["snippet_chars"]))
+        )
+        if page.get("next_offset") is None:
+            break
+        offset = page["next_offset"]
+    else:
+        raise ValueError("max_pages reached; source is partial")
+    if source not in ENRICHMENT:
+        return latest
+    extra = {}
+    ids = [row["id"] for row in rows]
+    for index in range(0, len(ids), config["page_size"]):
+        page = reader.call(
+            "run_sql",
+            {"query": enrichment_query(source, ids[index : index + config["page_size"]])},
+        )
+        if page.get("truncated_at_max_rows") or page.get("truncated_at_max_chars"):
+            raise ValueError("enrichment page was truncated")
+        extra |= {found.pop("id"): found for found in sql_rows(page)}
+    missing = set(ids) - set(extra)
+    if missing:
+        raise ValueError(f"enrichment missed rows {sorted(missing)[:5]}")
+    for row in rows:
+        row.update(extra[row["id"]])
+    return latest
+
+
+def collect_issue_categories(reader, config, rows):
+    reader.call("describe_schema", {"table": "ops_linearissuelink"})
+    offset = 0
+    for _ in range(config["max_pages"]):
+        page = reader.call(
+            "run_sql",
+            {
+                "query": ISSUE_CATEGORY_QUERY
+                + f" ORDER BY timestamp, id LIMIT {config['page_size']} OFFSET {offset}"
+            },
+        )
+        current = sql_rows(page)
+        truncated = page.get("truncated_at_max_rows") or page.get(
+            "truncated_at_max_chars"
+        )
+        if not current and truncated:
+            raise ValueError("SQL page cannot fit one row")
+        rows.extend(current)
+        offset += len(current)
+        if not truncated and len(current) < config["page_size"]:
+            break
+    else:
+        raise ValueError("max_pages reached; source is partial")
+    return sql_rows(
+        reader.call(
+            "run_sql",
+            {"query": "SELECT max(last_synced_at) AS latest FROM ops_linearissuelink"},
+        )
+    )[0]["latest"]
+
+
 def collect_ops_with(reader, bounds, person, config):
-    queries = source_queries(bounds, person, config["snippet_chars"])
     results = {}
-    for source, query in queries.items():
+    for source in OPS_SOURCES:
         rows = []
         try:
-            table = {
-                "call": "calls",
-                "sms": "sms",
-                "email": "emails",
-                "chat": "chat_messages",
-                "task": "fc_tasks",
-                "calendar_event": "calendar_events",
-                "linear_local": "ops_linearhumanaction",
-                "issue_category": "ops_linearissuelink",
-            }[source]
-            reader.call("describe_schema", {"table": table})
-            offset = 0
-            for _ in range(config["max_pages"]):
-                page = reader.call(
-                    "run_sql",
-                    {
-                        "query": query
-                        + f" ORDER BY timestamp, id LIMIT {config['page_size']} OFFSET {offset}"
-                    },
-                )
-                current = sql_rows(page)
-                if not current and (
-                    page.get("truncated_at_max_rows")
-                    or page.get("truncated_at_max_chars")
-                ):
-                    raise ValueError("SQL page cannot fit one row")
-                rows.extend(
-                    {
-                        **row,
-                        "source_type": source,
-                        "ref": f"{source}:{row['id']}",
-                    }
-                    for row in current
-                )
-                offset += len(current)
-                if (
-                    not (
-                        page.get("truncated_at_max_rows")
-                        or page.get("truncated_at_max_chars")
-                    )
-                    and len(current) < config["page_size"]
-                ):
-                    break
-            else:
-                raise ValueError("max_pages reached; source is partial")
-            freshness_field = (
-                "synced_at"
-                if source in {"task", "calendar_event"}
-                else "occurred_at"
-                if source == "linear_local"
-                else "last_synced_at"
+            latest = (
+                collect_issue_categories(reader, config, rows)
                 if source == "issue_category"
-                else "timestamp"
+                else collect_activity(reader, source, bounds, person, config, rows)
             )
-            fresh = sql_rows(
-                reader.call(
-                    "run_sql",
-                    {
-                        "query": f"SELECT max({freshness_field}) AS latest FROM {table}"
-                    },
-                )
-            )[0]["latest"]
             results[source] = {
                 "status": "collected",
-                "latest": fresh,
-                "rows": rows,
+                "latest": latest,
                 "cutoff": bounds["cutoff"],
             }
         except (
@@ -374,22 +402,27 @@ def collect_ops_with(reader, bounds, person, config):
             LookupError,
             subprocess.SubprocessError,
         ) as exc:
-            results[source] = {
-                "status": "gap",
-                "error": redact(str(exc)),
-                "rows": rows,
-            }
+            results[source] = {"status": "gap", "error": redact(str(exc))}
+        results[source]["rows"] = [
+            {**row, "source_type": source, "ref": f"{source}:{row['id']}"}
+            for row in rows
+        ]
     return results
 
 
 def collect_ops(bounds, person, config):
     if config["transport"] == "mcp":
         return collect_ops_with(transport(config), bounds, person, config)
-    code = (SCRIPT_DIR / "evidence.py").read_text()
-    code += "\nimport json\nfrom kb.services import sql\n"
-    code += "class LocalReader:\n def call(self,tool,arguments):\n  return {'run_sql':sql.run_sql,'describe_schema':sql.describe_schema}[tool](**arguments)\n"
-    code += (
-        inspect.getsource(sql_rows) + "\n" + inspect.getsource(collect_ops_with)
+    code = (SCRIPT_DIR / "evidence.py").read_text() + "\n" + KB_TOOLS
+    code += "class LocalReader:\n def call(self,tool,arguments):\n  return KB_TOOLS[tool](**arguments)\n"
+    code += "\n".join(
+        inspect.getsource(function)
+        for function in [
+            sql_rows,
+            collect_activity,
+            collect_issue_categories,
+            collect_ops_with,
+        ]
     )
     code += f"\nprint(json.dumps(redact(collect_ops_with(LocalReader(),{bounds!r},{person!r},{config!r})),default=str))\n"
     return process(
@@ -1000,9 +1033,7 @@ def collect(args):
             raise ValueError("refresh cutoff cannot move backwards")
         if all(
             sources.get(name, {}).get("status") == "collected"
-            for name in source_queries(
-                bounds, args.person, config["snippet_chars"]
-            )
+            for name in OPS_SOURCES
         ):
             discovery["start"] = max(
                 parse_when(bounds["start"]),

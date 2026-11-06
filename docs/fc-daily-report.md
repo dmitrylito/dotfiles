@@ -131,8 +131,8 @@ empty results. Collection does not sync, send, create, or alter source records.
 `--transport mcp` uses the existing shared credential through HTTPS to
 `https://ops.dlco.us/mcp`; tokens never belong in command arguments or artifacts.
 The adapter implements the Ops Center server's stateless JSON Streamable HTTP
-contract, not arbitrary SSE/stateful servers. It reuses `describe_schema`, `run_sql`,
-and `get_document`. See the
+contract, not arbitrary SSE/stateful servers. It reuses `activity`, `describe_schema`,
+`run_sql` and `get_document`. See the
 [official transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
 Codex's private global config includes `[mcp_servers.ops-center]` on every profile,
 with the Authorization header rendered from that same encrypted secrets page. This

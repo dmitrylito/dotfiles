@@ -44,9 +44,10 @@ Use [collector.md](references/collector.md) first. The reusable command freezes 
 local-day bounds/cutoff, batches read-only Ops Center queries, runs browser, screen,
 agent-session and live Linear reads alongside them, normalizes evidence, and writes a
 compact `index.json` plus the measured `timeline.json`.
-It needs no server change or deployment. Use the existing Ops Center MCP's `run_sql`,
-`describe_schema`, and `get_document` when connected; the local Docker path calls the
-same read services. MCP never replaces browser history or a live actor audit.
+It needs no server change or deployment. Use the Ops Center MCP's `activity` feed,
+`run_sql` (pipeline categories only), and `get_document` when connected; the local
+Docker path calls the same read services. MCP never replaces browser history or a
+live actor audit.
 
 - Start with counts, coverage, actor identities, source freshness and the index;
   do not print raw payloads or all browser visits. Discovery snippets are explicit

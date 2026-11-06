@@ -9,8 +9,11 @@ ops-center guide, including communication semantics, before interpreting records
 Start with [collector.md](collector.md) and the reusable `fc-daily-report`
 command. This guide supplies source-specific fallback and interpretation details;
 do not reconstruct ad-hoc queries or repeat successful reads by default. The
-Ops Center MCP's existing read tools supply discovery and full documents; direct
-Docker collection uses those same services when the connector is unavailable.
+Ops Center MCP's `activity` feed supplies discovery (calls, SMS, email, chat,
+calendar, tasks, Linear actions; collector.md lists the per-source calls) and
+`get_document` full documents; direct Docker collection uses those same services
+when the connector is unavailable. The SQL below is a fallback for a detail the
+feed does not carry.
 
 ## Collection procedure
 

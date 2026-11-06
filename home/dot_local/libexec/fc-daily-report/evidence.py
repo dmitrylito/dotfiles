@@ -261,41 +261,101 @@ def sql_literal(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def source_queries(bounds, person, snippet_chars):
-    lower, upper = (sql_literal(bounds[key]) for key in ["start", "cutoff"])
-    who = sql_literal(person.lower())
-    common = "x.id, x.timestamp, x.company_id, c.name AS company, x.contact_id"
-    join = "LEFT JOIN companies c ON c.id=x.company_id"
-    span = f"x.timestamp >= {lower} AND x.timestamp < {upper}"
-    short = lambda field: f"left(coalesce({field},''), {int(snippet_chars)})"
-    dialpad_time = lambda key: (
-        f"CASE WHEN x.raw_payload->>'{key}' ~ '^[0-9]+$' THEN to_timestamp((x.raw_payload->>'{key}')::bigint / 1000.0) END"
-    )
-    def pipeline_category(source_match):
-        return (
-            "(SELECT coalesce(p.payload->'case_definition'->>'category', i.category) AS category"
-            " FROM ops_decisionsource s JOIN ops_decisionproposal p ON p.source_id=s.id"
-            " LEFT JOIN ops_issue i ON i.id::text=p.issue_id"
-            f" WHERE {source_match}"
-            " AND coalesce(p.payload->'case_definition'->>'category', i.category) IS NOT NULL"
-            " GROUP BY 1 ORDER BY count(*) DESC, 1 LIMIT 1)"
-        )
+ACTIVITY_SOURCES = {
+    "call": "call",
+    "sms": "sms",
+    "email": "email",
+    "chat": "chat",
+    "task": "task",
+    "calendar_event": "calendar_event",
+    "linear_local": "linear_action",
+}
+# chat and linear_local stay unfiltered: other people's messages and Linear
+# actions are context the report needs; timeline.py matches the actor itself.
+STAFF_SOURCES = {"call", "sms", "email", "calendar_event"}
+OPS_SOURCES = (*ACTIVITY_SOURCES, "issue_category")
+ACTIVITY_FIELDS = {
+    "call": ["dialpad_call_id", "operator_email", "direction", "state", "duration_seconds", "connected_at", "ended_at", "snippet", "has_transcript"],
+    "sms": ["direction", "snippet", "line_email"],
+    "email": ["rfc822_message_id", "thread_id", "title", "from_addr", "to_addr", "mailbox", "direction", "event_type", "snippet"],
+    "chat": ["sender_email", "channel_id", "snippet"],
+    "task": ["fc_task_id", "workflow_name", "status_name", "completed_at"],
+    "calendar_event": ["end", "title", "calendar", "organizer_email", "status", "meet_link"],
+    "linear_local": ["actor", "kind", "linear_identifier", "snippet"],
+}
+ISSUE_CATEGORY_QUERY = "SELECT l.id, l.last_synced_at AS timestamp, l.issue_identifier AS identifier, l.fc_task_id::text AS fc_task_id, coalesce(nullif(l.category,''), i.category) AS category FROM ops_linearissuelink l LEFT JOIN ops_issue i ON i.id=l.issue_fk_id WHERE coalesce(nullif(l.category,''), i.category) IS NOT NULL UNION ALL SELECT -t.id, t.synced_at, NULL, t.fc_task_id, i.category FROM fc_tasks t JOIN ops_issue i ON i.id=t.issue_id WHERE i.category IS NOT NULL"
 
-    call_category = pipeline_category("s.source_ref='call:'||x.id")
-    email_category = pipeline_category("s.source_ref='email:'||x.id")
-    sms_category = pipeline_category(
-        "s.source_ref LIKE 'sms-thread:%' AND x.id BETWEEN"
-        " split_part(split_part(s.source_ref,':',3),'-',1)::bigint AND"
-        " split_part(split_part(s.source_ref,':',3),'-',2)::bigint"
+
+def pipeline_category(source_match):
+    return (
+        "(SELECT coalesce(p.payload->'case_definition'->>'category', i.category) AS category"
+        " FROM ops_decisionsource s JOIN ops_decisionproposal p ON p.source_id=s.id"
+        " LEFT JOIN ops_issue i ON i.id::text=p.issue_id"
+        f" WHERE {source_match}"
+        " AND coalesce(p.payload->'case_definition'->>'category', i.category) IS NOT NULL"
+        " GROUP BY 1 ORDER BY count(*) DESC, 1 LIMIT 1)"
     )
-    queries = {
-        "call": f"SELECT {common}, x.dialpad_call_id, x.operator_email, x.direction, x.state, x.duration_seconds, {dialpad_time('date_connected')} AS connected_at, {dialpad_time('date_ended')} AS ended_at, {short('x.content_summary')} AS snippet, length(coalesce(x.transcript,''))>0 AS has_transcript, CASE WHEN length(coalesce(x.transcript,''))>0 THEN md5(x.transcript) END AS transcript_hash, {call_category} AS pipeline_category FROM calls x {join} WHERE {span} AND lower(x.operator_email)={who}",
-        "sms": f"SELECT {common}, x.direction, {short('x.message_text')} AS snippet, x.raw_payload->'target'->>'email' AS line_email, {sms_category} AS pipeline_category FROM sms x {join} WHERE {span} AND lower(x.raw_payload->'target'->>'email')={who}",
-        "email": f"SELECT {common}, x.message_id, x.rfc822_message_id, x.thread_id, x.subject AS title, x.from_addr, x.to_addr, x.mailbox, x.direction, x.event_type, x.is_draft, {short('x.content_summary')} AS snippet, {email_category} AS pipeline_category FROM emails x {join} WHERE {span} AND (lower(x.mailbox)={who} OR lower(x.from_addr) LIKE '%' || {who} || '%') AND NOT x.is_draft",
-        "chat": f"SELECT {common}, x.sender_email, x.channel_id, {short('x.message_text')} AS snippet FROM chat_messages x {join} WHERE {span}",
-        "task": f"SELECT x.id, x.fc_modified_at AS timestamp, x.company_id, c.name AS company, x.fc_task_id, x.name AS title, x.workflow_name, x.status_name, x.completed_at, x.synced_at FROM fc_tasks x {join} WHERE x.fc_modified_at >= {lower} AND x.fc_modified_at < {upper} AND coalesce(x.workflow_name,'') NOT IN ('Marketing','Test','UC Test','111')",
-        "calendar_event": f'SELECT x.id, x.start AS timestamp, x."end", x.summary AS title, x.calendar, x.organizer_email, x.attendees, x.status, x.raw_payload->>\'hangoutLink\' AS meet_link, x.synced_at FROM calendar_events x WHERE x.start < {sql_literal(bounds["end"])} AND (x."end" > {lower} OR (x."end" IS NULL AND x.start >= {lower})) AND (lower(x.calendar)={who} OR lower(x.organizer_email)={who} OR EXISTS(SELECT 1 FROM jsonb_array_elements(x.attendees) a WHERE lower(a->>\'email\')={who}))',
-        "issue_category": "SELECT l.id, l.last_synced_at AS timestamp, l.issue_identifier AS identifier, l.fc_task_id::text AS fc_task_id, coalesce(nullif(l.category,''), i.category) AS category FROM ops_linearissuelink l LEFT JOIN ops_issue i ON i.id=l.issue_fk_id WHERE coalesce(nullif(l.category,''), i.category) IS NOT NULL UNION ALL SELECT -t.id, t.synced_at, NULL, t.fc_task_id, i.category FROM fc_tasks t JOIN ops_issue i ON i.id=t.issue_id WHERE i.category IS NOT NULL",
-        "linear_local": f"SELECT x.id, x.occurred_at AS timestamp, x.linear_issue_id, x.actor, x.kind, {short('x.detail')} AS snippet FROM ops_linearhumanaction x WHERE x.occurred_at >= {lower} AND x.occurred_at < {upper}",
+
+
+SMS_THREAD_MATCH = (
+    "s.source_ref LIKE 'sms-thread:%' AND x.id BETWEEN"
+    " split_part(split_part(s.source_ref,':',3),'-',1)::bigint AND"
+    " split_part(split_part(s.source_ref,':',3),'-',2)::bigint"
+)
+ENRICHMENT = {
+    "call": ("calls", "CASE WHEN length(coalesce(x.transcript,''))>0 THEN md5(x.transcript) END AS transcript_hash, " + pipeline_category("s.source_ref='call:'||x.id") + " AS pipeline_category"),
+    "sms": ("sms", pipeline_category(SMS_THREAD_MATCH) + " AS pipeline_category"),
+    "email": ("emails", "x.message_id, " + pipeline_category("s.source_ref='email:'||x.id") + " AS pipeline_category"),
+    "task": ("fc_tasks", "x.synced_at"),
+    "calendar_event": ("calendar_events", "x.attendees, x.synced_at"),
+    "linear_local": ("ops_linearhumanaction", "x.linear_issue_id"),
+}
+
+
+def enrichment_query(source, ids):
+    """Columns the kb activity feed does not carry, by row id."""
+    table, columns = ENRICHMENT[source]
+    wanted = ", ".join(str(int(identity)) for identity in ids)
+    return f"SELECT x.id, {columns} FROM {table} x WHERE x.id IN ({wanted})"
+
+
+def activity_arguments(source, bounds, person):
+    """kb `activity` bounds are inclusive: ending one microsecond early keeps
+    the exclusive `< cutoff` (calendar: `< day end`) of the day window."""
+    end = bounds["end"] if source == "calendar_event" else bounds["cutoff"]
+    arguments = {
+        "since": bounds["start"],
+        "until": (parse_when(end) - timedelta(microseconds=1)).isoformat(),
+        "source_types": [ACTIVITY_SOURCES[source]],
     }
-    return queries
+    if source in STAFF_SOURCES:
+        arguments["staff"] = person
+    return arguments
+
+
+def activity_row(source, item, bounds, snippet_chars):
+    if source == "calendar_event" and (
+        parse_when(item["end"]) <= parse_when(bounds["start"])
+        if item.get("end")
+        else parse_when(item["timestamp"]) < parse_when(bounds["start"])
+    ):
+        return None
+    identity = str(item["id"])
+    row = {
+        "id": int(identity) if identity.isdigit() else identity,
+        "timestamp": item["timestamp"],
+    }
+    if source not in {"calendar_event", "linear_local"}:
+        company = item.get("company") or {}
+        row |= {"company_id": company.get("id"), "company": company.get("name")}
+    if source not in {"task", "calendar_event", "linear_local"}:
+        row["contact_id"] = (item.get("contact") or {}).get("id")
+    row |= {name: item.get(name) for name in ACTIVITY_FIELDS[source]}
+    if source == "task":
+        row["title"] = item.get("name")
+    if source == "email":
+        row["is_draft"] = False
+    if "snippet" in row:
+        row["snippet"] = (row["snippet"] or "")[: int(snippet_chars)]
+    row["links"] = item.get("links") or {}
+    return row

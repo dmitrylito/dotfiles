@@ -242,18 +242,25 @@ def test_pagination_preserves_partial_source_and_continues_others(
         def call(self, tool, arguments):
             if tool == "describe_schema":
                 return {}
-            if "max(" in arguments["query"]:
-                return {
-                    "columns": ["latest"],
-                    "rows": [["2026-10-05T20:00:00Z"]],
+            if tool == "run_sql" and "max(" in arguments["query"]:
+                return {"columns": ["latest"], "rows": [["2026-10-05T20:00:00Z"]]}
+            if tool == "run_sql":
+                return {"columns": ["id", "timestamp"], "rows": []}
+            kind = arguments["source_types"][0]
+            page = {
+                "total": 0,
+                "freshness": {kind: {"latest": "2026-10-05T20:00:00Z"}},
+                "items": [],
+            }
+            if kind == "call":
+                page |= {
+                    "total": 2,
+                    "next_offset": 1,
+                    "items": [
+                        {"id": "1", "timestamp": "2026-10-05T14:00:00+00:00"}
+                    ],
                 }
-            if "FROM calls" in arguments["query"]:
-                return {
-                    "columns": ["id", "timestamp"],
-                    "rows": [[1, "2026-10-05T14:00:00Z"]],
-                    "truncated_at_max_rows": True,
-                }
-            return {"columns": ["id", "timestamp"], "rows": []}
+            return page
 
     result = collector.collect_ops_with(
         Reader(),
@@ -262,8 +269,41 @@ def test_pagination_preserves_partial_source_and_continues_others(
         {"snippet_chars": 100, "page_size": 10, "max_pages": 1},
     )
     assert result["call"]["status"] == "gap"
-    assert len(result["call"]["rows"]) == 1
+    assert [row["ref"] for row in result["call"]["rows"]] == ["call:1"]
     assert result["sms"]["status"] == "collected"
+    assert result["sms"]["latest"] == "2026-10-05T20:00:00Z"
+
+
+def test_activity_items_keep_the_old_row_shape(collector, bounds):
+    from evidence import activity_arguments, activity_row
+
+    arguments = activity_arguments("call", bounds, "dmitry@example.com")
+    assert arguments["until"] == "2026-10-05T20:59:59.999999+00:00"
+    assert arguments["staff"] == "dmitry@example.com"
+    assert "staff" not in activity_arguments("chat", bounds, "dmitry@example.com")
+    row = activity_row(
+        "call",
+        {
+            "id": "7",
+            "timestamp": "2026-10-05T14:00:00+00:00",
+            "company": {"id": 3, "name": "Acme"},
+            "contact": {"id": 9},
+            "snippet": "a  b\nc",
+            "direction": "outbound",
+        },
+        bounds,
+        3,
+    )
+    assert row["id"] == 7
+    assert (row["company_id"], row["company"], row["contact_id"]) == (3, "Acme", 9)
+    assert row["snippet"] == "a  "
+    assert row["direction"] == "outbound"
+    ended_at_start = {
+        "id": "1",
+        "timestamp": "2026-10-04T04:00:00+00:00",
+        "end": bounds["start"],
+    }
+    assert activity_row("calendar_event", ended_at_start, bounds, 10) is None
 
 
 def test_documents_cache_complete_pages_and_do_not_refetch(
