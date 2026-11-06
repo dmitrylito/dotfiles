@@ -1,0 +1,282 @@
+#!/usr/bin/python3
+"""tracker-checkin-check — nightly list of installed trackers that have not checked in for 24h+.
+
+Waits for today's nightly `import-db` restore to finish ("[Finish" line in
+~/Logs/import_db.log), then reads every active tracker install from the local fleetchaser DB
+(prod dump): vehicle not archived, customer not archived, and not a Howen camera's own tracker
+record (tracker serial = ng_dvr_camera serial). Last check-in is the newest
+upper(tracker_vehiclestate.duration) for the vehicle — what vehicle admin shows as
+"Last Updated At". Ages are measured from the newest check-in in the DB (≈ when the prod dump
+was taken), not from now, because the DB is a nightly copy. Read-only; contacts no one.
+
+Writes to ~/reports/tracker-checkins/ (override with TRACKER_CHECKIN_DIR):
+  YYYY-MM-DD.csv           one row per active tracker install (online and offline), with the
+                           previous run's status and offline_since: the first run date that saw
+                           this install offline, carried forward while it stays offline
+  YYYY-MM-DD-summary.txt   counts, went offline since last run, back online since last run, then
+                           every offline tracker as "Company: / - Vehicle - harness", plug-in
+                           harness (OBD2/J1939/J1708) first, then 3 Wire, then no harness
+  YYYY-MM-DD.status.json   terminal marker {outcome, exit_code, finished, ...}, written last and
+                           atomically; a missing marker means the run did not finish
+Sends the counts + went-offline/back-online sections to the Moshi inbox (best effort).
+
+Usage:   tracker-checkin-check [--no-wait] [--no-notify]
+Cron:    45 6 * * * ~/.local/bin/tracker-checkin-check >> ~/Logs/tracker-checkin-check.log 2>&1
+Config (env): TRACKER_CHECKIN_WAIT_MINUTES (default 240) and TRACKER_CHECKIN_POLL_SECONDS
+  (default 120) for the import wait; TRACKER_CHECKIN_STALE_HOURS check-in age that counts as
+  offline (default 24).
+Chezmoi-managed: dot_local/bin/executable_tracker-checkin-check (DLCO-1 only).
+"""
+
+import csv
+import datetime
+import json
+import os
+import subprocess
+import sys
+import time
+from collections import Counter
+from itertools import groupby
+from pathlib import Path
+
+IMPORT_LOG = Path.home() / "Logs" / "import_db.log"
+OUT_DIR = Path(os.environ.get("TRACKER_CHECKIN_DIR", Path.home() / "reports" / "tracker-checkins"))
+WAIT_MINUTES = int(os.environ.get("TRACKER_CHECKIN_WAIT_MINUTES", "240"))
+POLL_SECONDS = int(os.environ.get("TRACKER_CHECKIN_POLL_SECONDS", "120"))
+STALE_HOURS = float(os.environ.get("TRACKER_CHECKIN_STALE_HOURS", "24"))
+DB_READY_MINUTES = 15
+DB_CONTAINER = "fleetchaser-db-1"
+
+# The LATERAL must be `order by duration desc limit 1` to use the (vehicle, -duration) index;
+# max(upper(duration)) scans every state row of the vehicle (~100M-row table).
+SQL = r"""
+select coalesce(json_agg(r), '[]'::json) from (
+  select cu.name customer, cu.id customer_id, v.id vehicle_id, v.identifier vehicle,
+    t.serial tracker, coalesce(hp.name, '') harness, coalesce(hp.kind, '') harness_kind,
+    lower(ti.duration) installed, ls.last last_checkin
+  from tracker_trackerinstall ti
+  join tracker_tracker t on t.id = ti.tracker_id
+  join vehicle_vehicle v on v.id = ti.vehicle_id and v.visibility <> 2
+  join accounting_customer cu on cu.id = v.customer_id and not cu.archived
+  left join tracker_harness h on h.id = ti.harness_id
+  left join tracker_harnessproduct hp on hp.id = h.product_id
+  left join lateral (
+    select upper(s.duration) last from tracker_vehiclestate s
+    where s.vehicle_id = v.id order by s.duration desc limit 1) ls on true
+  where ti.active
+    and not exists (select 1 from ng_dvr_camera c where c.serial = t.serial)
+) r
+"""
+
+FIELDS = [
+    "customer", "customer_id", "vehicle", "vehicle_id", "tracker", "harness", "harness_kind",
+    "installed", "last_checkin", "age_h", "status", "prev_status", "prev_date", "offline_since",
+    "flags",
+]
+
+
+def log(msg: str) -> None:
+    print(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {msg}", flush=True)
+
+
+def import_finished_today() -> bool:
+    today = datetime.date.today().isoformat()
+    try:
+        lines = IMPORT_LOG.read_text(errors="replace").splitlines()
+    except FileNotFoundError:
+        return False
+    return any(l.startswith(today) and "[Start" in l for l in lines) and any(
+        l.startswith(today) and "[Finish" in l for l in lines
+    )
+
+
+def wait_for_import() -> None:
+    deadline = time.monotonic() + WAIT_MINUTES * 60
+    while not import_finished_today():
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"import-db has not finished today after {WAIT_MINUTES} min")
+        log(f"waiting for import-db to finish (poll {POLL_SECONDS}s)")
+        time.sleep(POLL_SECONDS)
+
+
+def psql(sql: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["docker", "exec", "-i", DB_CONTAINER, "psql", "-U", "postgres", "-d", "fleetchaser",
+         "-v", "ON_ERROR_STOP=1", "-At"],
+        input=sql, capture_output=True, text=True,
+    )
+
+
+def wait_for_db() -> None:
+    deadline = time.monotonic() + DB_READY_MINUTES * 60
+    while True:
+        proc = psql("select 1")
+        if proc.returncode == 0:
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"{DB_CONTAINER} not ready: {proc.stderr.strip()[-500:]}")
+        time.sleep(20)
+
+
+def installs() -> list[dict]:
+    proc = psql(SQL)
+    if proc.returncode:
+        raise RuntimeError(f"psql failed: {proc.stderr.strip()[-2000:]}")
+    rows = json.loads(proc.stdout)
+    if not rows:
+        raise RuntimeError("no active tracker installs found; DB empty or restore incomplete")
+    return rows
+
+
+def previous_run(today: str) -> tuple[str | None, dict[str, dict]]:
+    runs = sorted(p for p in OUT_DIR.glob("????-??-??.csv") if p.stem < today)
+    if not runs:
+        return None, {}
+    with runs[-1].open() as f:
+        return runs[-1].stem, {f"{r['vehicle_id']}:{r['tracker']}": r for r in csv.DictReader(f)}
+
+
+def write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text)
+    tmp.replace(path)
+
+
+def harness_rank(r: dict) -> int:
+    if not r["harness_kind"]:
+        return 2
+    return 1 if r["harness_kind"] == "3WIRE" else 0
+
+
+def by_company(rows: list[dict], tail) -> list[str]:
+    out = []
+    rows = sorted(rows, key=lambda r: (r["customer"].lower(), harness_rank(r), r["vehicle"].lower()))
+    for cust, group in groupby(rows, key=lambda r: r["customer"]):
+        out.append(f"{cust}:")
+        out += [f"  - {r['vehicle']} - {r['harness'] or 'no harness'} ({tail(r)})" for r in group]
+        out.append("")
+    return out
+
+
+def build(today: str, data: list[dict], prev_date, prev) -> tuple[list[dict], str, str]:
+    seen = [datetime.datetime.fromisoformat(d["last_checkin"]) for d in data if d["last_checkin"]]
+    dump = max(seen) if seen else None
+    rows = []
+    for d in data:
+        last = datetime.datetime.fromisoformat(d["last_checkin"]) if d["last_checkin"] else None
+        age = round((dump - last).total_seconds() / 3600, 1) if dump and last else None
+        status = "online" if age is not None and age < STALE_HOURS else "offline"
+        p = prev.get(f"{d['vehicle_id']}:{d['tracker']}", {})
+        prev_status = p.get("status", "")
+        offline_since = ""
+        if status == "offline":
+            offline_since = (p.get("offline_since") if prev_status == "offline" else "") or today
+        flags = []
+        if status == "offline" and prev_status == "online":
+            flags.append("went_offline")
+        if status == "online" and prev_status == "offline":
+            flags.append("back_online")
+        if last is None:
+            flags.append("never")
+        rows.append({
+            **{k: d[k] for k in ("customer", "customer_id", "vehicle", "vehicle_id", "tracker",
+                                 "harness", "harness_kind", "installed")},
+            "last_checkin": last.isoformat() if last else "",
+            "age_h": age if age is not None else "", "status": status,
+            "prev_status": prev_status, "prev_date": (prev_date or "") if p else "",
+            "offline_since": offline_since, "flags": " ".join(flags),
+        })
+
+    def has(r, flag):
+        return flag in r["flags"].split()
+
+    def last_date(r):
+        return f"last check-in {r['last_checkin'][:10] or 'never'}"
+
+    offline = [r for r in rows if r["status"] == "offline"]
+    went = [r for r in rows if has(r, "went_offline")]
+    back = [r for r in rows if has(r, "back_online")]
+    age_days = Counter(
+        "never" if r["age_h"] == "" else "1-7d" if r["age_h"] < 168
+        else "7-30d" if r["age_h"] < 720 else ">30d"
+        for r in offline
+    )
+    head = [
+        f"Tracker check-ins {today}: {len(offline)} of {len(rows)} active trackers offline "
+        f"{STALE_HOURS:g}h+ across {len({r['customer'] for r in offline})} companies",
+        f"DB as of {dump:%Y-%m-%d %H:%M %Z}" if dump else "DB time unknown",
+        "Offline for: " + ", ".join(f"{k} {age_days[k]}" for k in ("1-7d", "7-30d", ">30d", "never")),
+        f"Harnessed (any harness on record): {sum(1 for r in offline if r['harness_kind'])}",
+        f"Compared with: {prev_date or 'no previous run'}",
+        "",
+        f"Went offline since last run: {len(went)}",
+        *by_company(went, last_date),
+        f"Back online since last run: {len(back)}",
+        *by_company(back, last_date),
+    ]
+    full = head + [
+        f"All offline: {len(offline)} (plug-in harness first, then 3 Wire, then no harness)",
+        "",
+        *by_company(offline, lambda r: f"{last_date(r)}, flagged since {r['offline_since']}"),
+    ]
+    return rows, "\n".join(full) + "\n", "\n".join(head)
+
+
+def notify(title: str, body: str, error: bool) -> None:
+    cmd = [str(Path.home() / ".local" / "bin" / "moshi-hook"), "notify", "--source",
+           "tracker-checkin-check", "--title", title]
+    if error:
+        cmd.append("--error")
+    try:
+        # cron has no XDG_RUNTIME_DIR, and moshi-hook finds its daemon socket through it.
+        env = {"XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}", **os.environ}
+        subprocess.run(cmd + ["--strict"], input=body, text=True, timeout=120, env=env)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log(f"notify failed: {e}")
+
+
+def main() -> int:
+    args = set(sys.argv[1:])
+    today = datetime.date.today().isoformat()
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    status_path = OUT_DIR / f"{today}.status.json"
+    started = datetime.datetime.now().isoformat(timespec="seconds")
+    status = {"started": started, "outcome": "failed", "exit_code": 1}
+    try:
+        if "--no-wait" not in args:
+            wait_for_import()
+        wait_for_db()
+        data = installs()
+        log(f"{len(data)} active tracker installs")
+        prev_date, prev = previous_run(today)
+        rows, summary, short = build(today, data, prev_date, prev)
+        csv_path = OUT_DIR / f"{today}.csv"
+        tmp = csv_path.with_suffix(".csv.tmp")
+        with tmp.open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=FIELDS)
+            w.writeheader()
+            w.writerows(rows)
+        tmp.replace(csv_path)
+        summary_path = OUT_DIR / f"{today}-summary.txt"
+        write_atomic(summary_path, summary)
+        offline = sum(1 for r in rows if r["status"] == "offline")
+        status.update(outcome="ok", exit_code=0, trackers=len(rows), offline=offline,
+                      went_offline=sum(1 for r in rows if "went_offline" in r["flags"]),
+                      back_online=sum(1 for r in rows if "back_online" in r["flags"]),
+                      compared_with=prev_date, csv=str(csv_path))
+        log(f"wrote {csv_path} ({offline} offline)")
+        if "--no-notify" not in args:
+            notify(f"Tracker check-ins {today}", short[:3500] + f"\nFull report: {summary_path}",
+                   error=False)
+    except Exception as e:
+        status["error"] = str(e)[-2000:]
+        log(f"failed: {e}")
+        if "--no-notify" not in args:
+            notify(f"Tracker check-in check failed {today}", str(e)[-1000:], error=True)
+    status["finished"] = datetime.datetime.now().isoformat(timespec="seconds")
+    write_atomic(status_path, json.dumps(status, indent=2) + "\n")
+    return status["exit_code"]
+
+
+if __name__ == "__main__":
+    sys.exit(main())

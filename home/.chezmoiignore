@@ -230,6 +230,8 @@ docker-appdata/caddy/
 .local/bin/fc-swap-tasks
 # Daily BICS carrier check of installed camera SIMs after import-db (cron 06:30).
 .local/bin/camera-sim-check
+# Nightly list of trackers silent 24h+ after import-db (cron 06:45).
+.local/bin/tracker-checkin-check
 {{ end }}
 {{ if ne .chezmoi.hostname "DLCO-3" }}
 {{ range list "seerr" "prowlarr" "flaresolverr" "homepage" "audiobookshelf" "calibre-web" "shelfmark" "matter-server" "scrypted" }}
