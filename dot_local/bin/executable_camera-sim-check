@@ -311,7 +311,9 @@ def notify(title: str, body: str, error: bool) -> None:
     if error:
         cmd.append("--error")
     try:
-        subprocess.run(cmd, input=body, text=True, timeout=120)
+        # cron has no XDG_RUNTIME_DIR, and moshi-hook finds its daemon socket through it.
+        env = {"XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}", **os.environ}
+        subprocess.run(cmd + ["--strict"], input=body, text=True, timeout=120, env=env)
     except (OSError, subprocess.TimeoutExpired) as e:
         log(f"notify failed: {e}")
 
