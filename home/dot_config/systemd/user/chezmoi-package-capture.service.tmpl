@@ -1,0 +1,7 @@
+[Unit]
+Description=Publish this server's explicit package declarations
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{ joinPath .chezmoi.workingTree "scripts/capture-server-package-lists.sh" }}

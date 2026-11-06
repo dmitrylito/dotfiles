@@ -1,0 +1,7 @@
+{{ if eq (.profile | lower) "server" -}}
+#!/usr/bin/env bash
+# Finish a prepared server bootstrap after managed files and hooks are applied.
+# Invoked by chezmoi; no-op unless this machine has an unfinished bootstrap.
+set -euo pipefail
+exec bash {{ joinPath .chezmoi.workingTree "scripts/bootstrap-server.sh" | quote }} finish
+{{ end }}

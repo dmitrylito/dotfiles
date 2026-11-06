@@ -1,0 +1,53 @@
+{{- if not (dig "debug" false .) -}}
+#!/usr/bin/env bash
+# Chezmoi runs this after init/apply when the rendered content changes. The
+# hashes deliberately cover only inputs that can change the active machine's
+# package state, so a no-op apply and another machine's package edits stay fast.
+
+set -euo pipefail
+
+# profile: {{ .profile | lower }}
+# work: {{ .work }}
+# playbook.yml: {{ include (joinPath $.chezmoi.workingTree "playbook.yml") | sha256sum }}
+# scripts/reconcile-packages.sh: {{ include (joinPath $.chezmoi.workingTree "scripts/reconcile-packages.sh") | sha256sum }}
+# scripts/reconcile-server-package-set.sh: {{ include (joinPath $.chezmoi.workingTree "scripts/reconcile-server-package-set.sh") | sha256sum }}
+# scripts/server-limine.sh: {{ include (joinPath $.chezmoi.workingTree "scripts/server-limine.sh") | sha256sum }}
+# scripts/capture-server-package-lists.sh: {{ include (joinPath $.chezmoi.workingTree "scripts/capture-server-package-lists.sh") | sha256sum }}
+# scripts/converge-server-packages.sh: {{ include (joinPath $.chezmoi.workingTree "scripts/converge-server-packages.sh") | sha256sum }}
+{{- if eq (.profile | lower) "omarchy" }}
+{{- range $rel := list "common/pacman.txt" "common/aur.txt" "removed.txt" (printf "%s/pacman.txt" $.chezmoi.hostname) (printf "%s/aur.txt" $.chezmoi.hostname) (printf "%s/removed.txt" $.chezmoi.hostname) }}
+{{- range (glob (joinPath $.chezmoi.workingTree "packages/omarchy" $rel)) }}
+# packages/omarchy/{{ $rel }}: {{ include . | sha256sum }}
+{{- end }}
+{{- end }}
+{{- else if eq (.profile | lower) "server" }}
+# packages/server/pacman.txt: {{ include (joinPath $.chezmoi.workingTree "packages/server/pacman.txt") | sha256sum }}
+# packages/server/aur.txt: {{ include (joinPath $.chezmoi.workingTree "packages/server/aur.txt") | sha256sum }}
+{{- range list "added-pacman.txt" "added-aur.txt" "excluded-pacman.txt" }}
+{{- range (glob (joinPath $.chezmoi.workingTree "packages/server/hosts" $.chezmoi.hostname .)) }}
+# packages/server/hosts/{{ $.chezmoi.hostname }}/{{ base . }}: {{ include . | sha256sum }}
+{{- end }}
+{{- end }}
+{{- else if eq (.profile | lower) "mac" }}
+# packages/mac/brew.txt: {{ include (joinPath $.chezmoi.workingTree "packages/mac/brew.txt") | sha256sum }}
+# packages/mac/casks.txt: {{ include (joinPath $.chezmoi.workingTree "packages/mac/casks.txt") | sha256sum }}
+# packages/mac/taps.txt: {{ include (joinPath $.chezmoi.workingTree "packages/mac/taps.txt") | sha256sum }}
+{{- end }}
+
+profile="{{ .profile | lower }}"
+
+if ! command -v ansible-playbook >/dev/null 2>&1; then
+	printf 'Package reconciliation: installing Ansible bootstrap dependency...\n'
+	if [[ $profile == mac ]]; then
+		if ! command -v brew >/dev/null 2>&1; then
+			printf 'Homebrew is required to install Ansible on macOS.\n' >&2
+			exit 1
+		fi
+		brew install ansible
+	else
+		sudo pacman -S --needed --noconfirm ansible
+	fi
+fi
+
+exec "{{ joinPath .chezmoi.workingTree "scripts/reconcile-packages.sh" }}"
+{{ end -}}

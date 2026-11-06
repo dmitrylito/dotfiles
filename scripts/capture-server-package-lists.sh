@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-source_dir=$(chezmoi source-path)
+source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/chezmoi-package-sync"
 log_file="$state_dir/capture.log"
 pending_file="$state_dir/pending"

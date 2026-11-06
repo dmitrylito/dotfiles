@@ -1,6 +1,6 @@
 # Template validation
 
-Run `scripts/test-templates.sh` from any directory. Prerequisites on Linux or
+Run `tests/test-templates.sh` from any directory. Prerequisites on Linux or
 macOS are Python 3.11+, chezmoi, uv, bash, zsh, and Lua's `luac` compiler on PATH.
 The implementation was verified with chezmoi 2.73.3. The Codex modifier uses uv
 to fetch pinned `tomlkit==0.13.3` into the disposable cache, so the run needs
@@ -23,7 +23,7 @@ modifiers are unchanged and still fail when required real inputs are missing.
 Coverage includes:
 
 - `omarchy`, `debug`, `server`, and `mac`, each with `work=false` and `work=true`.
-- `scripts/test-opencode-statusline.mjs` under `node --test`, when node is on PATH.
+- `tests/test-opencode-statusline.mjs` under `node --test`, when node is on PATH.
 - `fcoffice` Omarchy and `DLCO-1`, `DLCO-2`, and `DLCO-3` server, each with both work roles.
 - Initialization-template TOML and rendered Bash/Zsh, Python, Lua, and TOML syntax.
 - Modifier Python syntax, Claude settings JSON, profile tool ownership, Arch plugin
@@ -38,7 +38,7 @@ with a changed upstream entrypoint.
 On an Omarchy desktop, also run:
 
 ```bash
-scripts/test-templates.sh --installed-omarchy
+tests/test-templates.sh --installed-omarchy
 ```
 
 This additionally reads `${OMARCHY_PATH:-/usr/share/omarchy}/config/hypr/hyprland.lua`,
@@ -52,7 +52,7 @@ and [template execution](https://www.chezmoi.io/reference/commands/execute-templ
 
 ## Fresh-server bootstrap
 
-Run `python3 scripts/test-server-bootstrap.py` to exercise the real chezmoi
+Run `python3 tests/test-server-bootstrap.py` to exercise the real chezmoi
 `init --apply` lifecycle in disposable homes with generated age keys and mocked
 package managers, vendor downloads, authentication, and systemd. It checks
 keyless startup, deferred secret application, dry-run isolation, failure handling,

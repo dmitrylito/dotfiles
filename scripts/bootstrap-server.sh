@@ -72,7 +72,7 @@ fi
 
 [[ $(cz execute-template '{{ .profile | lower }}') == server ]]
 if [[ -f $state_dir/prepared ]]; then
-  cz decrypt "$source_dir/scripts/codex-config-baseline.toml.age" >/dev/null
+  cz decrypt "$source_dir/secrets/codex-config-baseline.toml.age" >/dev/null
   exit 0
 fi
 
@@ -94,7 +94,7 @@ fi
 
 if [[ ! -f $state_dir/tools-installed ]] && select_step "Install mise tools, Neovim, Herdr, and Codex"; then
   mkdir -p "$state_dir/tools"
-  cz execute-template < "$source_dir/dot_config/mise/config.toml.tmpl" > "$state_dir/tools/mise.toml"
+  cz execute-template < "$source_dir/home/dot_config/mise/config.toml.tmpl" > "$state_dir/tools/mise.toml"
   mise -C "$state_dir/tools" trust "$state_dir/tools/mise.toml"
   mise -C "$state_dir/tools" install
   if [[ ! -x $HOME/.local/share/bob/nvim-bin/nvim ]]; then
@@ -130,7 +130,7 @@ if [[ ! -s $key_file ]]; then
   printf 'Resume with chezmoi init --apply when ready to transfer the key.\n' >&2
   exit 1
 fi
-cz decrypt "$source_dir/scripts/codex-config-baseline.toml.age" >/dev/null
+cz decrypt "$source_dir/secrets/codex-config-baseline.toml.age" >/dev/null
 if ! select_step "Apply managed configuration and the normal package policy"; then
   printf 'Configuration apply paused. Resume with chezmoi init --apply.\n'
   exit 1

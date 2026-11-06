@@ -6,7 +6,7 @@ set -euo pipefail
 [[ $(hostname) == DLCO-3 ]]
 [[ $(findmnt -n -o UUID -T /data) == 18ac3a4e-e866-434a-b664-98ef8e9486e2 ]]
 source_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-homepage_src=$source_dir/docker-appdata/homepage
+homepage_src=$source_dir/home/docker-appdata/homepage
 target_dir=/data/docker-appdata/homepage
 mkdir -p "$target_dir"
 umask 077

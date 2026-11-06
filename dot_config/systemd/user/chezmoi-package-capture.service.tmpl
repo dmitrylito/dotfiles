@@ -1,7 +1,0 @@
-[Unit]
-Description=Publish this server's explicit package declarations
-After=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart={{ joinPath .chezmoi.sourceDir "scripts/capture-server-package-lists.sh" }}

@@ -2,13 +2,13 @@
 
 `fc-daily-report` is managed here, available from any working directory. The
 daily-report skill (interpretation and report formatting) is installed globally from
-`dot_agents/skills/fc-daily-report`, linked into `~/.claude/skills` and
+`home/dot_agents/skills/fc-daily-report`, linked into `~/.claude/skills` and
 `~/.codex/skills` on every machine. The team's copy lives in ops-center
 (`.agents/skills/fc-daily-report`); keep the two in step when either changes. This
 repository owns the executable, adapters and fixtures.
 
-Sources: `dot_local/bin/executable_fc-daily-report` launches the standard-library
-Python package in `dot_local/libexec/fc-daily-report/`. Targets are
+Sources: `home/dot_local/bin/executable_fc-daily-report` launches the standard-library
+Python package in `home/dot_local/libexec/fc-daily-report/`. Targets are
 `~/.local/bin/fc-daily-report` and `~/.local/libexec/fc-daily-report/`, installed on
 all profiles and roles. No ops-center source command or new server endpoint is required.
 
@@ -110,7 +110,7 @@ FC tasks come from the FC backend API (`fc_api.py`): tasks modified on the day,
 their current state (status names from each workflow), and the audit entries Dmitry
 created that day, read at collect time (the audit log keeps every change with its
 time, so no polling is needed). It logs in with the ops center's FC account (his
-own), kept in the `fc-api` group of `.secrets.yaml.age` and rendered to
+own), kept in the `fc-api` group of `home/.secrets.yaml.age` and rendered to
 `~/.config/secrets/fc-api.env` on the work role; the token pair is cached in
 `~/.local/state/fc-daily-report/fc-api.json` (0600). If the ops center's
 `FC_PASSWORD` changes, update the group with `secrets-edit`. Without credentials,
@@ -169,9 +169,9 @@ account exactly matching `--person` is selected. Never include a coworker's prof
 Validation, from this source repository:
 
 ```sh
-uv run --with pytest python -m pytest -q scripts/test-fc-daily-report.py
-uv run --with ruff ruff check --isolated --select F,E9,I,B --target-version py311 --no-cache dot_local/libexec/fc-daily-report scripts/test-fc-daily-report.py
-uv run --with ruff ruff format --isolated --line-length 80 --no-cache --check dot_local/libexec/fc-daily-report scripts/test-fc-daily-report.py
+uv run --with pytest python -m pytest -q tests/test-fc-daily-report.py
+uv run --with ruff ruff check --isolated --select F,E9,I,B --target-version py311 --no-cache home/dot_local/libexec/fc-daily-report tests/test-fc-daily-report.py
+uv run --with ruff ruff format --isolated --line-length 80 --no-cache --check home/dot_local/libexec/fc-daily-report tests/test-fc-daily-report.py
 chezmoi apply --dry-run ~/.local/bin/fc-daily-report ~/.local/libexec/fc-daily-report
 ```
 

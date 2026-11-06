@@ -1,0 +1,159 @@
+#!/usr/bin/env -S uv run --no-project --with tomlkit==0.13.3 python
+# modify_config.toml — merge the managed Codex baseline into live app state.
+#
+# Codex owns ~/.codex/config.toml at runtime: project trust, hook trust hashes,
+# desktop preferences, and other state are written as the app is used. Tracking
+# the whole file as an immutable snapshot caused permanent Chezmoi drift and
+# made apply overwrite valid local state.
+#
+# The encrypted baseline seeds a new machine. On an established machine, keys
+# missing from the live file are filled recursively while existing local values
+# are preserved, except for explicitly synchronized settings below. uv supplies
+# the pinned TOML dependency independently of the machine's active Python.
+# Dependency failures must fail apply, never silently skip synchronization.
+
+import copy
+import subprocess
+import sys
+from collections.abc import MutableMapping
+from pathlib import Path
+
+import tomlkit
+
+WORKING_TREE = Path({{ .chezmoi.workingTree | quote }})
+BASELINE_PATH = WORKING_TREE / "secrets/codex-config-baseline.toml.age"
+HOME = {{ .chezmoi.homeDir | quote }}
+RETIRED_MCP_SERVERS = {"node_repl", "context7"}
+SYNCHRONIZED_SETTINGS = (
+    ("approval_policy",),
+    ("tui", "status_line"),
+    ("tui", "animations"),
+    ("tui", "alternate_screen"),
+    ("tui", "keymap", "composer", "submit"),
+    ("tui", "keymap", "composer", "queue"),
+    ("desktop", "followUpQueueMode"),
+)
+
+
+def read_baseline():
+    result = subprocess.run(
+        ["chezmoi", "--use-builtin-age=true", "decrypt", str(BASELINE_PATH)],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    return result.stdout
+
+
+def strip_retired_servers(text):
+    """Remove retired MCP tables without requiring a TOML writer."""
+    output = []
+    skipping = False
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            table = stripped.strip("[]").strip()
+            skipping = any(
+                table == f"mcp_servers.{server}"
+                or table.startswith(f"mcp_servers.{server}.")
+                for server in RETIRED_MCP_SERVERS
+            )
+        if not skipping:
+            output.append(line)
+    return "".join(output)
+
+
+def fill_defaults(live, baseline):
+    for key, value in baseline.items():
+        if key not in live:
+            live[key] = copy.deepcopy(value)
+        elif isinstance(live[key], MutableMapping) and isinstance(value, MutableMapping):
+            fill_defaults(live[key], value)
+
+
+def remove_retired_servers(config):
+    servers = config.get("mcp_servers")
+    if isinstance(servers, MutableMapping):
+        for name in RETIRED_MCP_SERVERS:
+            servers.pop(name, None)
+
+
+def synchronize_settings(live, baseline):
+    for path in SYNCHRONIZED_SETTINGS:
+        source = baseline
+        target = live
+        for key in path[:-1]:
+            source = source[key]
+            target = target[key]
+        target[path[-1]] = copy.deepcopy(source[path[-1]])
+
+
+def remove_unsupported_settings(config):
+    config.pop("ui", None)
+    config.get("mcp_servers", {}).get("github", {}).pop("type", None)
+    config.get("projects", {}).get("/home/dmitrylito/Projects/backend", {}).pop(
+        "web_search", None
+    )
+
+
+def trust_home(config):
+    if "projects" not in config:
+        config["projects"] = tomlkit.table(is_super_table=True)
+    projects = config["projects"]
+    if HOME not in projects:
+        projects[HOME] = tomlkit.table()
+    projects[HOME]["trust_level"] = "trusted"
+
+
+
+def configure_ops_center(config):
+    token = {{ index (index (include ".secrets.yaml.age" | decrypt | fromYaml) "shared") "OPS_CENTER_MCP_API_KEY" | quote }}
+    if not token:
+        raise ValueError("shared OPS_CENTER_MCP_API_KEY is missing")
+    if "mcp_servers" not in config:
+        config["mcp_servers"] = tomlkit.table(is_super_table=True)
+    server = tomlkit.table()
+    server["url"] = "https://ops.dlco.us/mcp"
+    server["enabled"] = True
+    server["startup_timeout_sec"] = 20
+    server["tool_timeout_sec"] = 120
+    headers = tomlkit.table()
+    headers["Authorization"] = "Bearer " + token
+    headers["User-Agent"] = "codex-ops-center/1.0"
+    server["http_headers"] = headers
+    config["mcp_servers"]["ops-center"] = server
+
+def apply_host_settings(config):
+    if {{ .chezmoi.hostname | quote }} == "DLCO-3":
+        if "tui" not in config:
+            config["tui"] = tomlkit.table()
+        config["tui"]["fullscreen_transcript"] = False
+
+
+live_text = strip_retired_servers(sys.stdin.read())
+baseline_text = strip_retired_servers(read_baseline())
+
+if not live_text.strip():
+    baseline = tomlkit.parse(baseline_text)
+    remove_unsupported_settings(baseline)
+    configure_ops_center(baseline)
+    apply_host_settings(baseline)
+    trust_home(baseline)
+    sys.stdout.write(tomlkit.dumps(baseline))
+    raise SystemExit(0)
+
+try:
+    live = tomlkit.parse(live_text)
+    baseline = tomlkit.parse(baseline_text)
+except Exception as error:
+    print(f"codex config merge refused invalid TOML: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+fill_defaults(live, baseline)
+synchronize_settings(live, baseline)
+remove_retired_servers(live)
+remove_unsupported_settings(live)
+configure_ops_center(live)
+apply_host_settings(live)
+trust_home(live)
+sys.stdout.write(tomlkit.dumps(live))

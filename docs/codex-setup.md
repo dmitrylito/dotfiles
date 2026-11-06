@@ -1,16 +1,16 @@
 # Codex setup
 
-Global Codex instructions are rendered from `dot_codex/AGENTS.md.tmpl`. Shared
-workflow and style fragments live in `.chezmoitemplates/`; changing those fragments
+Global Codex instructions are rendered from `home/dot_codex/AGENTS.md.tmpl`. Shared
+workflow and style fragments live in `home/.chezmoitemplates/`; changing those fragments
 also changes Claude instructions. Keep Codex-specific behavior in the Codex template.
 
-`dot_codex/modify_private_config.toml.tmpl` merges the encrypted baseline with
+`home/dot_codex/modify_private_config.toml.tmpl` merges the encrypted baseline with
 runtime state. Keep project trust, hook trust, app permissions, and host-specific
 state intact. Project `.codex/config.toml` files inherit the global approval policy;
 keep integration definitions there without adding independent approval defaults.
 The default `model` is machine-specific and is not seeded or synchronized by chezmoi.
 
-`dot_codex/modify_hooks.json.tmpl` preserves unrelated handlers and enforces one
+`home/dot_codex/modify_hooks.json.tmpl` preserves unrelated handlers and enforces one
 Moshi handler per managed event. Invalid JSON or invalid event containers must fail
 without output. Herdr owns `~/.codex/herdr-agent-state.sh`. Do not replace its script
 or hook when updating Moshi. Hook changes may require Codex's own trust review.

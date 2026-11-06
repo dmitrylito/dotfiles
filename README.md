@@ -7,6 +7,10 @@ managed targets in `$HOME` directly.
 
 Agents working on this source repository should read [.claude/AGENTS.md](.claude/AGENTS.md).
 
+Layout: `.chezmoiroot` makes `home/` the chezmoi source state, so everything under `home/` deploys
+(run scripts in `home/.chezmoiscripts/`). The rest is repo tooling: `scripts/`, `tests/`, `secrets/`,
+`packages/` with `playbook.yml`, `system/` and `docs/`.
+
 ## Set up a new Arch server
 
 Install chezmoi, then run **one command** as your normal login user:
@@ -137,7 +141,7 @@ does not generate commits. The separate server package publisher does.
 | `mac` | AeroSpace, SketchyBar, Borders, macOS apps | shell, editor, Herdr/Moshi clients |
 
 `work = true` adds the Fleet Chaser project environment, mypy/import helpers,
-Claude work skills, work launchers, and the Omarchy work layout. `.chezmoiignore`
+Claude work skills, work launchers, and the Omarchy work layout. `home/.chezmoiignore`
 is the single deployment boundary for both profile and role.
 
 ## Package reconciliation
@@ -176,29 +180,29 @@ prevents reconciliation transactions from being published back as new intent.
 
 ## Major subsystems
 
-- `.chezmoi.toml.tmpl` and `.chezmoiignore`: profile/role selection and target
+- `home/.chezmoi.toml.tmpl` and `home/.chezmoiignore`: profile/role selection and target
   routing.
-- `dot_zshenv.tmpl`, `dot_zshrc.tmpl`, `dot_aliases.tmpl`: shared environment,
+- `home/dot_zshenv.tmpl`, `home/dot_zshrc.tmpl`, `home/dot_aliases.tmpl`: shared environment,
   interactive shell, and role-gated aliases.
-- `dot_config/mise/config.toml.tmpl`: authoritative runtimes and CLI tools,
+- `home/dot_config/mise/config.toml.tmpl`: authoritative runtimes and CLI tools,
   including `agy` on all three profiles; server Codex remains native-owned.
-- `dot_config/herdr/`: universal terminal workspace/multiplexer. tmux,
+- `home/dot_config/herdr/`: universal terminal workspace/multiplexer. tmux,
   Tmuxifier, and sesh are intentionally retired.
-- `dot_local/bin/executable_moshi-*`, Moshi hook modifiers, and Linux user units: keep
+- `home/dot_local/bin/executable_moshi-*`, Moshi hook modifiers, and Linux user units: keep
   Claude/Codex conversations bound to the correct Herdr pane. macOS receives
   the guards and config, but Codex Moshi handlers are removed on the Mac profile.
   Linux bootstraps the vendor binary, agent hooks,
   encrypted pairing token, and systemd user service during `chezmoi apply`;
   macOS service setup remains Homebrew-owned.
-- `dot_config/nvim/`: LazyVim configuration, Sidekick integration, and the
+- `home/dot_config/nvim/`: LazyVim configuration, Sidekick integration, and the
   Neovim remote clipboard implementation. Shell `ff`/`yf` use the managed
   `clipboard-copy` helper for local Wayland/macOS and terminal OSC 52 copying.
-- `dot_config/hypr/` and `dot_config/omarchy/`: Omarchy-only desktop behavior.
+- `home/dot_config/hypr/` and `home/dot_config/omarchy/`: Omarchy-only desktop behavior.
   The Hyprland entrypoint is derived from Omarchy's installed default by a
   `modify_` script; chezmoi owns only the post-default `hypr.chezmoi` module.
-- `dot_config/aerospace/`, `dot_config/sketchybar/`, `dot_config/borders/`:
+- `home/dot_config/aerospace/`, `home/dot_config/sketchybar/`, `home/dot_config/borders/`:
   macOS-only desktop behavior.
-- `dot_claude/`, `dot_codex/`, `dot_config/opencode/`: agent settings, hooks,
+- `home/dot_claude/`, `home/dot_codex/`, `home/dot_config/opencode/`: agent settings, hooks,
   rules, and plugins.
 - `Projects/fleetchaser/`, Fleet Chaser helpers/skills, work launchers, and
   `work-mode`: work-role-only configuration.
@@ -210,7 +214,7 @@ with work off and on),
 then preview only the intended targets on the active machine:
 
 ```bash
-scripts/test-templates.sh
+tests/test-templates.sh
 chezmoi apply --dry-run -v ~/.aliases ~/.zshrc
 ```
 

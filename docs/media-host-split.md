@@ -12,7 +12,7 @@ Homepage reads its local Podman socket and `/remote-podman/podman.sock`. `media-
 
 `media-downloads.service` and `media-podman-tunnel.service` retry after 30 seconds, with at most ten starts in five minutes. Inspect them with `systemctl --user status` and `journalctl --user -u`. SSHFS startup and shutdown have 30-second limits. Enable lingering for the service account on both hosts.
 
-The per-host `.chezmoiignore` gates Quadlets, the storage configuration and helper units. Ignoring a target does not delete a previously deployed unit: when moving a service, stop it and move its old Quadlet outside every generator search directory, then reload systemd. Never leave two writers using copied application databases.
+The per-host `home/.chezmoiignore` gates Quadlets, the storage configuration and helper units. Ignoring a target does not delete a previously deployed unit: when moving a service, stop it and move its old Quadlet outside every generator search directory, then reload systemd. Never leave two writers using copied application databases.
 
 DLCO-1's pod publishes on `192.168.0.11`; unused publications have no application listener. DLCO-3's pod publishes only its own services.
 
@@ -28,6 +28,6 @@ Change only the moved-service Caddy upstreams: ports 3000, 5055, 9696, 13378, 80
 
 ## Verification
 
-Run `scripts/test-templates.sh`, inspect each host's Quadlet generator output, and check container health. Verify both Homepage socket endpoints, the read-only download mount from inside Shelfmark, Prowlarr's application/indexer addresses, Seerr's existing integrations, Calibre's library database and initialization scripts, and public proxy routes. A health check alone does not prove download/import functionality.
+Run `tests/test-templates.sh`, inspect each host's Quadlet generator output, and check container health. Verify both Homepage socket endpoints, the read-only download mount from inside Shelfmark, Prowlarr's application/indexer addresses, Seerr's existing integrations, Calibre's library database and initialization scripts, and public proxy routes. A health check alone does not prove download/import functionality.
 
 References: [Podman 6.1.2 Quadlets](https://docs.podman.io/en/v6.1.2/markdown/podman-systemd.unit.5.html), [Shelfmark storage](https://github.com/calibrain/shelfmark/blob/main/docs/configuration.md), [Homepage Docker connections](https://gethomepage.dev/configs/docker/).
