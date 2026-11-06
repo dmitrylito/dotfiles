@@ -3,7 +3,10 @@
 # import-db — refresh the local FleetChaser database from the latest prod dump.
 #
 # Downloads gs://fleetchaser-production-sql/fleetchaser-prod-latest.gz, restores it
-# into the compose `db` service, snapshots the volume, and restarts the stack.
+# into the compose `db` service, snapshots the volume, and restarts the stack. Then,
+# when ops-center's PLATFORM_DB_REFRESH script exists on this host, loads that snapshot
+# into the ops-platform-db copy (ops-center docs/platform-db.md); its failure is logged
+# and does not fail the import.
 #
 # Detaches immediately, so it is safe from cron or by hand. Logs to
 # ~/Logs/import_db.log; previous runs rotate to .1 … .N (IMPORT_DB_LOG_KEEP, default 7).
@@ -32,6 +35,7 @@ GCS_KEY_PATH="$HOME/gcs-key.json"
 DUMP_FILE="$HOME/fleetchaser-db/fleetchaser-prod-latest.gz"
 SNAPSHOT_FILE="$HOME/Projects/tmp/docker/fleetchaser_db_volume"
 VOLUME_NAME="fleetchaser_db_volume"
+PLATFORM_DB_REFRESH="${PLATFORM_DB_REFRESH:-$HOME/Projects/ops-center/docker/platform-db/refresh.sh}"
 
 DB_SUPERUSER="postgres"
 DB_USER="fleetchaser"
@@ -315,6 +319,16 @@ snapshot_and_restart() {
   step_done Stack
 }
 
+refresh_platform_copy() {
+  [[ -x "$PLATFORM_DB_REFRESH" ]] || return 0
+  step_begin Platform "Loading the snapshot into ops-platform-db ($PLATFORM_DB_REFRESH)."
+  if "$PLATFORM_DB_REFRESH"; then
+    step_done Platform
+  else
+    log Error "Platform DB copy refresh failed; ops-platform-db keeps its previous copy (~/.local/state/ops-center/platform-db/last-refresh.json)."
+  fi
+}
+
 #######################################
 # Main
 #######################################
@@ -325,4 +339,5 @@ start_db_only
 recreate_database
 restore_dump
 snapshot_and_restart
+refresh_platform_copy
 log Finish "Finished. Total $(fmt_duration $((SECONDS - RUN_START)))."
