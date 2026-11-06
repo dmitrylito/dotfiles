@@ -307,7 +307,7 @@ def build(today: str, dump, cameras, results, prev_date, prev) -> tuple[list[dic
 
 
 def notify(title: str, body: str, error: bool) -> None:
-    cmd = ["moshi-hook", "notify", "--source", "camera-sim-check", "--title", title]
+    cmd = [str(Path.home() / ".local" / "bin" / "moshi-hook"), "notify", "--source", "camera-sim-check", "--title", title]
     if error:
         cmd.append("--error")
     try:
