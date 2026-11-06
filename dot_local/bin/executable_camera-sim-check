@@ -123,7 +123,7 @@ def check(iccid, prov):
             operator=n.get("operatorName") or "",
             mccmnc=(n.get("operatorMCC", "") + "-" + n.get("operatorMNC", "")).strip("-"),
             network_status=n.get("networkStatus") or "",
-            rat=n.get("ratType") or n.get("rat") or "",
+            rat=n.get("networkType") or "",
             note="" if n else (r.get("resultParam") or {}).get("resultDescription", "no response"),
         )
     except Exception as e:
