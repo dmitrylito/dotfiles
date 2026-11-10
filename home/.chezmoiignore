@@ -232,6 +232,8 @@ docker-appdata/caddy/
 .local/bin/camera-sim-check
 # Nightly list of trackers silent 24h+ after import-db (cron 06:45).
 .local/bin/tracker-checkin-check
+# Local-only backend command (BICS plan move), hidden by ~/Projects/backend/.git/info/exclude.
+Projects/backend/
 # Keeps the investigate MCP branch rebased on master (systemd timer, Claude triage).
 .local/bin/investigate-rebase
 .config/systemd/user/investigate-rebase.service
