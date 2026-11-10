@@ -20,6 +20,8 @@ Usage:
   investigate-rebase              one run (what the timer does)
   investigate-rebase test [DIR]   tests + handshake for a checkout (default: cwd); the triage
                                   session calls this too
+  investigate-rebase inspect NAME print the source of an installed module/object from the
+                                  backend container (read-only; for the triage session)
   investigate-rebase status       print the last run's marker
 Files: ~/.local/state/investigate-rebase/
   last.json      terminal marker {outcome, exit_code, finished, ...}, written atomically last
@@ -171,6 +173,39 @@ def handshake(project_path: Path, timeout: int = 300) -> tuple[list | None, str]
     return tools, "\n".join(seen)
 
 
+INSPECT_PY = """
+import importlib, inspect, sys
+name = sys.argv[1]
+parts = name.split(".")
+for i in range(len(parts), 0, -1):
+    try:
+        obj = importlib.import_module(".".join(parts[:i]))
+        break
+    except ImportError:
+        continue
+else:
+    sys.exit(f"cannot import {name}")
+for attr in parts[i:]:
+    obj = getattr(obj, attr)
+print(f"# {inspect.getsourcefile(obj)}")
+print(inspect.getsource(obj))
+"""
+
+
+def inspect_name(name: str) -> int:
+    # Read-only window into the container's installed packages for the triage session; the
+    # name is passed as an argument, never run as code.
+    if not all(part.isidentifier() for part in name.split(".")):
+        print(f"not a dotted name: {name}")
+        return 2
+    cmd = ["docker", "compose", "-p", "fleetchaser", "-f", str(COMPOSE_FILE), "run", "--rm",
+           "--no-deps", "-T", "--entrypoint", "python", "backend", "-c", INSPECT_PY, name]
+    p = run(cmd, cwd=REPO, timeout=300, env=compose_env(LIVE))
+    out = p.stdout if p.returncode == 0 else p.stdout + p.stderr[-2000:]
+    print(out[:60000])
+    return p.returncode
+
+
 def check(project_path: Path) -> tuple[bool, str]:
     """Run the investigate tests and an MCP stdio handshake. Returns (ok, report)."""
     limit = TEST_MINUTES * 60
@@ -260,20 +295,26 @@ Make the rebased branch work on current master with the smallest change:
 - Put fixes made after the rebase in a new commit, message
   "fix(investigate): <what> after rebase on master", ending with the line
   "Co-Authored-By: Claude <noreply@anthropic.com>".
+- To read installed library code (e.g. a changed SDK API), run
+  `{SELF} inspect <dotted.name>` (module or object, e.g. mcp.server.mcpserver.MCPServer.run).
 - Verify with `{SELF} test {SCRATCH}` until it passes. Never push, never touch other
   branches or worktrees, never edit files outside {SCRATCH}.
 - If it cannot be fixed safely, stop and say why in your final message.
 End with a short summary of what you changed."""
     env = {**os.environ, "GIT_EDITOR": "true"}
-    allowed = ["Read", "Edit", "Write", "Glob", "Grep",
+    # dontAsk denies anything not listed. Edits stay inside the scratch worktree (cwd), and
+    # rebase is limited to its three exact forms: `git rebase --exec` would run any command.
+    allowed = ["Read", "Glob", "Grep", "Edit(./**)",
                *(f"Bash(git {c}:*)" for c in ("status", "diff", "log", "show", "add", "rm",
-                                               "checkout", "restore", "rebase", "commit",
-                                               "ls-files", "merge-base", "rev-parse",
-                                               "cherry-pick")),
-               f"Bash({SELF} test:*)", "Bash(investigate-rebase test:*)"]
-    cmd = [CLAUDE, "-p", prompt, "--permission-mode", "acceptEdits",
-           "--allowedTools", *allowed,
-           "--disallowedTools", "Bash(git push:*)", "WebFetch", "WebSearch",
+                                               "checkout", "restore", "commit", "ls-files",
+                                               "merge-base", "rev-parse")),
+               *(f"Bash(git rebase --{c})" for c in ("continue", "skip", "abort")),
+               *(f"Bash({SELF} {c}:*)" for c in ("test", "inspect")),
+               "Bash(investigate-rebase test:*)", "Bash(investigate-rebase inspect:*)"]
+    denied = ["Bash(git push:*)", "Bash(git -c:*)", "Edit(./docker/.env)",
+              "WebFetch", "WebSearch"]
+    cmd = [CLAUDE, "-p", prompt, "--permission-mode", "dontAsk",
+           "--allowedTools", *allowed, "--disallowedTools", *denied,
            "--output-format", "text"]
     log(f"triage: starting Claude ({TRIAGE_MINUTES} min limit)")
     try:
@@ -387,6 +428,8 @@ def main() -> int:
         ok, report = check(Path(args[1]).resolve() if len(args) > 1 else Path.cwd())
         print(report)
         return 0 if ok else 1
+    if args[:1] == ["inspect"] and len(args) == 2:
+        return inspect_name(args[1])
     if args[:1] == ["status"]:
         p = STATE_DIR / "last.json"
         print(p.read_text() if p.exists() else "no runs yet")
