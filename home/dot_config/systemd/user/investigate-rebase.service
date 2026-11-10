@@ -1,0 +1,11 @@
+[Unit]
+Description=Rebase the investigate MCP branch onto origin/master (Claude triage on failure)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin
+ExecStart=%h/.local/bin/investigate-rebase
+TimeoutStartSec=90min
+Nice=10

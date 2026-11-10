@@ -1,0 +1,12 @@
+[Unit]
+Description=Check origin/master for the investigate MCP auto-rebase
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=10min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=investigate-rebase.service
+
+[Install]
+WantedBy=timers.target

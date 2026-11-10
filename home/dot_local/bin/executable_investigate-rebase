@@ -1,0 +1,426 @@
+#!/usr/bin/python3
+"""investigate-rebase — keep the investigate MCP branch rebased on origin/master.
+
+Runs from the systemd user timer `investigate-rebase.timer` (every 10 min). Each run:
+  1. `git fetch origin master`. If the branch already contains origin/master, exit quietly.
+  2. Rebase a detached copy of the branch in a scratch worktree
+     (~/Projects/backend/.claude/worktrees/investigate-autorebase), never in the live checkout.
+  3. Run the investigate test suite and a stdio MCP handshake against the scratch copy.
+  4. On a rebase conflict or failing check, run one headless Claude triage
+     (`claude -p`) in the scratch worktree to resolve it, then re-check everything itself.
+  5. Only when everything passes, move the live checkout (~/Projects/backend-investigate,
+     which the `investigate` MCP server runs from) to the new commit with `git reset --keep`.
+     It never pushes unless INVESTIGATE_REBASE_PUSH=1 (then --force-with-lease).
+
+Skips (no notification, retried next tick) while import-db is running or the fleetchaser DB
+container is down: test runs use `--no-deps`, so they never start the stack mid-restore.
+A master commit that failed once is not retried; the next master commit gets a fresh try.
+
+Usage:
+  investigate-rebase              one run (what the timer does)
+  investigate-rebase test [DIR]   tests + handshake for a checkout (default: cwd); the triage
+                                  session calls this too
+  investigate-rebase status       print the last run's marker
+Files: ~/.local/state/investigate-rebase/
+  last.json      terminal marker {outcome, exit_code, finished, ...}, written atomically last
+  history.jsonl  one line per run that did something
+  state.json     master commit that last failed (dedupe)
+  runs/*.log     full log of each run that did something (rebase, tests, Claude output)
+Config (env, set in the service unit or the shell):
+  INVESTIGATE_REBASE_PUSH=0          1 = force-with-lease push the branch after success
+  INVESTIGATE_REBASE_TRIAGE=1        0 = never run Claude, just report the failure
+  INVESTIGATE_REBASE_TRIAGE_MINUTES=45   wall-clock limit for the Claude triage
+  INVESTIGATE_REBASE_TEST_MINUTES=20     limit for one test + handshake run
+  INVESTIGATE_REBASE_NOTIFY=1        0 = no Moshi notifications
+  INVESTIGATE_REBASE_CLAUDE=~/.local/share/mise/installs/claude/latest/claude
+  INVESTIGATE_REBASE_BRANCH / _LIVE / _STATE_DIR   point a test run at a throwaway branch,
+                                  its checkout and its own state dir
+Notifies the Moshi inbox on: triage fixed it, failure, live checkout dirty. Clean rebases are
+logged only. Chezmoi-managed: home/dot_local/bin/executable_investigate-rebase (DLCO-1 only).
+"""
+
+import datetime
+import fcntl
+import json
+import os
+import select
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path.home()
+REPO = HOME / "Projects" / "backend"
+LIVE = Path(os.environ.get("INVESTIGATE_REBASE_LIVE", HOME / "Projects" / "backend-investigate"))
+SCRATCH = REPO / ".claude" / "worktrees" / "investigate-autorebase"
+BRANCH = os.environ.get("INVESTIGATE_REBASE_BRANCH", "dmitrylito/investigate-mcp-release")
+BASE = "origin/master"
+STATE_DIR = Path(os.environ.get("INVESTIGATE_REBASE_STATE_DIR",
+                                HOME / ".local" / "state" / "investigate-rebase"))
+COMPOSE_FILE = REPO / "docker" / "docker-compose.yml"
+DB_CONTAINER = "fleetchaser-db-1"
+
+PUSH = os.environ.get("INVESTIGATE_REBASE_PUSH", "0") == "1"
+TRIAGE = os.environ.get("INVESTIGATE_REBASE_TRIAGE", "1") == "1"
+TRIAGE_MINUTES = int(os.environ.get("INVESTIGATE_REBASE_TRIAGE_MINUTES", "45"))
+TEST_MINUTES = int(os.environ.get("INVESTIGATE_REBASE_TEST_MINUTES", "20"))
+NOTIFY = os.environ.get("INVESTIGATE_REBASE_NOTIFY", "1") == "1"
+CLAUDE = os.environ.get(
+    "INVESTIGATE_REBASE_CLAUDE",
+    str(HOME / ".local" / "share" / "mise" / "installs" / "claude" / "latest" / "claude"),
+)
+SELF = HOME / ".local" / "bin" / "investigate-rebase"
+
+LOG_LINES: list[str] = []
+
+
+def log(msg: str) -> None:
+    line = f"{datetime.datetime.now().isoformat(timespec='seconds')} {msg}"
+    LOG_LINES.append(line)
+    print(line, flush=True)
+
+
+def run(cmd: list[str], cwd: Path | None = None, timeout: int | None = None,
+        env: dict | None = None, stdin: str | None = None) -> subprocess.CompletedProcess:
+    p = subprocess.run(cmd, cwd=cwd, timeout=timeout, env=env, input=stdin,
+                       capture_output=True, text=True)
+    return p
+
+
+def git(*args: str, cwd: Path = REPO) -> str:
+    p = run(["git", *args], cwd=cwd)
+    if p.returncode:
+        raise RuntimeError(f"git {' '.join(args)} failed: {p.stderr.strip()}")
+    return p.stdout.strip()
+
+
+def git_ok(*args: str, cwd: Path = REPO) -> bool:
+    return run(["git", *args], cwd=cwd).returncode == 0
+
+
+def compose_env(project_path: Path) -> dict:
+    # Background shells can inherit ops-center's COMPOSE_* vars; those once pointed this
+    # compose file at the production ops-db stack.
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("COMPOSE_PROJECT_NAME", "COMPOSE_FILE", "COMPOSE_ENV_FILES")}
+    env["PROJECT_PATH"] = str(project_path)
+    return env
+
+
+def compose_run(project_path: Path, args: list[str], timeout: int,
+                stdin: str | None = None) -> subprocess.CompletedProcess:
+    cmd = ["docker", "compose", "-p", "fleetchaser", "-f", str(COMPOSE_FILE),
+           "run", "--rm", "--no-deps", "-T", "backend", *args]
+    return run(cmd, cwd=REPO, timeout=timeout, env=compose_env(project_path), stdin=stdin)
+
+
+HANDSHAKE = "\n".join(json.dumps(m) for m in [
+    {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+     "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "investigate-rebase", "version": "0"}}},
+    {"jsonrpc": "2.0", "method": "notifications/initialized"},
+    {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+]) + "\n"
+
+
+def handshake(project_path: Path, timeout: int = 300) -> tuple[list | None, str]:
+    # stdin must stay open until tools/list is answered: on EOF the server exits without
+    # replying to requests still in flight.
+    cmd = ["docker", "compose", "-p", "fleetchaser", "-f", str(COMPOSE_FILE),
+           "run", "--rm", "--no-deps", "-T", "backend", "python", "manage.py", "investigate_mcp"]
+    p = subprocess.Popen(cmd, cwd=REPO, env=compose_env(project_path),
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT)
+    seen: list[str] = []
+    tools = None
+    buf = b""
+    deadline = time.monotonic() + timeout
+    try:
+        p.stdin.write(HANDSHAKE.encode())
+        p.stdin.flush()
+        fd = p.stdout.fileno()
+        while tools is None and time.monotonic() < deadline:
+            ready, _, _ = select.select([fd], [], [], 5)
+            if not ready:
+                if p.poll() is not None:
+                    break
+                continue
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            buf += chunk
+            *lines, buf = buf.split(b"\n")
+            for raw in lines:
+                line = raw.decode(errors="replace")
+                seen.append(line)
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(msg, dict) and msg.get("id") == 2:
+                    tools = msg.get("result", {}).get("tools")
+    finally:
+        try:
+            p.stdin.close()
+        except OSError:
+            pass
+        try:
+            p.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            p.kill()
+    return tools, "\n".join(seen)
+
+
+def check(project_path: Path) -> tuple[bool, str]:
+    """Run the investigate tests and an MCP stdio handshake. Returns (ok, report)."""
+    limit = TEST_MINUTES * 60
+    try:
+        t = compose_run(project_path, ["python", "manage.py", "test", "--keepdb", "--noinput",
+                                       "investigate"], timeout=limit)
+    except subprocess.TimeoutExpired:
+        return False, f"tests timed out after {TEST_MINUTES} min"
+    test_out = (t.stdout + t.stderr).strip().splitlines()
+    report = "\n".join(test_out[-60:])
+    if t.returncode:
+        return False, f"TESTS FAILED (exit {t.returncode})\n{report}"
+    tools, seen = handshake(project_path)
+    if not tools:
+        return False, f"MCP HANDSHAKE FAILED\n{seen[-4000:]}"
+    not_ro = [t["name"] for t in tools if not (t.get("annotations") or {}).get("readOnlyHint")]
+    if not_ro:
+        return False, f"MCP tools not marked read-only: {not_ro}"
+    names = ", ".join(t["name"] for t in tools)
+    ran = next((ln for ln in reversed(test_out) if ln.startswith("Ran ")), "Ran ? tests")
+    return True, f"tests OK ({ran}); handshake OK: {names}"
+
+
+def notify(title: str, body: str, error: bool) -> None:
+    if not NOTIFY:
+        return
+    cmd = [str(HOME / ".local" / "bin" / "moshi-hook"), "notify", "--source",
+           "investigate-rebase", "--title", title]
+    if error:
+        cmd.append("--error")
+    try:
+        # systemd/cron may lack XDG_RUNTIME_DIR; moshi-hook finds its daemon socket through it.
+        env = {"XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}", **os.environ}
+        subprocess.run(cmd + ["--strict"], input=body, text=True, timeout=120, env=env)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log(f"notify failed: {e}")
+
+
+def write_json_atomic(path: Path, data: dict) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    os.replace(tmp, path)
+
+
+def import_db_running() -> bool:
+    return run(["pgrep", "-f", str(HOME / ".local" / "bin" / "import-db")]).returncode == 0
+
+
+def db_up() -> bool:
+    p = run(["docker", "inspect", "-f", "{{.State.Running}}", DB_CONTAINER])
+    return p.returncode == 0 and p.stdout.strip() == "true"
+
+
+def rebase_in_progress(path: Path) -> bool:
+    gitdir = Path(git("rev-parse", "--git-dir", cwd=path))
+    if not gitdir.is_absolute():
+        gitdir = path / gitdir
+    return (gitdir / "rebase-merge").exists() or (gitdir / "rebase-apply").exists()
+
+
+def make_scratch(tip: str) -> None:
+    if SCRATCH.exists():
+        run(["git", "rebase", "--abort"], cwd=SCRATCH)
+        git("worktree", "remove", "--force", str(SCRATCH))
+    git("worktree", "prune")
+    git("worktree", "add", "--detach", str(SCRATCH), tip)
+    env_link = SCRATCH / "docker" / ".env"
+    if not env_link.exists():
+        env_link.symlink_to(REPO / "docker" / ".env")
+
+
+def triage(master: str, problem: str) -> str:
+    prompt = f"""You are an unattended maintenance run in a detached git worktree at {SCRATCH}.
+It holds the branch {BRANCH} (the local-only 'investigate' MCP server: the investigate/ Django
+app, its management command, .mcp.json and settings registration) being rebased onto
+{BASE} ({master[:12]}). The automatic step failed:
+
+{problem}
+
+Make the rebased branch work on current master with the smallest change:
+- If a rebase is in progress, resolve every conflict and finish it with `git rebase --continue`
+  (GIT_EDITOR is already set to `true`). For uv.lock take master's version
+  (`git checkout --ours uv.lock` during a rebase) and keep master's dependency pins in
+  pyproject.toml, dropping any older duplicate the branch adds.
+- If master changed an API the branch uses (for example the MCP SDK), port the branch's code;
+  do not change master's code outside what the branch already touches.
+- Put fixes made after the rebase in a new commit, message
+  "fix(investigate): <what> after rebase on master", ending with the line
+  "Co-Authored-By: Claude <noreply@anthropic.com>".
+- Verify with `{SELF} test {SCRATCH}` until it passes. Never push, never touch other
+  branches or worktrees, never edit files outside {SCRATCH}.
+- If it cannot be fixed safely, stop and say why in your final message.
+End with a short summary of what you changed."""
+    env = {**os.environ, "GIT_EDITOR": "true"}
+    allowed = ["Read", "Edit", "Write", "Glob", "Grep",
+               *(f"Bash(git {c}:*)" for c in ("status", "diff", "log", "show", "add", "rm",
+                                               "checkout", "restore", "rebase", "commit",
+                                               "ls-files", "merge-base", "rev-parse",
+                                               "cherry-pick")),
+               f"Bash({SELF} test:*)", "Bash(investigate-rebase test:*)"]
+    cmd = [CLAUDE, "-p", prompt, "--permission-mode", "acceptEdits",
+           "--allowedTools", *allowed,
+           "--disallowedTools", "Bash(git push:*)", "WebFetch", "WebSearch",
+           "--output-format", "text"]
+    log(f"triage: starting Claude ({TRIAGE_MINUTES} min limit)")
+    try:
+        p = subprocess.run(cmd, cwd=SCRATCH, env=env, capture_output=True, text=True,
+                           timeout=TRIAGE_MINUTES * 60, stdin=subprocess.DEVNULL)
+        out = (p.stdout + ("\n" + p.stderr if p.stderr.strip() else "")).strip()
+        log(f"triage: Claude exited {p.returncode}\n{out}")
+        return out
+    except subprocess.TimeoutExpired:
+        log(f"triage: Claude timed out after {TRIAGE_MINUTES} min")
+        return f"Claude timed out after {TRIAGE_MINUTES} min"
+
+
+def one_run() -> dict:
+    result: dict = {"branch": BRANCH}
+    git("fetch", "-q", "origin", "master")
+    master = git("rev-parse", BASE)
+    tip = git("rev-parse", BRANCH)
+    result.update(master=master, branch_before=tip)
+
+    if git_ok("merge-base", "--is-ancestor", master, tip):
+        return {**result, "outcome": "up_to_date", "quiet": True}
+
+    state_path = STATE_DIR / "state.json"
+    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    if state.get("failed_master") == master:
+        return {**result, "outcome": "skipped_failed_before", "quiet": True}
+
+    if import_db_running() or not db_up():
+        return {**result, "outcome": "deferred_db_unavailable", "quiet": True}
+
+    live_dirty = git("status", "--porcelain", cwd=LIVE)
+    live_branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=LIVE)
+    if live_dirty or live_branch != BRANCH:
+        if state.get("dirty_master") != master:
+            state["dirty_master"] = master
+            write_json_atomic(state_path, state)
+            notify("investigate-rebase: live checkout not clean",
+                   f"{LIVE} is on {live_branch} with changes:\n{live_dirty[:1500]}\n"
+                   "Skipping until it is clean.", error=True)
+        return {**result, "outcome": "skipped_live_dirty"}
+
+    log(f"rebasing {BRANCH} ({tip[:9]}) onto {BASE} ({master[:9]})")
+    make_scratch(tip)
+    reb = run(["git", "rebase", BASE], cwd=SCRATCH, env={**os.environ, "GIT_EDITOR": "true"})
+    log(f"rebase exit {reb.returncode}\n{(reb.stdout + reb.stderr)[-4000:]}")
+
+    triaged = False
+    triage_out = ""
+    if reb.returncode:
+        problem = "git rebase stopped with conflicts:\n" + run(
+            ["git", "status", "--short"], cwd=SCRATCH).stdout[-4000:]
+        ok, report = False, problem
+    else:
+        ok, report = check(SCRATCH)
+        log(f"check: {'OK' if ok else 'FAILED'}\n{report}")
+        problem = report
+
+    if not ok and TRIAGE:
+        triaged = True
+        triage_out = triage(master, problem)
+        if rebase_in_progress(SCRATCH):
+            ok, report = False, "rebase still in progress after triage"
+        elif not git_ok("merge-base", "--is-ancestor", master, "HEAD", cwd=SCRATCH):
+            ok, report = False, "scratch HEAD does not contain origin/master after triage"
+        elif git("status", "--porcelain", "--untracked-files=no", cwd=SCRATCH):
+            ok, report = False, "uncommitted changes left after triage"
+        else:
+            ok, report = check(SCRATCH)
+        log(f"post-triage check: {'OK' if ok else 'FAILED'}\n{report}")
+
+    result.update(triaged=triaged, report=report[-2000:])
+    if not ok:
+        state["failed_master"] = master
+        write_json_atomic(state_path, state)
+        notify("investigate-rebase FAILED",
+               f"{BRANCH} onto master {master[:9]}: {report[-800:]}\n"
+               f"Scratch kept at {SCRATCH}; live checkout untouched.\n"
+               f"Claude: {triage_out[-600:]}", error=True)
+        return {**result, "outcome": "failed", "exit_code": 1}
+
+    new = git("rev-parse", "HEAD", cwd=SCRATCH)
+    if git("rev-parse", BRANCH) != tip or git("status", "--porcelain", cwd=LIVE):
+        return {**result, "outcome": "failed", "exit_code": 1,
+                "report": "branch or live checkout changed during the run; not updating"}
+    git("reset", "--keep", new, cwd=LIVE)
+    result["branch_after"] = new
+    log(f"live checkout {LIVE} moved {tip[:9]} -> {new[:9]}")
+    git("worktree", "remove", "--force", str(SCRATCH))
+
+    if PUSH:
+        remote_tip = git("rev-parse", f"origin/{BRANCH}")
+        p = run(["git", "push", f"--force-with-lease={BRANCH}:{remote_tip}", "origin", BRANCH],
+                cwd=LIVE)
+        result["pushed"] = p.returncode == 0
+        log(f"push exit {p.returncode}: {p.stderr.strip()}")
+
+    state.pop("failed_master", None)
+    state.pop("dirty_master", None)
+    write_json_atomic(state_path, state)
+    if triaged:
+        notify("investigate-rebase: Claude fixed the rebase",
+               f"{BRANCH} now on master {master[:9]} ({new[:9]}).\n{triage_out[-1200:]}",
+               error=False)
+    return {**result, "outcome": "rebased_with_triage" if triaged else "rebased"}
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if args[:1] == ["test"]:
+        ok, report = check(Path(args[1]).resolve() if len(args) > 1 else Path.cwd())
+        print(report)
+        return 0 if ok else 1
+    if args[:1] == ["status"]:
+        p = STATE_DIR / "last.json"
+        print(p.read_text() if p.exists() else "no runs yet")
+        return 0
+
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    (STATE_DIR / "runs").mkdir(exist_ok=True)
+    lock = open(STATE_DIR / "lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("another run holds the lock")
+        return 0
+
+    started = datetime.datetime.now().isoformat(timespec="seconds")
+    try:
+        result = one_run()
+    except Exception as e:  # report every unexpected failure through the marker + notify
+        log(f"error: {type(e).__name__}: {e}")
+        result = {"outcome": "error", "exit_code": 1, "report": f"{type(e).__name__}: {e}"}
+        notify("investigate-rebase error", result["report"], error=True)
+    result.setdefault("exit_code", 0)
+    result.update(started=started,
+                  finished=datetime.datetime.now().isoformat(timespec="seconds"))
+    quiet = result.pop("quiet", False)
+    write_json_atomic(STATE_DIR / "last.json", result)
+    if not quiet:
+        stamp = started.replace(":", "")
+        (STATE_DIR / "runs" / f"{stamp}.log").write_text("\n".join(LOG_LINES) + "\n")
+        with open(STATE_DIR / "history.jsonl", "a") as f:
+            f.write(json.dumps(result) + "\n")
+    print(f"{result['outcome']} (exit {result['exit_code']})")
+    return result["exit_code"]
+
+
+if __name__ == "__main__":
+    sys.exit(main())

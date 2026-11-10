@@ -232,6 +232,11 @@ docker-appdata/caddy/
 .local/bin/camera-sim-check
 # Nightly list of trackers silent 24h+ after import-db (cron 06:45).
 .local/bin/tracker-checkin-check
+# Keeps the investigate MCP branch rebased on master (systemd timer, Claude triage).
+.local/bin/investigate-rebase
+.config/systemd/user/investigate-rebase.service
+.config/systemd/user/investigate-rebase.timer
+.config/systemd/user/timers.target.wants/investigate-rebase.timer
 {{ end }}
 {{ if ne .chezmoi.hostname "DLCO-3" }}
 {{ range list "seerr" "prowlarr" "flaresolverr" "homepage" "audiobookshelf" "calibre-web" "shelfmark" "matter-server" "scrypted" }}
