@@ -218,6 +218,10 @@ def check(project_path: Path) -> tuple[bool, str]:
     report = "\n".join(test_out[-60:])
     if t.returncode:
         return False, f"TESTS FAILED (exit {t.returncode})\n{report}"
+    for lint in (["ruff", "check", "investigate"], ["ruff", "format", "--check", "investigate"]):
+        r = compose_run(project_path, lint, timeout=300)
+        if r.returncode:
+            return False, f"{' '.join(lint)} FAILED\n{(r.stdout + r.stderr)[-3000:]}"
     tools, seen = handshake(project_path)
     if not tools:
         return False, f"MCP HANDSHAKE FAILED\n{seen[-4000:]}"
@@ -301,7 +305,11 @@ Make the rebased branch work on current master with the smallest change:
   branches or worktrees, never edit files outside {SCRATCH}.
 - If it cannot be fixed safely, stop and say why in your final message.
 End with a short summary of what you changed."""
-    env = {**os.environ, "GIT_EDITOR": "true"}
+    # No git hooks or fsmonitor in the triage session: they run whatever the worktree says.
+    # check() runs ruff itself instead of the pre-commit hook.
+    env = {**os.environ, "GIT_EDITOR": "true", "GIT_CONFIG_COUNT": "2",
+           "GIT_CONFIG_KEY_0": "core.hooksPath", "GIT_CONFIG_VALUE_0": "/dev/null",
+           "GIT_CONFIG_KEY_1": "core.fsmonitor", "GIT_CONFIG_VALUE_1": ""}
     # dontAsk denies anything not listed. Edits stay inside the scratch worktree (cwd), and
     # rebase is limited to its three exact forms: `git rebase --exec` would run any command.
     allowed = ["Read", "Glob", "Grep", "Edit(./**)",
@@ -311,8 +319,13 @@ End with a short summary of what you changed."""
                *(f"Bash(git rebase --{c})" for c in ("continue", "skip", "abort")),
                *(f"Bash({SELF} {c}:*)" for c in ("test", "inspect")),
                "Bash(investigate-rebase test:*)", "Bash(investigate-rebase inspect:*)"]
-    denied = ["Bash(git push:*)", "Bash(git -c:*)", "Edit(./docker/.env)",
-              "WebFetch", "WebSearch"]
+    # git options that write files or point git elsewhere would escape the worktree; a
+    # rule only matches the command as written, so `git -C . push` needs its own deny.
+    denied = ["Bash(git push:*)", "Bash(git -c:*)", "Bash(git -C:*)",
+              *(f"Bash(git *{o}*)" for o in ("--output", "--git-dir", "--work-tree",
+                                              "--exec", "push")),
+              "Edit(./docker/.env)", "Edit(./.git)", "Edit(./.git/**)",
+              "Edit(./.pre-commit-config.yaml)", "WebFetch", "WebSearch"]
     cmd = [CLAUDE, "-p", prompt, "--permission-mode", "dontAsk",
            "--allowedTools", *allowed, "--disallowedTools", *denied,
            "--output-format", "text"]
