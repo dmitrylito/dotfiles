@@ -132,6 +132,11 @@ copy_on_select = true
 # Written by herdr's settings UI; keep in sync here or apply stomps it
 agent_panel_sort = "spaces"
 
+# Desktop popup when a background agent finishes or needs approval. herdr's
+# default is "off", which left DLCO-1 approval prompts with no signal at all.
+[ui.toast]
+delivery = "system"
+
 # "copied to clipboard" toast off — it flashes on every copy-mode yank and mouse
 # selection with copy_on_select
 [ui.toast.clipboard]
