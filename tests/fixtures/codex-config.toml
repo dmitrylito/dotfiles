@@ -3,6 +3,7 @@ approval_policy = "on-request"
 [tui]
 status_line = ["current-dir"]
 animations = false
+show_tooltips = false
 alternate_screen = "never"
 
 [tui.keymap.composer]
