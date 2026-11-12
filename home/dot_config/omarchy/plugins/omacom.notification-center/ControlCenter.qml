@@ -240,32 +240,23 @@ ColumnLayout {
   // after a toggle still reports the old state.
   property double nightHoldUntil: 0
 
+  // In-process, not omarchy-shell: each of its calls leaks a Socket in the
+  // shell until exit (see BarWidget.qml pollState).
   function refreshNight() {
-    if (nightProc.running || Date.now() < nightHoldUntil) return
-    nightProc.running = true
+    if (Date.now() < nightHoldUntil) return
+    var result = IpcRegistry.call("nightlight", "status", [])
+    try {
+      nightOn = !!JSON.parse(result.ran ? result.output : "").enabled
+      nightKnown = true
+    } catch (e) {
+      nightKnown = false
+    }
   }
 
   function toggleNight() {
     nightOn = !nightOn
     nightHoldUntil = Date.now() + 1500
     Quickshell.execDetached(["omarchy-shell", "-q", "nightlight", nightOn ? "enable" : "disable"])
-  }
-
-  Process {
-    id: nightProc
-    command: ["omarchy-shell", "nightlight", "status"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (Date.now() < cc.nightHoldUntil) return
-        try {
-          cc.nightOn = !!JSON.parse(text).enabled
-          cc.nightKnown = true
-        } catch (e) {
-          cc.nightKnown = false
-        }
-      }
-    }
   }
 
   // --------------------------------------------------------------- audio

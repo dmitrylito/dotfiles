@@ -1,10 +1,13 @@
 import QtQuick
 import Quickshell
-import Quickshell.Io
+import qs.Commons
 import qs.Ui
 
 // A bar-widget gets no first-party service proxies (omarchy only hands those to
 // kind "bar" plugins), so this talks to the nightlight service over IPC.
+// Polls call the handler in-process through IpcRegistry: every omarchy-shell
+// call leaves a Socket in the shell that is only freed at exit, and a day of
+// 3s polls made shell restarts (omarchy update) hang for minutes.
 BarIndicator {
   id: root
 
@@ -20,7 +23,10 @@ BarIndicator {
   inactiveTooltipText: "Night Light"
 
   function refresh() {
-    if (!statusProc.running && Date.now() >= holdUntil) statusProc.running = true
+    if (Date.now() < holdUntil) return
+    var result = IpcRegistry.call("nightlight", "status", [])
+    if (!result.ran) return
+    try { enabledNow = !!JSON.parse(result.output).enabled } catch (e) {}
   }
 
   function toggle() {
@@ -42,18 +48,6 @@ BarIndicator {
     running: true
     repeat: true
     onTriggered: root.refresh()
-  }
-
-  Process {
-    id: statusProc
-    command: ["omarchy-shell", "nightlight", "status"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (Date.now() < root.holdUntil) return
-        try { root.enabledNow = !!JSON.parse(text).enabled } catch (e) {}
-      }
-    }
   }
 
   onPressed: function() { root.toggle() }

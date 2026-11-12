@@ -273,30 +273,40 @@ BarWidget {
   }
 
   // No signal from the service reaches a bar-widget, so poll the two pieces of
-  // its state we need: one file per on-screen toast, and the DND setting.
+  // its state we need: the on-screen toast count, and the DND setting.
+  // Polls call the handler in-process through IpcRegistry: every omarchy-shell
+  // call leaves a Socket in the shell that is only freed at exit, and a day of
+  // 3s polls made shell restarts (omarchy update) hang for minutes.
+  property string polledCount: "0"
+
+  function pollState() {
+    var count = IpcRegistry.call("notifications", "count", [])
+    polledCount = count.ran && count.output.length > 0 ? count.output : "0"
+    var dndState = IpcRegistry.call("notifications", "isDnd", [])
+    var state = dndState.ran ? dndState.output.trim() : ""
+    if (state === "on" || state === "off") loadState(polledCount + "\n" + (state === "on" ? "dnd" : "ok"))
+    else if (!quietProc.running) quietProc.running = true
+  }
+
   Timer {
     interval: 3000
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: if (!stateProc.running) stateProc.running = true
+    onTriggered: root.pollState()
   }
 
+  // The service writes quiet.json 250ms after a change, so the file lags a
+  // toggle; it is read only while the service is down.
   Process {
-    id: stateProc
+    id: quietProc
     running: false
     command: ["bash", "-c",
-      "omarchy-shell notifications count 2>/dev/null || echo 0\n" +
-      // The service writes quiet.json 250ms after a change, so the file lags a
-      // toggle; ask the service, and read the file only if it is down.
-      "case $(omarchy-shell notifications isDnd 2>/dev/null) in\n" +
-      "  on) echo dnd ;; off) echo ok ;;\n" +
-      "  *) grep -qs '\"dnd\"[[:space:]]*:[[:space:]]*true' \"$1\" && echo dnd || echo ok ;;\n" +
-      "esac",
+      "grep -qs '\"dnd\"[[:space:]]*:[[:space:]]*true' \"$1\" && echo dnd || echo ok",
       "--", root.quietPath]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.loadState(text)
+      onStreamFinished: root.loadState(root.polledCount + "\n" + text)
     }
   }
 
