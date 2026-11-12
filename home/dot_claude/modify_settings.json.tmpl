@@ -213,8 +213,6 @@ BASELINE = {
             "Bash(git push *--force*)",
             "Bash(git push * -f*)",
             "Bash(git push *--mirror*)",
-            "Bash(git push *--delete*)",
-            "Bash(git push * -d *)",
             "Bash(git push * +*)",
             "Bash(gh pr merge *--admin*)",
             "Bash(docker exec ops-backend *flush*)",
@@ -454,12 +452,21 @@ def merge_auto_mode(live, baseline):
                 rules.append(rule)
 
 
+# enforce_allow only adds, so a rule dropped from BASELINE survives in the live file
+# until it is listed here. Remote branch deletion is post-merge cleanup, pre-authorized.
+REMOVED_PERMISSION_RULES = {
+    "ask": ("Bash(git push *--delete*)", "Bash(git push * -d *)"),
+}
+
+
 def enforce_allow(live, baseline):
     permissions = live.setdefault("permissions", {})
     for kind in ("allow", "ask"):
         rules = permissions.get(kind)
         if not isinstance(rules, list):
             rules = permissions[kind] = []
+        removed = REMOVED_PERMISSION_RULES.get(kind, ())
+        rules[:] = [r for r in rules if r not in removed]
         for rule in baseline.get(kind, []):
             if rule not in rules:
                 rules.append(rule)
