@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+# Mirror Claude Code background sessions into a dedicated herdr session, one tab per
+# session, grouped into one workspace per project directory, so a phone (Moshi) can
+# switch between agents from herdr's workspace/tab list.
+#
+# Usage:
+#   herdr-agent-tabs              reconcile forever (herdr-agent-tabs.service runs this)
+#   herdr-agent-tabs --once       one reconcile pass, then exit
+#   herdr-agent-tabs pane <id>    pane body: attach to the session, wait for Enter
+#                                 between attaches (the reconciler starts this itself)
+# Attach from any terminal: `herdr session attach agents`.
+#
+# Env:
+#   HERDR_AGENT_TABS_SESSION   herdr session name (default: agents)
+#   HERDR_AGENT_TABS_INTERVAL  seconds between passes (default: 3)
+#
+# Semantics: every session `claude agents --json --all` lists as background gets a tab;
+# the tab closes when the session leaves that list (`claude rm`, or delete in agent
+# view). Closing a tab by hand does not stick: it comes back on the next pass. A stopped
+# session's tab does not attach until Enter, because `claude attach` restarts it.
+#
+# The herdr session is owned entirely by this script. herdr-agents.service deletes its
+# saved layout before each start, so herdr never restores these panes by resuming
+# `claude --resume <id>` in the foreground next to the still-running background job.
+import json
+import os
+import random
+import socket
+import subprocess
+import sys
+import time
+
+SESSION = os.environ.get("HERDR_AGENT_TABS_SESSION", "agents")
+INTERVAL = float(os.environ.get("HERDR_AGENT_TABS_INTERVAL", "3"))
+HERDR = next((p for p in (os.path.expanduser("~/.local/bin/herdr"), "/usr/bin/herdr")
+              if os.path.exists(p)), "herdr")
+CLAUDE = next((p for p in (os.path.expanduser("~/.local/bin/claude"), "/usr/bin/claude")
+               if os.path.exists(p)), "claude")
+SOCKET = os.path.expanduser(f"~/.config/herdr/sessions/{SESSION}/herdr.sock")
+STATE = os.path.expanduser(f"~/.local/state/herdr-agent-tabs/{SESSION}.json")
+SELF = os.path.abspath(__file__)
+LABEL_MAX = 28
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def herdr(*args):
+    out = subprocess.run([HERDR, "--session", SESSION, *args], capture_output=True, text=True)
+    if out.returncode:
+        raise RuntimeError(f"herdr {' '.join(args)}: {out.stderr.strip()}")
+    return json.loads(out.stdout)["result"] if out.stdout.strip() else {}
+
+
+def background_sessions():
+    out = subprocess.run([CLAUDE, "agents", "--json", "--all"], capture_output=True, text=True,
+                         cwd=os.path.expanduser("~"))
+    if out.returncode:
+        raise RuntimeError(f"claude agents: {out.stderr.strip()}")
+    return {s["id"]: s for s in json.loads(out.stdout)
+            if s.get("kind") == "background" and s.get("id")}
+
+
+def project_dir(cwd):
+    return cwd.split("/.claude/worktrees/", 1)[0].rstrip("/") or "/"
+
+
+def workspace_label(directory):
+    return "home" if directory == os.path.expanduser("~") else os.path.basename(directory)
+
+
+def tab_label(job):
+    name = (job.get("name") or job["id"]).strip()
+    return name if len(name) <= LABEL_MAX else name[:LABEL_MAX - 1] + "…"
+
+
+def server_identity():
+    st = os.stat(SOCKET)
+    return f"{st.st_ino}:{st.st_mtime_ns}"
+
+
+def load_state(identity):
+    try:
+        with open(STATE) as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        state = {}
+    if state.get("server") != identity:
+        state = {"server": identity, "tabs": {}, "workspaces": {}}
+    return state
+
+
+def save_state(state):
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    tmp = STATE + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(state, fh, indent=1, sort_keys=True)
+    os.replace(tmp, STATE)
+
+
+def report_agent_session(pane_id, session_id):
+    # The Moshi gateway keys a pane's chat on herdr's agent_session. herdr's own Claude
+    # hook sets it only at SessionStart inside the pane, which never happens for an
+    # attached background session.
+    request = {"id": f"herdr-agent-tabs:{random.randrange(10**9)}",
+               "method": "pane.report_agent_session",
+               "params": {"pane_id": pane_id, "source": "herdr:claude", "agent": "claude",
+                          "seq": time.time_ns(), "agent_session_id": session_id}}
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+        client.settimeout(3)
+        client.connect(SOCKET)
+        client.sendall((json.dumps(request) + "\n").encode())
+        client.recv(4096)
+
+
+def open_tab(state, live_workspaces, job):
+    directory = project_dir(job["cwd"])
+    workspace_id = state["workspaces"].get(directory)
+    if workspace_id in live_workspaces:
+        created = herdr("tab", "create", "--workspace", workspace_id, "--cwd", job["cwd"],
+                        "--no-focus")
+    else:
+        created = herdr("workspace", "create", "--cwd", job["cwd"],
+                        "--label", workspace_label(directory), "--no-focus")
+        workspace_id = created["workspace"]["workspace_id"]
+        state["workspaces"][directory] = workspace_id
+        live_workspaces.add(workspace_id)
+    tab_id = created["tab"]["tab_id"]
+    pane_id = created["root_pane"]["pane_id"]
+    herdr("tab", "rename", tab_id, tab_label(job))
+    herdr("pane", "run", pane_id, f"exec {SELF} pane {job['id']}")
+    return {"tab": tab_id, "pane": pane_id, "label": tab_label(job), "reported": None}
+
+
+def reconcile(state):
+    jobs = background_sessions()
+    live_workspaces = {w["workspace_id"] for w in herdr("workspace", "list")["workspaces"]}
+    live_tabs = {t["tab_id"] for t in herdr("tab", "list")["tabs"]}
+    panes = {p["pane_id"]: p for p in herdr("pane", "list")["panes"]}
+
+    for job_id in [j for j in state["tabs"] if j not in jobs]:
+        tab_id = state["tabs"].pop(job_id)["tab"]
+        if tab_id in live_tabs:
+            herdr("tab", "close", tab_id)
+            log(f"closed {tab_id} for removed session {job_id}")
+
+    for job_id, job in jobs.items():
+        entry = state["tabs"].get(job_id)
+        if not entry or entry["tab"] not in live_tabs:
+            entry = state["tabs"][job_id] = open_tab(state, live_workspaces, job)
+            log(f"opened {entry['tab']} for {job_id} ({entry['label']})")
+        if entry["label"] != tab_label(job):
+            entry["label"] = tab_label(job)
+            herdr("tab", "rename", entry["tab"], entry["label"])
+        reported = ((panes.get(entry["pane"]) or {}).get("agent_session") or {}).get("value")
+        if reported != job["sessionId"] and entry["pane"] in panes:
+            report_agent_session(entry["pane"], job["sessionId"])
+
+    state["workspaces"] = {d: w for d, w in state["workspaces"].items() if w in live_workspaces}
+
+
+def run_forever():
+    while True:
+        try:
+            state = load_state(server_identity())
+            reconcile(state)
+            save_state(state)
+        except Exception as exc:  # noqa: BLE001 — a transient herdr/claude failure must not kill the loop
+            log(f"pass failed: {exc}")
+        time.sleep(INTERVAL)
+
+
+def pane_body(job_id):
+    def job():
+        try:
+            return background_sessions().get(job_id)
+        except RuntimeError:
+            return None
+
+    reopen = False
+    while True:
+        current = job()
+        if current is None:
+            time.sleep(2)
+            continue
+        if current.get("pid") or reopen:
+            subprocess.run([CLAUDE, "attach", job_id])
+            reopen = False
+            current = job() or current
+        if current.get("pid"):
+            prompt = "Detached. Enter to reattach"
+        else:
+            reopen = True
+            prompt = "Session stopped. Enter to reopen it"
+        print(f"\n{current.get('name') or job_id}: {prompt}.", flush=True)
+        try:
+            input()
+        except EOFError:
+            return
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "pane":
+        pane_body(sys.argv[2])
+    elif sys.argv[1:] == ["--once"]:
+        state = load_state(server_identity())
+        reconcile(state)
+        save_state(state)
+    elif not sys.argv[1:]:
+        run_forever()
+    else:
+        sys.exit("usage: herdr-agent-tabs [--once | pane <id>]")

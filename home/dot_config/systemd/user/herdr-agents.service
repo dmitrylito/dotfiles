@@ -1,0 +1,19 @@
+# Headless herdr session "agents": one tab per Claude background session, filled and
+# emptied by herdr-agent-tabs.service. Attach with `herdr session attach agents`.
+#
+# The saved layout is deleted before every start: the session is derived state, and a
+# restored pane would resume `claude --resume <id>` in the foreground beside the
+# still-running background job.
+[Unit]
+Description=Herdr session for Claude background agents
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/bin/rm -rf %h/.config/herdr/sessions/agents/session.json %h/.config/herdr/sessions/agents/session-snapshots
+ExecStart=%h/.local/bin/herdr --session agents server
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

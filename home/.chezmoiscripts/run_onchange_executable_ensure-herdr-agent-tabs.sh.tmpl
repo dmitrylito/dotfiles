@@ -1,0 +1,24 @@
+{{- if and (eq .chezmoi.os "linux") (not (dig "debug" false .)) -}}
+#!/bin/sh
+# Enable and (re)start the herdr "agents" session and its tab mirror.
+#
+# Usage: not run by hand. chezmoi runs it during `apply` whenever its rendered
+#        content changes (see the hashes below). No-ops without a reachable
+#        systemd user manager.
+#
+# Re-runs when these change:
+#   {{ include "dot_config/systemd/user/herdr-agents.service" | sha256sum }}
+#   {{ include "dot_config/systemd/user/herdr-agent-tabs.service" | sha256sum }}
+#   {{ include "dot_local/bin/executable_herdr-agent-tabs" | sha256sum }}
+set -eu
+
+command -v systemctl >/dev/null 2>&1 || exit 0
+systemctl --user show-environment >/dev/null 2>&1 || {
+	echo "ensure-herdr-agent-tabs: no systemd user manager reachable, skipping"
+	exit 0
+}
+
+systemctl --user daemon-reload
+systemctl --user enable --now herdr-agents.service herdr-agent-tabs.service
+systemctl --user restart herdr-agent-tabs.service
+{{ end -}}
