@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # server-update — `omarchy update` for the DLCO servers: pacman, AUR, orphans, mise, chezmoi,
-# reboot check. Quiet: one line per step, full output only for a step that failed. Everything
-# is also written to ~/.cache/server-update.log.
+# moshi-hook, reboot check. Quiet: one line per step, full output only for a step that failed.
+# Everything is also written to ~/.cache/server-update.log.
 #
 # Usage:
 #   server-update            update this host and offer a reboot if the kernel changed
@@ -154,6 +154,19 @@ if command -v chezmoi-autoupdate >/dev/null; then
     *failed*) red "✗ chezmoi: $cz_status"; status=1 ;;
     *) green "✓ chezmoi: ${cz_status#* }" ;;
   esac
+fi
+
+# chezmoi only installs moshi-hook when it is missing, so this is what keeps it current.
+# `install` rewrites the agent hooks in the new release's schema; the chezmoi apply then
+# restores the managed shape on top.
+moshi_update() {
+  local hook=$HOME/.local/bin/moshi-hook
+  "$hook" update && "$hook" install &&
+    chezmoi apply --exclude=scripts "$HOME/.claude/settings.json" "$HOME/.codex/hooks.json" &&
+    systemctl --user try-restart moshi-hook.service
+}
+if [[ -x $HOME/.local/bin/moshi-hook ]]; then
+  step "Moshi (moshi-hook update)" moshi_update || status=1
 fi
 
 running_kernel=$(uname -r)
