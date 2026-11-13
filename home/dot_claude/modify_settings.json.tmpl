@@ -62,6 +62,20 @@ STYLE_HOOKS = {
     "Stop": ("observe", 15),
 }
 
+PROGRAM_STATUS = "sh '" + HOME + "/.claude/hooks/program-status.sh' "
+# event -> [(matcher, args)]. Background (daemon) sessions never send OSC 7501 themselves, so
+# herdr-core terminals attached to them show no agent; program-status.sh sends it instead.
+PROGRAM_STATUS_HOOKS = {
+    "SessionStart": [(None, "idle")],
+    "UserPromptSubmit": [(None, "working")],
+    "PreToolUse": [("AskUserQuestion", "blocked question")],
+    "PermissionRequest": [(None, "blocked permission")],
+    "PostToolUse": [(None, "working")],
+    "Stop": [(None, "done")],
+    "StopFailure": [(None, "error")],
+    "SessionEnd": [(None, "clear")],
+}
+
 BASELINE = {
     "agentPushNotifEnabled": True,
     "autoCompactEnabled": False,
@@ -383,6 +397,32 @@ def enforce_style_hooks(hooks):
     return hooks
 
 
+def is_program_status_group(group):
+    entries = group.get("hooks") if isinstance(group, dict) else None
+    return isinstance(entries, list) and any(
+        isinstance(e, dict) and "program-status.sh" in str(e.get("command", ""))
+        for e in entries
+    )
+
+
+def enforce_program_status_hooks(hooks):
+    for groups in hooks.values():
+        if isinstance(groups, list):
+            groups[:] = [g for g in groups if not is_program_status_group(g)]
+    for event, specs in PROGRAM_STATUS_HOOKS.items():
+        groups = hooks.get(event)
+        if not isinstance(groups, list):
+            groups = hooks[event] = []
+        # Inserted first for the same reason as the style guard: moshi-hook wants its own
+        # group last.
+        for matcher, args in reversed(specs):
+            group = {"hooks": [{"command": PROGRAM_STATUS + args, "timeout": 5, "type": "command"}]}
+            if matcher:
+                group["matcher"] = matcher
+            groups.insert(0, group)
+    return hooks
+
+
 def is_isolation_group(group):
     entries = group.get("hooks") if isinstance(group, dict) else None
     return isinstance(entries, list) and any(
@@ -494,6 +534,7 @@ if isinstance(auto_mode, dict) and isinstance(auto_mode.get("allow"), list):
     ]
 current["hooks"] = enforce_moshi_hooks(current.get("hooks"), BASELINE["hooks"])
 enforce_style_hooks(current["hooks"])
+enforce_program_status_hooks(current["hooks"])
 remove_isolation_hooks(current["hooks"])
 enforce_scalars(current, ENFORCED_SCALARS)
 remove_keys(current, REMOVED_KEYS)
