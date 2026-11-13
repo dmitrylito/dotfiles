@@ -15,7 +15,7 @@ panel_bg = "black"
 new_cwd = "follow"
 
 [keys]
-prefix = "ctrl+space"
+prefix = ["ctrl+space", "alt+space"]
 
 # Config and help
 reload_config = "prefix+q"
