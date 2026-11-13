@@ -1,5 +1,6 @@
--- Omarchy's Quake console (default/hypr/qconsole.lua) with our seed, laid out
--- in quarters of the monitor and capped at four windows.
+-- Omarchy's Quake console (default/hypr/qconsole.lua) with our seed, a lone
+-- window centered at LONE of the screen, more laid out in quarters of the
+-- monitor and capped at four windows.
 --
 -- Its height share and seed command are locals, and its event handlers are
 -- registered before any user module loads, so a second module refitting the same
@@ -14,6 +15,8 @@ local upstream = (os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/defaul
 
 local CONSOLE = "special:qconsole"
 local LIMIT = 4
+-- A lone window is a centered panel this share of the work area's width and height.
+local LONE = 0.75
 
 local patches = {
 	{ 'hl.exec_cmd("omarchy-agent --pick --prefer-local",', 'hl.exec_cmd("herdr-app",' },
@@ -21,6 +24,25 @@ local patches = {
 	{ "local share = 0.5", "local share = 0.5\nlocal share_for = ..." },
 	{ "local tall = math.floor(height * share)", "local tall = math.floor(height * (share_for and share_for(share) or share))" },
 	{ "    no_border = true,", '    no_border = true,\n    layout = "lua:qconsole-quarters",' },
+	-- cover() only sets side and bottom gaps; a centered panel needs the top one too.
+	{ "local beside, below = nil, nil", "local beside, below, above = nil, nil, nil" },
+	{ "local function cover(side, bottom)", "local function cover(side, bottom, top)\n  top = top or 0" },
+	{ "if beside == side and below == bottom then", "if beside == side and below == bottom and above == top then" },
+	{ "beside, below = side, bottom", "beside, below, above = side, bottom, top" },
+	{ "gaps_out = { top = 0,", "gaps_out = { top = top," },
+	{
+		"  return cover(math.floor((width - wide) / 2), math.floor(height - tall))",
+		"  if alone() then\n"
+			.. "    tall, wide = math.floor(height * "
+			.. LONE
+			.. "), math.floor(width * "
+			.. LONE
+			.. ")\n"
+			.. "    local edge = math.floor((height - tall) / 2)\n"
+			.. "    return cover(math.floor((width - wide) / 2), height - tall - edge, edge)\n"
+			.. "  end\n"
+			.. "  return cover(math.floor((width - wide) / 2), math.floor(height - tall))",
+	},
 }
 
 -- Arrival order, so a window keeps its quarter while others open and close.
