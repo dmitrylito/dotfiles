@@ -29,6 +29,14 @@ while [ "$depth" -lt 6 ] && [ "${pid:-0}" -gt 1 ]; do
     fields="state=$state:app=claude-code"
     [ "$state" = blocked ] && [ -n "$kind" ] && fields="$fields:kind=$kind"
     printf '\033]7501;%s\033\\' "$fields" >"$tty" 2>/dev/null
+    # herdr-bg-status-replay re-sends this when a viewer attaches; hooks only fire on events.
+    dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/claude-bg-status"
+    file="$dir/$(echo "${tty#/dev/}" | tr / -)"
+    if [ "$state" = clear ]; then
+      rm -f "$file"
+    else
+      mkdir -p "$dir" && printf '%s' "$fields" >"$file.tmp" && mv -f "$file.tmp" "$file"
+    fi 2>/dev/null
     exit 0
   fi
   pid=$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null)

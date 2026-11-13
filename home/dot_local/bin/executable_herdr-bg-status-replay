@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+# Tell Herdr a background Claude session's state the moment you open it from `claude agents`.
+#
+# Background sessions report state only through ~/.claude/hooks/program-status.sh, which runs
+# on hook events. Opening a session in the agents view fires no hook, so Herdr kept the
+# previous session's state until the next prompt or tool call. program-status.sh saves the
+# last state per worker tty in $XDG_RUNTIME_DIR/claude-bg-status/; this script follows
+# `hc events`, and when a local Herdr terminal's title changes to a background session's
+# name (what the agents view shows on attach), writes that saved OSC 7501 to the terminal.
+#
+# Usage:
+#   herdr-bg-status-replay    run forever (herdr-bg-status-replay.service runs this)
+#
+# Sessions with no saved state yet fall back to the daemon's own state
+# (`claude agents --json`) when it is one Herdr understands.
+import json
+import os
+import re
+import subprocess
+import time
+
+STATUS_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}",
+                          "claude-bg-status")
+GLYPH = re.compile(r"^[^\w]+", re.UNICODE)
+HERDR_STATES = {"idle", "working", "done", "blocked", "error"}
+
+
+def background_sessions():
+    out = subprocess.run(["claude", "agents", "--json", "--all"], capture_output=True, text=True,
+                         timeout=10, cwd=os.path.expanduser("~"))
+    if out.returncode:
+        return []
+    return [s for s in json.loads(out.stdout) if s.get("kind") == "background" and s.get("pid")]
+
+
+def pts_of(pid):
+    try:
+        tty = os.readlink(f"/proc/{pid}/fd/1")
+    except OSError:
+        return None
+    return tty if tty.startswith("/dev/pts/") else None
+
+
+def fields_for(session):
+    tty = pts_of(session["pid"])
+    if tty:
+        try:
+            with open(os.path.join(STATUS_DIR, tty[len("/dev/"):].replace("/", "-"))) as fh:
+                return fh.read().strip()
+        except OSError:
+            pass
+    state = session.get("state")
+    return f"state={state}:app=claude-code" if state in HERDR_STATES else None
+
+
+def viewer_tty(terminal):
+    out = subprocess.run(["hc", "get", "--json", terminal], capture_output=True, text=True, timeout=10)
+    if out.returncode:
+        return None
+    foreground = json.loads(out.stdout).get("foreground") or {}
+    return pts_of(foreground["pid"]) if foreground.get("pid") else None
+
+
+def on_title(terminal, title, last):
+    name = GLYPH.sub("", title or "").strip()
+    if last.get(terminal) == name:
+        return
+    last[terminal] = name
+    matches = [s for s in background_sessions() if s.get("name") == name]
+    if not matches:
+        return
+    session = max(matches, key=lambda s: s.get("startedAt") or 0)
+    fields = fields_for(session)
+    tty = viewer_tty(terminal)
+    if fields and tty:
+        with open(tty, "w") as fh:
+            fh.write(f"\033]7501;{fields}\033\\")
+        print(f"{terminal}: {session['id']} {fields}", flush=True)
+
+
+def main():
+    last = {}
+    while True:
+        proc = subprocess.Popen(["hc", "events", "--json"], stdout=subprocess.PIPE, text=True)
+        for line in proc.stdout:
+            try:
+                params = json.loads(line).get("params") or {}
+            except ValueError:
+                continue
+            terminal = params.get("terminal") or ""
+            if params.get("type") != "title" or "/" in terminal:
+                continue
+            try:
+                on_title(terminal, (params.get("data") or {}).get("title"), last)
+            except Exception as exc:  # noqa: BLE001 — one bad lookup must not stop the follower
+                print(f"{terminal}: {exc}", flush=True)
+        proc.wait()
+        time.sleep(2)
+
+
+if __name__ == "__main__":
+    main()
