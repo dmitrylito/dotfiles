@@ -16,7 +16,7 @@ local CONSOLE = "special:qconsole"
 local LIMIT = 4
 
 local patches = {
-	{ 'hl.exec_cmd("omarchy-agent --pick --prefer-local",', 'hl.exec_cmd("herdr-agent",' },
+	{ 'hl.exec_cmd("omarchy-agent --pick --prefer-local",', 'hl.exec_cmd("herdr-app",' },
 	-- The top half holds two windows; a third needs the bottom half too.
 	{ "local share = 0.5", "local share = 0.5\nlocal share_for = ..." },
 	{ "local tall = math.floor(height * share)", "local tall = math.floor(height * (share_for and share_for(share) or share))" },

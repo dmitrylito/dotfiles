@@ -157,13 +157,18 @@ hl.bind("SUPER + P", pseudopanel.toggle, {
 require("hypr.qconsole")
 
 local function qconsole_toggle()
-	-- on_created_empty only fires for an empty scratchpad; with the herdr window
-	-- still there, restart the agent if it was exited.
-	for _, window in ipairs(hl.get_windows({ class = "org.omarchy.agent" })) do
-		if window.workspace and window.workspace.name == "special:qconsole" then
-			hl.exec_cmd("herdr-agent --ensure")
-			break
+	-- herdr-app is single-window: launching it again only raises the window where it
+	-- is, so the console's seed cannot pull it in from another workspace.
+	local moved = false
+	for _, window in ipairs(hl.get_windows({ class = "herdr-app" })) do
+		if not window.workspace or window.workspace.name ~= "special:qconsole" then
+			hl.dispatch(hl.dsp.window.move({ workspace = "special:qconsole", window = "address:" .. window.address, follow = false }))
+			moved = true
 		end
+	end
+	local open = hl.get_active_special_workspace()
+	if moved and open and open.name == "special:qconsole" then
+		return
 	end
 	hl.dispatch(hl.dsp.workspace.toggle_special("qconsole"))
 end
@@ -285,3 +290,9 @@ o.bind(
 	{ locked = true }
 )
 o.bind("switch:off:Lid Switch", nil, hl.dsp.dpms({ action = "enable", monitor = "eDP-1" }), { locked = true })
+
+-- Dictation keys from before Alt + Space and Right Alt became the defaults.
+-- Remove these lines to give the keys back to applications.
+if o.dictation_installed and o.dictation_installed() then
+  o.bind_hold("F9", "Start dictation (push-to-talk)", "omarchy-dictation start", "Stop dictation (push-to-talk)", "omarchy-dictation stop")
+end
