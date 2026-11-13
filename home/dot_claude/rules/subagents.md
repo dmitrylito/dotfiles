@@ -23,6 +23,11 @@ Stay inline when no:
 
 ## Make the spawns that pass as cheap as they can be
 
+- **Every Agent spawn passes `effort: "medium"`** — implementers, reviewers, Explore,
+  web-fetch, all of them (Dmitry, 2026-11-12: "medium for all always when it comes to
+  subagents"). Claude Code has no setting for a subagent-only default
+  (`CLAUDE_CODE_EFFORT_LEVEL` would also change the main session), so the parameter is
+  the only lever. Forks ignore it and run at the session's effort.
 - Mechanical location, zero judgement → `lookup` (haiku) only when the user has
   approved using a cheaper model; otherwise preserve the chosen model quality.
 - Wide read-only exploration where I want the conclusion → `Explore`.
