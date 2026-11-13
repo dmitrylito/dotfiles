@@ -7,15 +7,6 @@ source_if_exists() {
   [[ -f $1 ]] && source "$1"
 }
 
-# Attach only from a real terminal. Herdr pane shells and agent harnesses must
-# never recursively attach, and server shells are entered through herdr --remote.
-{{ if ne (.profile | lower) "server" -}}
-if [[ -t 0 && -z ${CLAUDECODE:-} && -z ${HERDR_PANE_ID:-} ]] &&
-    (( ${+commands[herdr]} )); then
-  herdr
-fi
-{{- end }}
-
 # Omarchy's environment must exist before plugins and interactive tools load.
 {{- if eq (.profile | lower) "omarchy" }}
 if [[ -z ${OMARCHY_PATH:-} ]]; then
