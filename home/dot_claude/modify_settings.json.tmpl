@@ -218,7 +218,8 @@ BASELINE = {
             "Bash(gh pr merge *--admin*)",
             "Bash(docker exec ops-backend *flush*)",
             "Bash(docker exec ops-backend *reset_db*)",
-            "Bash(docker exec ops-backend *rm -r*)",
+            "Bash(docker exec ops-backend *rm -r*/app*)",
+            "Bash(docker exec ops-backend *rm -r*data*)",
             "Bash(ssh dlco-2 *rm -r*)",
             "Bash(ssh dlco-2 *reboot*)",
             "Bash(ssh dlco-2 *shutdown*)",
@@ -456,8 +457,9 @@ def merge_auto_mode(live, baseline):
 # enforce_allow only adds, so a rule dropped from BASELINE survives in the live file
 # until it is listed here. Remote branch deletion is post-merge cleanup, pre-authorized.
 # --force-with-lease refuses to overwrite commits it has not seen, so only a bare --force asks.
+# ops-backend keeps state only in the /app/data volume; rm -r elsewhere (its /tmp) is scratch.
 REMOVED_PERMISSION_RULES = {
-    "ask": ("Bash(git push *--delete*)", "Bash(git push * -d *)", "Bash(git push *--force*)"),
+    "ask": ("Bash(git push *--delete*)", "Bash(git push * -d *)", "Bash(git push *--force*)", "Bash(docker exec ops-backend *rm -r*)"),
 }
 
 
