@@ -14,8 +14,16 @@
 # Usage:
 #   import-db          # background, prints PID + log path
 #   import-db --fg     # foreground, still logs to file
+#   import-db --if-new # cron checker: starts a run only when the dump's GCS generation
+#                      # differs from the last one a run downloaded; silent otherwise
 #
-# Needs: docker compose, docker-volume-snapshot, ~/gcs-key.json, and gcloud (or gsutil).
+# Each generation is attempted once: a run records it before restoring, so a failed run is
+# not retried by --if-new (rerun plain import-db). A flock on ~/.local/state/import-db/lock
+# keeps two runs from overlapping. GCS only shows an upload once it has fully completed, so a
+# new generation means the dump is ready.
+#
+# Needs: docker compose, docker-volume-snapshot, ~/gcs-key.json, flock, and gcloud (or gsutil;
+# --if-new and the generation pin need gcloud).
 # pigz and pv are optional: falls back to gzip and to no progress lines.
 #
 # Chezmoi-managed (dot_local/bin/executable_import-db.tmpl); only COMPOSE_DIR differs per host.
@@ -36,6 +44,10 @@ DUMP_FILE="$HOME/fleetchaser-db/fleetchaser-prod-latest.gz"
 SNAPSHOT_FILE="$HOME/Projects/tmp/docker/fleetchaser_db_volume"
 VOLUME_NAME="fleetchaser_db_volume"
 PLATFORM_DB_REFRESH="${PLATFORM_DB_REFRESH:-$HOME/Projects/ops-center/docker/platform-db/refresh.sh}"
+STATE_DIR="$HOME/.local/state/import-db"
+GENERATION_FILE="$STATE_DIR/last-generation"
+LOCK_FILE="$STATE_DIR/lock"
+export PATH="$HOME/google-cloud-sdk/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 DB_SUPERUSER="postgres"
 DB_USER="fleetchaser"
@@ -77,9 +89,27 @@ rotate_logs() {
   mv "$LOG_FILE" "$LOG_FILE.1"
 }
 
+gcs() { CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$GCS_KEY_PATH" gcloud storage "$@"; }
+dump_generation() { gcs objects describe "$GCS_PATH" --format='value(generation)'; }
+
+mkdir -p "$STATE_DIR"
+
+if [ "${1:-}" = "--if-new" ]; then
+  shift
+  flock -n "$LOCK_FILE" true || exit 0
+  generation="$(dump_generation)" || { echo "import-db --if-new: could not read the dump's generation." >&2; exit 1; }
+  [ "$generation" = "$(cat "$GENERATION_FILE" 2>/dev/null)" ] && exit 0
+  echo "$(date '+%Y-%m-%d %H:%M:%S') new dump generation $generation."
+fi
+
 if [ "${1:-}" = "--fg" ]; then
   shift
 elif [ -z "${IMPORT_DB_DETACHED:-}" ]; then
+  # Checked before rotating, which would otherwise move the running import's log away.
+  if ! flock -n "$LOCK_FILE" true; then
+    echo "import-db is already running; not starting another." >&2
+    exit 1
+  fi
   export IMPORT_DB_DETACHED=1
   rotate_logs
   setsid "$0" "$@" >>"$LOG_FILE" 2>&1 </dev/null &
@@ -92,7 +122,6 @@ fi
 # Logging
 #######################################
 set -Eeuo pipefail
-export PATH="$HOME/google-cloud-sdk/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 log() {
   local tag="$1"; shift
@@ -150,8 +179,12 @@ download_dump() {
   rm -f "$DUMP_FILE"
   # gsutil ignores the key override and demands interactive reauth; gcloud storage honours it.
   if command -v gcloud >/dev/null 2>&1; then
-    CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$GCS_KEY_PATH" \
-      gcloud storage cp --quiet --no-user-output-enabled "$GCS_PATH" "$DUMP_FILE"
+    local generation
+    generation="$(dump_generation)"
+    printf '%s\n' "$generation" >"$GENERATION_FILE.tmp" && mv "$GENERATION_FILE.tmp" "$GENERATION_FILE"
+    log Download "Generation $generation."
+    # Pinned so an overwrite mid-download fails instead of mixing two dumps.
+    gcs cp --quiet --no-user-output-enabled "$GCS_PATH#$generation" "$DUMP_FILE"
   else
     gsutil -q -m cp "$GCS_PATH" "$DUMP_FILE"
   fi
@@ -332,6 +365,11 @@ refresh_platform_copy() {
 #######################################
 # Main
 #######################################
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  log Error "Another import-db run holds $LOCK_FILE."
+  exit 1
+fi
 log Start "Refreshing $DB_NAME (jobs=$RESTORE_JOBS, compose=$COMPOSE_DIR)."
 require_tools
 download_dump

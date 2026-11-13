@@ -8,7 +8,7 @@ Recounts, per customer, the vehicles that still have:
 and rewrites each task's name and description ("Customer: count" lines, highest first).
 
 Counts come from the local fleetchaser DB (container fleetchaser-db-1), a nightly prod copy
-restored by `import-db` (cron 05:00, usually done ~07:05). The script waits for today's
+restored by `import-db` (starts when the prod dump lands, ~03:30 local, usually done ~2h later). The script waits for today's
 "[Finish" line in ~/Logs/import_db.log before reading, and exits non-zero without touching the
 tasks if the import doesn't finish by the deadline or the queries return nothing.
 
