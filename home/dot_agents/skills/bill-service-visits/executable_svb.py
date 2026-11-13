@@ -9,7 +9,8 @@ Runs from any cwd; stdlib only. Each step writes to an artifact dir
                                        quantity                                 -> manifest.json
   svb.py preview  [--keys k,k]         POST apply=false (billable items only)   -> preview-*.json
   svb.py apply    --keys k,k           POST apply=true, then DB readback        -> apply-*.json
-  svb.py move-tasks --keys k,k         Bill -> Completed (status 4) via ops-backend update_fc_task
+  svb.py move-tasks --keys k,k         Bill -> Completed (status 4) via ops-backend
+                                       workboard.move_task (validated, before/after kept)
   svb.py preflight [--invoices k,k]    read-only ChargeOver checks on drafts     -> preflight.json
   svb.py export (--invoices k,k | --all-drafts) --yes
                                        queue the backend prod export, wait, read back invoices and
@@ -67,12 +68,25 @@ print('@@JSON@@' + json.dumps(rows))
 
 OPS_MOVE = r"""
 import json
-from crm.services.fc_tasks import update_fc_task
+from crm.models import FCTask
+from crm.services.fc_tasks import move_task
 out = []
 for tid in %(ids)r:
-    r = update_fc_task(tid, status_id=%(status_id)r)
-    out.append({'task_id': tid, 'status_name': r.get('status_name'), 'workflow_id': r.get('workflow_id')})
-print('@@JSON@@' + json.dumps(out))
+    try:
+        r = move_task(tid, status_id=%(status_id)r)
+    except Exception as exc:
+        out.append({'task_id': tid, 'error': f'{type(exc).__name__}: {exc}'})
+        continue
+    t = FCTask.objects.filter(fc_task_id=tid).first()
+    out.append({
+        'task_id': tid,
+        'status_name': t.status_name if t else None,
+        'workflow_id': (r['change'].get('after') or {}).get('workflow'),
+        'change': r['change'],
+        'warnings': r.get('warnings', []),
+        'follow_up_errors': r.get('follow_up_errors', []),
+    })
+print('@@JSON@@' + json.dumps(out, default=str))
 """
 
 
@@ -303,8 +317,16 @@ def cmd_move(args):
     ids = [int(k.split(":", 1)[1]) for k in args.keys]
     out = ops_shell(OPS_MOVE % {"ids": ids, "status_id": args.status_id})
     save(d / "move-tasks-response.json", out)
+    failed = [r for r in out if r.get("error")]
     for r in out:
-        print(f"{r['task_id']} -> {r['status_name']} (workflow {r['workflow_id']})")
+        if r.get("error"):
+            print(f"{r['task_id']} FAILED: {r['error']}")
+            continue
+        notes = r["warnings"] + [e["error"] for e in r["follow_up_errors"]]
+        suffix = f"  ⚠ {'; '.join(notes)}" if notes else ""
+        print(f"{r['task_id']} -> {r['status_name']} (workflow {r['workflow_id']}){suffix}")
+    if failed:
+        sys.exit(f"{len(failed)} task(s) not moved; see move-tasks-response.json")
 
 
 def print_preflight(rows):

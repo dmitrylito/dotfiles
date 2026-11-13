@@ -18,7 +18,7 @@ nothing is written to the backend until `apply`, and nothing reaches ChargeOver 
   `localhost:8000`, same DB): `POST /api/billing/service-visit-lines/` with `quantity`,
   `GET /api/billing/billable-groups/`, and payment scheduling in the export. As of 2026-10-27
   that is `dmitrylito/billing-app` at or after `44d431c0b` (local checkout; not on master/prod).
-- Containers: `ops-backend` (ops-center, live FC task mirror + `update_fc_task`) and the backend
+- Containers: `ops-backend` (ops-center, live FC task mirror + `workboard.move_task`) and the backend
   compose stack at `~/Projects/backend/docker/docker-compose.yml`, including
   `fleetchaser-fleet_worker-1`, which runs the export task. After changing billing code,
   `docker restart fleetchaser-fleet_worker-1`. `--checkout <path>` sets `PROJECT_PATH` for the
