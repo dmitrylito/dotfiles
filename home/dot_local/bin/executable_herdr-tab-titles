@@ -7,23 +7,28 @@
 #   herdr-tab-titles --once   one pass, then exit
 #
 # Env:
-#   HERDR_TAB_TITLES_INTERVAL  seconds between passes (default: 2)
+#   HERDR_TAB_TITLES_INTERVAL  seconds between fallback passes (default: 5); a title or
+#                              status change reported by `hc events` triggers a pass at once
 #
 # Only tabs nobody named (their name is their position, "1", "2", ...) or that this
 # script named are touched, so a name given with tab.rename (F2 / Alt+R) sticks. Clear
-# it (rename to "") to hand the tab back. Remote machines' tabs are included.
+# it (rename to "") to hand the tab back. Remote machines' tabs are included (by the
+# fallback pass when their core's events don't reach the local `hc events`).
+# In `claude agents`, the list's own title is ignored, so the tab keeps the name of the
+# session last opened from it.
 # Needs a running herdr-app window; passes fail quietly until one is up.
 import json
 import os
 import re
 import subprocess
 import sys
+import threading
 import time
 
-INTERVAL = float(os.environ.get("HERDR_TAB_TITLES_INTERVAL", "2"))
+INTERVAL = float(os.environ.get("HERDR_TAB_TITLES_INTERVAL", "5"))
 STATE = os.path.expanduser("~/.local/state/herdr-tab-titles.json")
 GLYPH = re.compile(r"^[^\w]+", re.UNICODE)
-GENERIC = {"", "claude", "claude code"}
+GENERIC = {"", "claude", "claude code", "claude agents"}
 
 
 def run_json(*args):
@@ -78,11 +83,31 @@ def reconcile(state):
     return {k: v for k, v in seen.items() if v}
 
 
+def follow_events(wake):
+    while True:
+        try:
+            proc = subprocess.Popen(["hc", "events", "--json"], stdout=subprocess.PIPE, text=True)
+            for line in proc.stdout:
+                try:
+                    kind = (json.loads(line).get("params") or {}).get("type")
+                except ValueError:
+                    continue
+                if kind in ("title", "status"):
+                    wake.set()
+            proc.wait()
+        except OSError as exc:
+            print(f"hc events: {exc}", flush=True)
+        time.sleep(2)
+
+
 def main():
     once = sys.argv[1:] == ["--once"]
     if sys.argv[1:] and not once:
         sys.exit("usage: herdr-tab-titles [--once]")
     state = load_state()
+    wake = threading.Event()
+    if not once:
+        threading.Thread(target=follow_events, args=(wake,), daemon=True).start()
     while True:
         try:
             new = reconcile(state)
@@ -93,7 +118,8 @@ def main():
             print(f"pass failed: {exc}", flush=True)
         if once:
             return
-        time.sleep(INTERVAL)
+        wake.wait(INTERVAL)
+        wake.clear()
 
 
 if __name__ == "__main__":
