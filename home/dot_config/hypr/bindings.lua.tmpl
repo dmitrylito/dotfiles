@@ -119,6 +119,10 @@ local function active_window_is_terminal()
 	return false
 end
 
+-- Herdr is a terminal app but not in Omarchy's terminal tag list, so Super+C/V sent it
+-- Ctrl+C (interrupt) and Ctrl+V (Herdr: paste image) instead of Ctrl+Shift+C/V.
+o.window("herdr-app", { tag = "+terminal" })
+
 -- SUPER + A (Select all) comes from Omarchy's clipboard.lua.
 -- Not sent to terminals: Ctrl+Z there suspends the foreground job.
 o.bind("SUPER + Z", "Undo", function()
