@@ -210,7 +210,8 @@ BASELINE = {
         # The allow rules above skip the auto-mode classifier. These carve out the
         # destructive slice of each so it prompts instead (ask beats allow, even in auto mode).
         "ask": [
-            "Bash(git push *--force*)",
+            "Bash(git push *--force)",
+            "Bash(git push *--force *)",
             "Bash(git push * -f*)",
             "Bash(git push *--mirror*)",
             "Bash(git push * +*)",
@@ -454,8 +455,9 @@ def merge_auto_mode(live, baseline):
 
 # enforce_allow only adds, so a rule dropped from BASELINE survives in the live file
 # until it is listed here. Remote branch deletion is post-merge cleanup, pre-authorized.
+# --force-with-lease refuses to overwrite commits it has not seen, so only a bare --force asks.
 REMOVED_PERMISSION_RULES = {
-    "ask": ("Bash(git push *--delete*)", "Bash(git push * -d *)"),
+    "ask": ("Bash(git push *--delete*)", "Bash(git push * -d *)", "Bash(git push *--force*)"),
 }
 
 
