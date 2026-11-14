@@ -22,7 +22,7 @@ BEGIN {
     cat["backend"] = "Work"; cat["billing"] = "Work"; cat["console"] = "Work"
     cat["fcbot"] = "Work"; cat["liveevents"] = "Work"
     skip["home"] = 1; skip["sonarr"] = 1; skip["radarr"] = 1; skip["prowlarr"] = 1; skip["torrent"] = 1; skip["kuma"] = 1
-    icons["audiobooks"] = "audiobookshelf.png"; icons["books"] = "calibre-web.png"; icons["calibre"] = "calibre-web.png"
+    icons["audiobooks"] = "audiobookshelf.png"; icons["books"] = "shelfmark.png"; icons["calibre"] = "calibre-web.png"
     icons["plex"] = "plex.png"; icons["seerr"] = "overseerr.png"; icons["vsl"] = "supabase.png"
     icons["adguard"] = "adguard-home.png"; icons["ha"] = "home-assistant.png"; icons["omada"] = "omada.png"
     icons["dlco1"] = "cockpit.png"; icons["dlco2"] = "cockpit.png"; icons["dlco3"] = "cockpit.png"

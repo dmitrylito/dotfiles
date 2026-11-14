@@ -187,3 +187,44 @@ textarea:focus {
   max-width: 640px;
   margin: 0 auto !important;
 }
+
+/* Media is a launcher grid of square tiles; the group is found by the Plex card. */
+.services-group:has(#caddy-plex) .services-list {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 168px)) !important;
+  gap: 0.75rem;
+}
+
+.services-group:has(#caddy-plex) .service-card {
+  aspect-ratio: 1;
+  height: auto !important;
+  margin-bottom: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.services-group:has(#caddy-plex) .service-card::before {
+  display: none;
+}
+
+.services-group:has(#caddy-plex) .service-title {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0;
+  width: 100%;
+}
+
+.services-group:has(#caddy-plex) .service-icon {
+  width: auto;
+}
+
+.services-group:has(#caddy-plex) .service-icon img {
+  width: 56px !important;
+  height: 56px !important;
+}
+
+.services-group:has(#caddy-plex) .service-name {
+  text-align: center;
+  padding: 0 0.5rem;
+}
