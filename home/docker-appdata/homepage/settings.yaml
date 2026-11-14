@@ -20,13 +20,13 @@ quicklaunch:
   mobileButtonPosition: bottom-right
 
 layout:
-  Media:
+  Favorites:
     style: row
     columns: 5
+    icon: mdi-star-outline
+  Media:
     icon: mdi-play-box-multiple-outline
   Downloads:
-    style: row
-    columns: 4
     icon: mdi-download-outline
   Home & Network:
     icon: mdi-home-automation

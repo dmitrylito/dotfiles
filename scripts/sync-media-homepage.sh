@@ -14,6 +14,8 @@ stage_dir=$(mktemp -d "$target_dir/.sync.XXXXXXXX")
 trap 'rm -rf -- "$stage_dir"' EXIT
 gen=$source_dir/scripts/homepage-caddy-services.sh
 {
+    echo "- Favorites:"
+    "$gen" Favorites
     echo "- Media:"
     "$gen" Media
     echo "- Downloads:"

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Emit Homepage service cards (YAML list items, indented for one group) for the `@name host …` sites of a rendered
 # Caddyfile that belong to one category.
-# Usage: homepage-caddy-services.sh <Media|"Home & Network"|Servers|Personal|Work> [/path/to/Caddyfile]
+# Usage: homepage-caddy-services.sh <Favorites|Media|"Home & Network"|Servers|Personal|Work> [/path/to/Caddyfile]
 # Default Caddyfile: ~/docker-appdata/caddy/Caddyfile. Each card links to the first host (or the `prefer` override
 # plus an optional `paths` suffix), shows the hostname(s), and gets a siteMonitor on that same URL. Sites in `skip`
 # already have a widget card elsewhere. Cards with a `rank` come first (lowest first); the rest keep Caddyfile order.
+# `Favorites` emits a second card (id `fav-<name>`) for each site in `fav`, in that order, whatever its category.
 # sync-media-homepage.sh places the output under the group.
 set -euo pipefail
 category=$1
@@ -36,6 +37,7 @@ BEGIN {
     label["dlco3"] = "DLCO-3 Cockpit"; label["cer"] = "CER Admin"; label["cer-staging"] = "CER Admin (staging)"
     label["vsl"] = "VSL"; label["backend"] = "Backend"; label["billing"] = "Billing"; label["chat"] = "Chat"
     label["console"] = "Console"; label["liveevents"] = "Live Events"
+    fav["plex"] = 1; fav["seerr"] = 2; fav["ha"] = 3; fav["fcbot"] = 4; fav["cer"] = 5
     rank["plex"] = 1; rank["seerr"] = 2; rank["ha"] = 1; rank["fcbot"] = 1; rank["cer"] = 1; rank["cer-staging"] = 2
     paths["cer"] = "/admin"; paths["cer-staging"] = "/admin"; paths["fcbot"] = "/admin/"
 }
@@ -51,12 +53,14 @@ inblock && pending != "" && $1 == "reverse_proxy" {
     name = pending; pending = ""
     if (name in skip) next
     group = (name in cat) ? cat[name] : "Personal"
-    if (group != want) next
+    idprefix = "caddy"
+    if (want == "Favorites") { if (!(name in fav)) next; idprefix = "fav" }
+    else if (group != want) next
     desc = hosts[name]; if (extras[name] != "") desc = desc " · " extras[name]
     path = (name in paths) ? paths[name] : ""
     title = (name in label) ? label[name] : name
-    n++; ord[n] = (name in rank) ? rank[name] : 50
-    card[n] = sprintf("    - %s:\n        id: caddy-%s\n        icon: %s\n        href: https://%s%s\n        description: %s\n        siteMonitor: https://%s%s\n", title, name, icon(name), hosts[name], path, desc, hosts[name], path)
+    n++; ord[n] = (want == "Favorites") ? fav[name] : (name in rank) ? rank[name] : 50
+    card[n] = sprintf("    - %s:\n        id: %s-%s\n        icon: %s\n        href: https://%s%s\n        description: %s\n        siteMonitor: https://%s%s\n", title, idprefix, name, icon(name), hosts[name], path, desc, hosts[name], path)
 }
 END {
     for (i = 1; i <= n; i++) {
