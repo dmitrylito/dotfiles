@@ -19,6 +19,27 @@ blue = 0.9803921568627451
 green = 0.7058823529411765
 red = 0.5372549019607843
 
+[borders.glow]
+enabled = false
+opacity = 0.6
+radius = 8.0
+
+[borders.gradient]
+direction = "topLeftToBottomRight"
+enabled = false
+
+[borders.gradient.end]
+alpha = 1.0
+blue = 0.7
+green = 1.0
+red = 0.0
+
+[borders.gradient.start]
+alpha = 1.0
+blue = 1.0
+green = 0.4
+red = 0.0
+
 [clipboard]
 historyEnabled = false
 ignoredTypes = []
@@ -44,14 +65,14 @@ moveMouseToFocusedWindow = false
 raiseOnMouseFocus = false
 
 [gaps]
-fullscreenUsesOuterGaps = false
-size = 10.0
+fullscreenUsesOuterGaps = true
+size = 12.0
 
 [gaps.outer]
-bottom = 10.0
-left = 10.0
-right = 10.0
-top = 10.0
+bottom = 12.0
+left = 12.0
+right = 12.0
+top = 12.0
 
 [general]
 animationSpeed = 1.0
