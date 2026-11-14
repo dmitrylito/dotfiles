@@ -1,3 +1,4 @@
 amd-ucode
 btrfs-progs
+chromium
 sshfs
