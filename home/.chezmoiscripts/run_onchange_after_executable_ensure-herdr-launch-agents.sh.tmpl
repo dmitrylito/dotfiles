@@ -1,0 +1,25 @@
+{{ if eq (.profile | lower) "mac" -}}
+#!/bin/sh
+# Start (or restart) the Herdr helper LaunchAgents on macOS: herdr-bg-status-replay and
+# herdr-tab-titles. Linux runs the same scripts as systemd user services, enabled by their
+# graphical-session.target.wants symlinks.
+#
+# Usage: not run by hand. chezmoi runs it during a full `apply` whenever its rendered
+#        content changes. Renders empty (so chezmoi skips it) on other profiles.
+#
+# Re-runs when these change:
+#   {{ include "dot_local/bin/executable_herdr-bg-status-replay" | sha256sum }}
+#   {{ include "dot_local/bin/executable_herdr-tab-titles" | sha256sum }}
+#   {{ include "Library/LaunchAgents/com.dmitrylito.herdr-bg-status-replay.plist.tmpl" | sha256sum }}
+#   {{ include "Library/LaunchAgents/com.dmitrylito.herdr-tab-titles.plist.tmpl" | sha256sum }}
+set -eu
+
+DOMAIN="gui/$(id -u)"
+mkdir -p "{{ .chezmoi.homeDir }}/Library/Logs"
+for name in herdr-bg-status-replay herdr-tab-titles; do
+	label="com.dmitrylito.$name"
+	launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+	launchctl bootstrap "$DOMAIN" "{{ .chezmoi.homeDir }}/Library/LaunchAgents/$label.plist"
+	echo "ensure-herdr-launch-agents: started LaunchAgent $label"
+done
+{{ end -}}

@@ -3,7 +3,8 @@
 # Claude sets (its session name or topic), minus the leading status glyph.
 #
 # Usage:
-#   herdr-tab-titles          reconcile forever (herdr-tab-titles.service runs this)
+#   herdr-tab-titles          reconcile forever (herdr-tab-titles.service on Linux,
+#                             the com.dmitrylito.herdr-tab-titles LaunchAgent on macOS)
 #   herdr-tab-titles --once   one pass, then exit
 #
 # Env:
