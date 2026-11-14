@@ -126,10 +126,19 @@ fi
 [[ -n "$_github_token" ]] && export GITHUB_PERSONAL_ACCESS_TOKEN="$_github_token"
 unset _github_token _gh_path
 
-if [[ -f /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+# macOS first and without forking brew: this runs for every zsh process, `brew
+# shellenv` costs ~13ms, and merely testing a path under /home on macOS wakes
+# the autofs mount (~20ms). The block mirrors `brew shellenv zsh` output.
+if [[ $OSTYPE == darwin* && -x /opt/homebrew/bin/brew ]]; then
+  export HOMEBREW_PREFIX=/opt/homebrew
+  export HOMEBREW_CELLAR=/opt/homebrew/Cellar
+  export HOMEBREW_REPOSITORY=/opt/homebrew
+  fpath[1,0]=/opt/homebrew/share/zsh/site-functions
+  path=(/opt/homebrew/bin /opt/homebrew/sbin $path)
+  [ -z "${MANPATH-}" ] || { export MANPATH="${MANPATH%"${MANPATH##*[!:]}"}"; export MANPATH=":${MANPATH#"${MANPATH%%[!:]*}"}"; }
+  export INFOPATH="/opt/homebrew/share/info:${INFOPATH:-}"
+elif [[ -f /home/linuxbrew/.linuxbrew/bin/brew ]]; then
   eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-elif [[ -f /opt/homebrew/bin/brew ]]; then
-  eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
 # Keep Homebrew's automatic maintenance quiet and make formula source easier

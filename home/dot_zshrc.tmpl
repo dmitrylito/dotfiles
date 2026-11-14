@@ -7,6 +7,25 @@ source_if_exists() {
   [[ -f $1 ]] && source "$1"
 }
 
+# source_cached_init <name> <command> <args...>: source a tool's generated init
+# script from a cache, regenerated when the command's resolved path changes or
+# the binary is newer. Only for output that does not embed $PATH or other
+# per-shell state (`mise activate` does, so it is not cached).
+source_cached_init() {
+  local name=$1 bin=${commands[$2]}
+  shift 2
+  [[ -n $bin ]] || return 1
+  bin=${bin:A}
+  local cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/init-$name.zsh" stamp
+  [[ -s $cache ]] && read -r stamp < "$cache"
+  if [[ $stamp != "# $bin" || $bin -nt $cache ]]; then
+    mkdir -p "${cache:h}"
+    { print -r -- "# $bin" && "$bin" "$@" } >| "$cache.$$" 2>/dev/null &&
+      mv -f -- "$cache.$$" "$cache" || { rm -f -- "$cache.$$"; return 1; }
+  fi
+  source "$cache"
+}
+
 # Omarchy's environment must exist before plugins and interactive tools load.
 {{- if eq (.profile | lower) "omarchy" }}
 if [[ -z ${OMARCHY_PATH:-} ]]; then
@@ -34,12 +53,11 @@ plugins=(
 {{ if ne (.profile | lower) "mac" }}  archlinux
 {{ end }}  tailscale
   sudo
-  docker
+{{ if ne (.profile | lower) "mac" }}  docker
   docker-compose
-{{ if ne (.profile | lower) "mac" }}  gpg-agent
+  gpg-agent
 {{ end }}  gcloud
   uv
-  fzf
 )
 
 # Ansible owns external plugin installation. Skip plugins until the first
@@ -60,6 +78,15 @@ if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
 else
   autoload -Uz compinit
   compinit -d "$ZSH_COMPDUMP"
+fi
+
+# Replaces OMZ's fzf plugin, which forks `fzf --version` and `fzf --zsh` on every
+# start; the plugin stays the fallback for fzf older than 0.48 (no --zsh).
+# keybindings.zsh rebinds fzf widgets, so this must load before it.
+if ! source_cached_init fzf fzf --zsh && [[ -r $ZSH/plugins/fzf/fzf.plugin.zsh ]]; then
+  source "$ZSH/plugins/fzf/fzf.plugin.zsh"
+elif [[ -z ${FZF_DEFAULT_COMMAND:-} ]] && (( ${+commands[fd]} )); then
+  export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
 fi
 source_if_exists "$XDG_CONFIG_HOME/zsh/carapace.zsh"
 
@@ -104,8 +131,6 @@ hyprctl() {
 source_if_exists "$HOME/.zshrc.local"
 
 # Prompt initialization belongs near the end so it sees the final environment.
-if (( ${+commands[starship]} )); then
-  eval "$(starship init zsh)"
-fi
+source_cached_init starship starship init zsh --print-full-init
 
 source_if_exists "$XDG_CONFIG_HOME/zsh/chezmoi-autoupdate.zsh"
