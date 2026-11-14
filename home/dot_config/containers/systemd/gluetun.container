@@ -10,6 +10,9 @@ ContainerName=gluetun
 # Network Permissions
 AddCapability=NET_ADMIN
 AddDevice=/dev/net/tun
+# The host's RA-learned IPv6 default route leaks into the netns and gluetun exits on
+# "finding link corresponding to default IPv6 route".
+Sysctl=net.ipv6.conf.all.disable_ipv6=1
 
 # Gluetun claims port 8181 so the existing protected proxy path can reach qBittorrent.
 PublishPort=8181:8181
