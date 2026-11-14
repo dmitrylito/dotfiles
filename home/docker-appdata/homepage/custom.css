@@ -32,13 +32,13 @@ main {
   z-index: 1;
 }
 
-/* Group order comes from settings.yaml layout: Status, Media, Management, Personal, Work.
-   custom.js is not loaded by this Homepage build, so accents key on that order. */
-.services-group:nth-of-type(1) { --accent: var(--green); }
-.services-group:nth-of-type(2) { --accent: var(--blue); }
-.services-group:nth-of-type(3) { --accent: var(--orange); }
-.services-group:nth-of-type(4) { --accent: var(--green); }
-.services-group:nth-of-type(5) { --accent: var(--blue); }
+/* Groups carry no id, so accents key on a service id inside each group. */
+.services-group:has(#caddy-plex) { --accent: var(--blue); }
+.services-group:has(#qbittorrent) { --accent: var(--orange); }
+.services-group:has(#status-kuma) { --accent: var(--green); }
+.services-group:has(#caddy-dlco3) { --accent: var(--blue); }
+.services-group:has(#caddy-fcbot) { --accent: var(--orange); }
+.services-group:has(#caddy-cer) { --accent: var(--green); }
 
 .services-group {
   margin-top: 1.25rem !important;
@@ -165,79 +165,6 @@ textarea:focus {
 @keyframes rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-/* Uptime Kuma lives in the Status group (first in layout) but is pinned into the header row as a plain
-   element: the header reserves room on the left, and the group is lifted out of the flow. */
-#page_wrapper {
-  position: relative;
-}
-
-#widgets-wrap {
-  padding-left: 360px;
-}
-
-.services-group:nth-of-type(1) {
-  position: absolute;
-  top: 2.2rem;
-  left: 2.25rem;
-  width: auto;
-  margin: 0 !important;
-  padding: 0 !important;
-  z-index: 30;
-  animation: none;
-}
-
-.services-group:nth-of-type(1) > button,
-.services-group:nth-of-type(1) .service-title {
-  display: none;
-}
-
-.services-group:nth-of-type(1) .service-container {
-  flex-wrap: nowrap;
-}
-
-.services-group:nth-of-type(1) .service-block {
-  white-space: nowrap;
-  padding: 0.35rem 0.9rem !important;
-  margin: 0 0.25rem !important;
-}
-
-.services-group:nth-of-type(1) .service-card {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  overflow: visible;
-  animation: none;
-}
-
-.services-group:nth-of-type(1) .service-card::before {
-  display: none;
-}
-
-.services-group:nth-of-type(1) .service-card:hover {
-  transform: none;
-}
-
-.services-group:nth-of-type(1) .service-card [class*="bg-theme-200"],
-.services-group:nth-of-type(1) .service-card [class*="dark:bg-theme-900"] {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-
-@media (max-width: 1100px) {
-  #widgets-wrap {
-    padding-left: 0;
-  }
-
-  .services-group:nth-of-type(1) {
-    position: static;
-    width: auto;
-  }
 }
 
 #qbittorrent .service-card {

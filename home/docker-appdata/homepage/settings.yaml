@@ -20,23 +20,19 @@ quicklaunch:
   mobileButtonPosition: bottom-right
 
 layout:
-  Status:
-    style: row
-    columns: 4
-    icon: mdi-heart-pulse
   Media:
     style: row
-    columns: 4
+    columns: 5
     icon: mdi-play-box-multiple-outline
-  Management:
+  Downloads:
     style: row
-    columns: 5
-    icon: mdi-tune-variant
-  Personal:
-    style: row
-    columns: 5
-    icon: mdi-account-outline
+    columns: 4
+    icon: mdi-download-outline
+  Home & Network:
+    icon: mdi-home-automation
+  Servers:
+    icon: mdi-server-outline
   Work:
-    style: row
-    columns: 5
     icon: mdi-briefcase-outline
+  Personal:
+    icon: mdi-account-outline

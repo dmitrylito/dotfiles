@@ -1,13 +1,11 @@
-- Status:
     - Uptime Kuma:
         id: status-kuma
         icon: uptime-kuma.png
         href: https://uptime.init.dlco.us
-        description: Monitors, incidents, and uptime
+        description: uptime.init.dlco.us
         siteMonitor: https://uptime.init.dlco.us
         widget:
           type: uptimekuma
           url: http://192.168.0.14:3001
           slug: homelab
           fields: [up, down, uptime, incident]
-
