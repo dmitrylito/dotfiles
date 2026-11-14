@@ -23,7 +23,7 @@ layout:
   Favorites:
     style: row
     columns: 5
-    icon: mdi-star-outline
+    header: false
   Media:
     icon: mdi-play-box-multiple-outline
   Downloads:
