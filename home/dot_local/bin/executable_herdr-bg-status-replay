@@ -9,7 +9,8 @@
 # name (what the agents view shows on attach), writes that saved OSC 7501 to the terminal.
 #
 # Usage:
-#   herdr-bg-status-replay    run forever (herdr-bg-status-replay.service runs this)
+#   herdr-bg-status-replay    run forever (herdr-bg-status-replay.service on Linux,
+#                             the com.dmitrylito.herdr-bg-status-replay LaunchAgent on macOS)
 #
 # Sessions with no saved state yet fall back to the daemon's own state
 # (`claude agents --json`) when it is one Herdr understands.
@@ -19,8 +20,15 @@ import re
 import subprocess
 import time
 
-STATUS_DIR = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}",
-                          "claude-bg-status")
+
+def status_dir():
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    if not os.path.isdir(runtime):
+        runtime = os.path.expanduser("~/.cache")
+    return os.path.join(runtime, "claude-bg-status")
+
+
+STATUS_DIR = status_dir()
 GLYPH = re.compile(r"^[^\w]+", re.UNICODE)
 HERDR_STATES = {"idle", "working", "done", "blocked", "error"}
 
@@ -34,6 +42,10 @@ def background_sessions():
 
 
 def pts_of(pid):
+    if not os.path.isdir("/proc/self"):
+        out = subprocess.run(["ps", "-o", "tty=", "-p", str(pid)], capture_output=True, text=True)
+        tty = out.stdout.strip()
+        return f"/dev/{tty}" if tty.startswith("ttys") else None
     try:
         tty = os.readlink(f"/proc/{pid}/fd/1")
     except OSError:

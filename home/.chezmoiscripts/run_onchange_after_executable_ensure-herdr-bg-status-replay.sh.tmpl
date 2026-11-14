@@ -1,0 +1,21 @@
+{{ if eq (.profile | lower) "mac" -}}
+#!/bin/sh
+# Start (or restart) the herdr-bg-status-replay LaunchAgent on macOS. Linux runs the
+# same script from herdr-bg-status-replay.service, enabled by its target.wants symlink.
+#
+# Usage: not run by hand. chezmoi runs it during a full `apply` whenever its rendered
+#        content changes. Renders empty (so chezmoi skips it) on other profiles.
+#
+# Re-runs when these change:
+#   {{ include "dot_local/bin/executable_herdr-bg-status-replay" | sha256sum }}
+#   {{ include "Library/LaunchAgents/com.dmitrylito.herdr-bg-status-replay.plist.tmpl" | sha256sum }}
+set -eu
+
+LABEL=com.dmitrylito.herdr-bg-status-replay
+PLIST="{{ .chezmoi.homeDir }}/Library/LaunchAgents/$LABEL.plist"
+DOMAIN="gui/$(id -u)"
+mkdir -p "{{ .chezmoi.homeDir }}/Library/Logs"
+launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+launchctl bootstrap "$DOMAIN" "$PLIST"
+echo "ensure-herdr-bg-status-replay: started LaunchAgent $LABEL"
+{{ end -}}
