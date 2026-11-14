@@ -16,6 +16,7 @@
 
 {{ if and (ne $profile "omarchy") (ne $profile "mac") }}
 .config/ghostty/
+.config/herdr-app/
 {{ end }}
 
 {{ if eq (dig "omarchyChannel" "edge" .) "stable" }}
