@@ -44,6 +44,16 @@ services:
       - IP6_PROVIDER=none
       - DETECTION_TIMEOUT=15s
 
+  # Every node runs a replica of the same tunnel; Cloudflare keeps serving while any one is up.
+  # TUNNEL_TOKEN comes from the caddy secrets group. Ingress rules live in Cloudflare, not here.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.11.0
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: {{ joinPath .chezmoi.homeDir ".config/secrets/caddy.env" }}
+    depends_on:
+      - caddy
+
 volumes:
   caddy_data:
   caddy_config:
