@@ -28,9 +28,8 @@ replica from this compose file; Cloudflare keeps serving while any one replica i
 - Ingress rules live in Cloudflare, not in this repo: `dlco.us` → `http://caddy:80`,
   `*.dlco.us` → `https://caddy:443` with `matchSNItoHost`, so the Caddyfile still decides routing.
   Change them with `PUT /accounts/<id>/cfd_tunnel/<tunnel>/configurations`.
-- `TUNNEL_TOKEN` (replica credential) and `CLOUDFLARE_TUNNEL_API_TOKEN` (account-owned token,
-  Cloudflare Tunnel Edit plus zone WAF rules, no DNS access) are in the `caddy` secrets group. DNS changes still use
-  `CLOUDFLARE_API_TOKEN`.
+- `TUNNEL_TOKEN` (replica credential) is in the `caddy` secrets group next to
+  `CLOUDFLARE_API_TOKEN`, the one API token for tunnel, WAF and DNS changes.
 - Nothing public depends on the home IP any more: `cloudflare-ddns` and the `*.staging.dlco.us`
   record are gone (staging is `cer-staging.dlco.us`), and the router's 80/443 forwards to the VIP
   are disabled in Omada (rules kept, `status: false`). The VIP now only matters to LAN clients
@@ -47,7 +46,9 @@ replica from this compose file; Cloudflare keeps serving while any one replica i
 - Per-node keepalived settings (interface, node IP, priority) are the `$nodes` map in
   `keepalived/keepalived.conf.tmpl`.
 - The Cloudflare token comes from the `caddy` group of `.secrets.yaml.age` (`secrets-edit`),
-  rendered to `~/.config/secrets/caddy.env`. It needs Zone:Read and DNS:Edit on `dlco.us`.
+  rendered to `~/.config/secrets/caddy.env`. It is an account-owned token (Manage Account →
+  Account API Tokens, `cfat_` prefix) with Cloudflare Tunnel Edit, zone WAF and DNS Edit on
+  `dlco.us`; Caddy only needs the zone read and DNS Edit parts.
 
 Deploy to one node (repeat per node; do them one at a time so the VIP always has a holder):
 
