@@ -29,7 +29,7 @@ replica from this compose file; Cloudflare keeps serving while any one replica i
   `*.dlco.us` → `https://caddy:443` with `matchSNItoHost`, so the Caddyfile still decides routing.
   Change them with `PUT /accounts/<id>/cfd_tunnel/<tunnel>/configurations`.
 - `TUNNEL_TOKEN` (replica credential) and `CLOUDFLARE_TUNNEL_API_TOKEN` (account-owned token,
-  Cloudflare Tunnel Edit, no DNS access) are in the `caddy` secrets group. DNS changes still use
+  Cloudflare Tunnel Edit plus zone WAF rules, no DNS access) are in the `caddy` secrets group. DNS changes still use
   `CLOUDFLARE_API_TOKEN`.
 - Nothing public depends on the home IP any more: `cloudflare-ddns` and the `*.staging.dlco.us`
   record are gone (staging is `cer-staging.dlco.us`), and the router's 80/443 forwards to the VIP
