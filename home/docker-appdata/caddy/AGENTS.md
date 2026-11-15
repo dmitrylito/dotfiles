@@ -19,6 +19,23 @@ variable in `Caddyfile.tmpl` points to DLCO-2's fixed `.12` address.
 CER production runs on DLCO-3 at `192.168.0.13:18000`.
 VSL Supabase runs on DLCO-3 at `192.168.0.13:18100`.
 
+## Public ingress: Cloudflare tunnel `dlco`
+
+`dlco.us` and `*.dlco.us` are proxied CNAMEs to the remotely-managed tunnel `dlco`
+(`bc482de8-274d-42ba-bd94-1269cb008ecd.cfargotunnel.com`). Each node runs a `cloudflared`
+replica from this compose file; Cloudflare keeps serving while any one replica is up.
+
+- Ingress rules live in Cloudflare, not in this repo: `dlco.us` → `http://caddy:80`,
+  `*.dlco.us` → `https://caddy:443` with `matchSNItoHost`, so the Caddyfile still decides routing.
+  Change them with `PUT /accounts/<id>/cfd_tunnel/<tunnel>/configurations`.
+- `TUNNEL_TOKEN` (replica credential) and `CLOUDFLARE_TUNNEL_API_TOKEN` (account-owned token,
+  Cloudflare Tunnel Edit, no DNS access) are in the `caddy` secrets group. DNS changes still use
+  `CLOUDFLARE_API_TOKEN`.
+- `*.staging.dlco.us` is still a proxied A record kept current by `cloudflare-ddns`, and the
+  router's 80/443 forward to the VIP still exists for it and as a rollback path.
+- Rollback: turn `dlco.us` and `*.dlco.us` back into proxied A records on the public IP and add
+  them back to `DOMAINS` in `compose.yaml.tmpl`.
+
 - Source of truth is chezmoi: `docker-appdata/caddy/` in `~/.local/share/chezmoi`. Never edit
   the deployed copy in `~/docker-appdata/caddy/`.
 - Add or change a site in `Caddyfile.tmpl` as a `@name host …` + `handle` pair inside the
