@@ -38,7 +38,7 @@ services:
     network_mode: host
     env_file: {{ joinPath .chezmoi.homeDir ".config/secrets/caddy.env" }}
     environment:
-      - DOMAINS=dlco.us, *.dlco.us, *.staging.dlco.us
+      - DOMAINS=*.staging.dlco.us
       - PROXIED=true
       - UPDATE_CRON=@every 5m
       - IP6_PROVIDER=none
