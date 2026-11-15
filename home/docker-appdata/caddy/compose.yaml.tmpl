@@ -31,19 +31,6 @@ services:
     depends_on:
       - caddy
 
-  # Every node runs it so the public A records keep updating when any one node is down.
-  cloudflare-ddns:
-    image: favonia/cloudflare-ddns:latest
-    restart: unless-stopped
-    network_mode: host
-    env_file: {{ joinPath .chezmoi.homeDir ".config/secrets/caddy.env" }}
-    environment:
-      - DOMAINS=*.staging.dlco.us
-      - PROXIED=true
-      - UPDATE_CRON=@every 5m
-      - IP6_PROVIDER=none
-      - DETECTION_TIMEOUT=15s
-
   # Every node runs a replica of the same tunnel; Cloudflare keeps serving while any one is up.
   # TUNNEL_TOKEN comes from the caddy secrets group. Ingress rules live in Cloudflare, not here.
   cloudflared:

@@ -1,8 +1,8 @@
 # Caddy reverse proxy (dlco-1, dlco-2, dlco-3)
 
 Every public `*.dlco.us` and Tailscale `*.init.dlco.us` site is served by Caddy running
-identically on all three servers. keepalived moves the LAN VIP `192.168.0.3` (the router's
-80/443 forward target) to a healthy node, so any one box can go down. This replaced Nginx
+identically on all three servers. Public traffic reaches it through the Cloudflare tunnel
+below. keepalived still moves the LAN VIP `192.168.0.3` to a healthy node. This replaced Nginx
 Proxy Manager on DLCO-2.
 
 ## Nodes
@@ -31,10 +31,12 @@ replica from this compose file; Cloudflare keeps serving while any one replica i
 - `TUNNEL_TOKEN` (replica credential) and `CLOUDFLARE_TUNNEL_API_TOKEN` (account-owned token,
   Cloudflare Tunnel Edit, no DNS access) are in the `caddy` secrets group. DNS changes still use
   `CLOUDFLARE_API_TOKEN`.
-- `*.staging.dlco.us` is still a proxied A record kept current by `cloudflare-ddns`, and the
-  router's 80/443 forward to the VIP still exists for it and as a rollback path.
-- Rollback: turn `dlco.us` and `*.dlco.us` back into proxied A records on the public IP and add
-  them back to `DOMAINS` in `compose.yaml.tmpl`.
+- Nothing public depends on the home IP any more: `cloudflare-ddns` and the `*.staging.dlco.us`
+  record are gone (staging is `cer-staging.dlco.us`), and the router's 80/443 forwards to the VIP
+  are disabled in Omada (rules kept, `status: false`). The VIP now only matters to LAN clients
+  that address `192.168.0.3` directly.
+- Rollback: re-enable the two Omada forwards and turn `dlco.us` and `*.dlco.us` back into proxied
+  A records on the public IP. Without DDNS those records need updating by hand when the IP changes.
 
 - Source of truth is chezmoi: `docker-appdata/caddy/` in `~/.local/share/chezmoi`. Never edit
   the deployed copy in `~/docker-appdata/caddy/`.
