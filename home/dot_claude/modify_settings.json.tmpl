@@ -305,6 +305,11 @@ ENFORCED_SCALARS = {
     "remoteControlAtStartup": True,
     "spinnerTipsEnabled": False,
     "terminalProgressBarEnabled": False,
+{{- if eq (.profile | lower) "omarchy" }}
+    # One auto-memory dir for every project on this box instead of one per cwd/repo, so a
+    # fact saved from ~/Work is visible from the chezmoi source and vice versa. Machine-local.
+    "autoMemoryDirectory": HOME + "/.claude/memory",
+{{- end }}
 }
 
 
