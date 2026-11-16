@@ -69,10 +69,11 @@ order by 1, 3 desc, 2
 OPS_UPDATE = r"""
 import contextlib, json
 from crm.clients import fleetchaser
+from crm.services.fc_tasks import workboard
 out = []
 with contextlib.closing(fleetchaser.get_client()) as c:
     for u in json.loads(%r):
-        fleetchaser.update_task(c, u["id"], name=u["name"], description=[{"insert": u["text"]}])
+        workboard.update_task(u["id"], name=u["name"], description=u["text"])
         t = fleetchaser.fetch_task(c, u["id"])
         d = t.get("description")
         text = "".join(op.get("insert", "") for op in d) if isinstance(d, list) else None
