@@ -2,8 +2,8 @@
 
 When something surfaces that will matter in future sessions, save it to auto-memory
 (one file per fact) WITHOUT waiting to be asked — and always when the user says "remember …".
-On fcoffice every project shares one dir, `~/.claude/memory/`; elsewhere it is per project
-(`~/.claude/projects/<slug>/memory/`).
+On omarchy and server hosts every project shares one dir, `~/.claude/memory/`; on the mac
+it is per project (`~/.claude/projects/<slug>/memory/`).
 
 - A stated preference or correction about how I should work → type `feedback`
 - A non-obvious project/infra fact not derivable from the code → type `project`

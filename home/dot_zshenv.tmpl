@@ -78,8 +78,6 @@ fi
 
 # Fullscreen (alt-screen) rendering so Claude Code stops full-viewport redraws.
 export CLAUDE_CODE_NO_FLICKER=1
-# Labels this machine in the `remember` plugin's memory headers (server/omarchy/mac).
-export REMEMBER_BRANCH={{ .profile }}
 {{- if and (eq (.profile | lower) "omarchy") (eq .chezmoi.hostname "fcoffice") }}
 # HYPRLAND_CONFIG must NOT be exported globally: Omarchy v4's Hyprland treats it
 # as an explicit config override and skips the hyprland.lua provider entirely.

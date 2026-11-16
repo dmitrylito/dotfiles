@@ -124,7 +124,6 @@ BASELINE = {
         "huggingface-skills@claude-plugins-official": True,
         "linear@claude-plugins-official": True,
         "pyright-lsp@claude-plugins-official": True,
-        "remember@claude-plugins-official": True,
         "security-guidance@claude-plugins-official": True,
         "sentry@claude-plugins-official": True,
         "typescript-plugin@lsp-marketplace": True,
@@ -269,6 +268,9 @@ BASELINE = {
 # whole plugin is the only lever. The claude.ai Sentry and Linear MCP connectors are separate
 # and stay available.
 DISABLED_PLUGINS = (
+    # Removed 2026-11-16: auto memory replaces it; its summarizer left an empty
+    # ~/.claude/projects/-tmp-remember-summarizer-cwd-* dir per run.
+    "remember@claude-plugins-official",
 {{- if eq (.profile | lower) "omarchy" }}
     "claude-code-setup@claude-plugins-official",
     "claude-md-management@claude-plugins-official",
@@ -305,7 +307,7 @@ ENFORCED_SCALARS = {
     "remoteControlAtStartup": True,
     "spinnerTipsEnabled": False,
     "terminalProgressBarEnabled": False,
-{{- if eq (.profile | lower) "omarchy" }}
+{{- if or (eq (.profile | lower) "omarchy") (eq (.profile | lower) "server") }}
     # One auto-memory dir for every project on this box instead of one per cwd/repo, so a
     # fact saved from ~/Work is visible from the chezmoi source and vice versa. Machine-local.
     "autoMemoryDirectory": HOME + "/.claude/memory",
