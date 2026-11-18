@@ -14,6 +14,11 @@
 #
 # Sessions with no saved state yet fall back to the daemon's own state
 # (`claude agents --json`) when it is one Herdr understands.
+#
+# The agents page itself (title "… claude agents") reports nothing, and Claude Code 2.1.327+
+# writes OSC 7501 state=clear when you leave a session for it, so Herdr dropped the terminal
+# from its agents panel. On that title this writes the page's own state instead: blocked if
+# any background session is, else working if any is, else idle.
 import json
 import os
 import re
@@ -31,6 +36,7 @@ def status_dir():
 STATUS_DIR = status_dir()
 GLYPH = re.compile(r"^[^\w]+", re.UNICODE)
 HERDR_STATES = {"idle", "working", "done", "blocked", "error"}
+AGENTS_PAGE = re.compile(r"(^|· )claude agents$")
 
 
 def background_sessions():
@@ -73,16 +79,27 @@ def viewer_tty(terminal):
     return pts_of(foreground["pid"]) if foreground.get("pid") else None
 
 
+def page_fields(sessions):
+    states = {s.get("state") for s in sessions}
+    state = next((s for s in ("blocked", "working") if s in states), "idle")
+    return f"state={state}:app=claude-code"
+
+
 def on_title(terminal, title, last):
     name = GLYPH.sub("", title or "").strip()
     if last.get(terminal) == name:
         return
     last[terminal] = name
-    matches = [s for s in background_sessions() if s.get("name") == name]
-    if not matches:
-        return
-    session = max(matches, key=lambda s: s.get("startedAt") or 0)
-    fields = fields_for(session)
+    sessions = background_sessions()
+    if AGENTS_PAGE.search(name):
+        session = {"id": "agents-page"}
+        fields = page_fields(sessions)
+    else:
+        matches = [s for s in sessions if s.get("name") == name]
+        if not matches:
+            return
+        session = max(matches, key=lambda s: s.get("startedAt") or 0)
+        fields = fields_for(session)
     tty = viewer_tty(terminal)
     if fields and tty:
         with open(tty, "w") as fh:
