@@ -1,0 +1,19 @@
+{{ if eq (.profile | lower) "mac" -}}
+#!/bin/sh
+# Start (or restart) the lid-guard LaunchAgent on macOS.
+#
+# Usage: not run by hand. chezmoi runs it during a full `apply` whenever its rendered
+#        content changes. Renders empty (so chezmoi skips it) on other profiles.
+#
+# Re-runs when these change:
+#   {{ include "dot_local/bin/executable_lid-guard" | sha256sum }}
+#   {{ include "Library/LaunchAgents/com.dmitrylito.lid-guard.plist.tmpl" | sha256sum }}
+set -eu
+
+DOMAIN="gui/$(id -u)"
+label="com.dmitrylito.lid-guard"
+mkdir -p "{{ .chezmoi.homeDir }}/Library/Logs"
+launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+launchctl bootstrap "$DOMAIN" "{{ .chezmoi.homeDir }}/Library/LaunchAgents/$label.plist"
+echo "ensure-lid-guard-launch-agent: started LaunchAgent $label"
+{{ end -}}
