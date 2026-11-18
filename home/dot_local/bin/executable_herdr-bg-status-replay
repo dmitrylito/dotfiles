@@ -19,10 +19,15 @@
 # writes OSC 7501 state=clear when you leave a session for it, so Herdr dropped the terminal
 # from its agents panel. On that title this writes the page's own state instead: blocked if
 # any background session is, else working if any is, else idle.
+#
+# `claude agents --json` takes ~0.2s, long enough for the panel row to blink out after the
+# clear, so a thread keeps the session list fresh (HERDR_BG_STATUS_REFRESH seconds, default 2)
+# and titles are answered from it; a name not in it yet is looked up directly.
 import json
 import os
 import re
 import subprocess
+import threading
 import time
 
 
@@ -37,6 +42,8 @@ STATUS_DIR = status_dir()
 GLYPH = re.compile(r"^[^\w]+", re.UNICODE)
 HERDR_STATES = {"idle", "working", "done", "blocked", "error"}
 AGENTS_PAGE = re.compile(r"(^|· )claude agents$")
+REFRESH = float(os.environ.get("HERDR_BG_STATUS_REFRESH", "2"))
+cached_sessions = []
 
 
 def background_sessions():
@@ -79,6 +86,16 @@ def viewer_tty(terminal):
     return pts_of(foreground["pid"]) if foreground.get("pid") else None
 
 
+def refresh_sessions():
+    global cached_sessions
+    while True:
+        try:
+            cached_sessions = background_sessions()
+        except Exception as exc:  # noqa: BLE001 — keep the last list until the next pass works
+            print(f"refresh: {exc}", flush=True)
+        time.sleep(REFRESH)
+
+
 def page_fields(sessions):
     states = {s.get("state") for s in sessions}
     state = next((s for s in ("blocked", "working") if s in states), "idle")
@@ -90,12 +107,13 @@ def on_title(terminal, title, last):
     if last.get(terminal) == name:
         return
     last[terminal] = name
-    sessions = background_sessions()
     if AGENTS_PAGE.search(name):
         session = {"id": "agents-page"}
-        fields = page_fields(sessions)
+        fields = page_fields(cached_sessions)
     else:
-        matches = [s for s in sessions if s.get("name") == name]
+        matches = [s for s in cached_sessions if s.get("name") == name]
+        if not matches:
+            matches = [s for s in background_sessions() if s.get("name") == name]
         if not matches:
             return
         session = max(matches, key=lambda s: s.get("startedAt") or 0)
@@ -108,6 +126,7 @@ def on_title(terminal, title, last):
 
 
 def main():
+    threading.Thread(target=refresh_sessions, daemon=True).start()
     last = {}
     while True:
         proc = subprocess.Popen(["hc", "events", "--json"], stdout=subprocess.PIPE, text=True)
