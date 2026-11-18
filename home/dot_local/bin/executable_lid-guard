@@ -1,15 +1,23 @@
 #!/bin/sh
-# lid-guard: when the MacBook lid closes with no external display connected, mute audio
-# output and sleep the display (which locks the screen, since the lock delay is "immediate").
-# When the lid opens again, unmute only if lid-guard did the muting.
+# lid-guard: two jobs, polled every LID_GUARD_INTERVAL seconds (default 2).
+#
+# 1. Keep `pmset disablesleep` in step with Amphetamine: 1 while an Amphetamine session holds a
+#    sleep assertion, 0 otherwise. Amphetamine's own Power Protect did not do this on battery
+#    (the Mac logged "Clamshell Sleep" with a session running), so this does it instead. It must
+#    already be 1 before the lid closes; macOS sleeps on lid close before any script can react.
+#    When it flips to 0 with the lid closed and no external display, the Mac is put to sleep.
+# 2. When the lid closes with no external display: mute output and sleep the display (which
+#    locks, since the screen-lock delay is "immediate"). On lid open, unmute only if it muted.
 #
 # Usage: run by the LaunchAgent com.dmitrylito.lid-guard; not run by hand.
-#        LID_GUARD_INTERVAL sets the lid poll interval in seconds (default 2).
-# Precondition: staying awake with the lid closed needs `sudo pmset -a disablesleep 1`,
-#        a one-time system setting this script does not change.
+#        Log: ~/Library/Logs/lid-guard.log
+# Precondition: /etc/sudoers.d/amphetamine_PowerProtect (installed by Amphetamine's Power
+#        Protect) lets admin users run `/usr/bin/pmset -a disablesleep 0|1` without a password.
 set -u
 
 interval="${LID_GUARD_INTERVAL:-2}"
+
+log() { echo "$(date '+%F %T') $*"; }
 
 lid_closed() {
 	ioreg -r -k AppleClamshellState -d 4 | grep -q '"AppleClamshellState" = Yes'
@@ -22,10 +30,34 @@ external_displays() {
 		END { e = 0; for (i = 1; i <= n; i++) if (!internal[i]) e++; print e }'
 }
 
+amphetamine_active() {
+	pmset -g assertions | grep -q '([Aa]mphetamine):'
+}
+
+sleep_disabled() {
+	pmset -g | awk '/SleepDisabled/ { print $2 }'
+}
+
+sync_sleep_disabled() {
+	want=0
+	amphetamine_active && want=1
+	[ "$(sleep_disabled)" = "$want" ] && return
+	if sudo -n /usr/bin/pmset -a disablesleep "$want"; then
+		log "Amphetamine session active=$want: set disablesleep $want"
+		if [ "$want" = 0 ] && lid_closed && [ "$(external_displays)" = 0 ]; then
+			log "lid closed, no external display: sleeping now"
+			pmset sleepnow
+		fi
+	else
+		log "failed to set disablesleep $want"
+	fi
+}
+
 was_closed=0
 we_muted=0
 lid_closed && was_closed=1
 while :; do
+	sync_sleep_disabled
 	if lid_closed; then
 		if [ "$was_closed" = 0 ]; then
 			was_closed=1
@@ -35,7 +67,7 @@ while :; do
 					we_muted=1
 				fi
 				pmset displaysleepnow
-				echo "$(date '+%F %T') lid closed, no external display: muted=$we_muted, locked"
+				log "lid closed, no external display: muted=$we_muted, locked"
 			fi
 		fi
 	elif [ "$was_closed" = 1 ]; then
@@ -43,7 +75,7 @@ while :; do
 		if [ "$we_muted" = 1 ]; then
 			osascript -e 'set volume output muted false'
 			we_muted=0
-			echo "$(date '+%F %T') lid opened: unmuted"
+			log "lid opened: unmuted"
 		fi
 	fi
 	sleep "$interval"
