@@ -11,10 +11,9 @@
 #   HERDR_TAB_TITLES_INTERVAL  seconds between fallback passes (default: 5); a title or
 #                              status change reported by `hc events` triggers a pass at once
 #
-# Only tabs nobody named (their name is their position, "1", "2", ...) or that this
-# script named are touched, so a name given with tab.rename (F2 / Alt+R) sticks. Clear
-# it (rename to "") to hand the tab back. Remote machines' tabs are included (by the
-# fallback pass when their core's events don't reach the local `hc events`).
+# Every tab with a Claude Code terminal is renamed whenever its title differs, so a name
+# given by hand (F2 / Alt+R) is overwritten on the next pass. Remote machines' tabs are
+# included (by the fallback pass when their core's events don't reach the local `hc events`).
 # In `claude agents`, the list's own title is ignored, so the tab keeps the name of the
 # session last opened from it.
 # Needs a running herdr-app window; passes fail quietly until one is up.
@@ -27,7 +26,6 @@ import threading
 import time
 
 INTERVAL = float(os.environ.get("HERDR_TAB_TITLES_INTERVAL", "5"))
-STATE = os.path.expanduser("~/.local/state/herdr-tab-titles.json")
 GLYPH = re.compile(r"^[^\w]+", re.UNICODE)
 GENERIC = {"", "claude", "claude code", "claude agents"}
 
@@ -39,52 +37,25 @@ def run_json(*args):
     return json.loads(out.stdout)
 
 
-def load_state():
-    try:
-        with open(STATE) as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
-        return {}
-
-
-def save_state(state):
-    os.makedirs(os.path.dirname(STATE), exist_ok=True)
-    tmp = STATE + ".tmp"
-    with open(tmp, "w") as fh:
-        json.dump(state, fh, indent=1, sort_keys=True)
-    os.replace(tmp, STATE)
-
-
 def session_title(address):
     title = run_json("hc", "get", "--json", address).get("title") or ""
     title = GLYPH.sub("", title).strip()
     return None if title.lower() in GENERIC else title
 
 
-def reconcile(state):
-    # A claim must survive passes where the tab has no claude-code terminal or is not
-    # listed (Claude restarting, a remote core reconnecting); dropping it orphans the
-    # tab under its last title until someone clears the name by hand.
-    seen = dict(state)
+def reconcile():
     for space in run_json("herdr-app", "ls")["spaces"]:
         for tab in space["tabs"]:
-            ours = state.get(tab["id"])
-            if not (tab["name"].isdigit() or tab["name"] == ours):
-                seen.pop(tab["id"], None)
-                continue
             claude = next((t["terminal"] for t in tab["terminals"] if t.get("app") == "claude-code"), None)
             if not claude:
                 continue
             try:
                 title = session_title(claude)
+                if title and title != tab["name"]:
+                    run_json("herdr-app", "do", "tab.rename", "--id", tab["id"], "--name", title)
+                    print(f"{tab['id']}: {title}", flush=True)
             except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
-                print(f"{claude}: {exc}", flush=True)
-                continue
-            if title and title != tab["name"]:
-                run_json("herdr-app", "do", "tab.rename", "--id", tab["id"], "--name", title)
-                seen[tab["id"]] = title
-                print(f"{tab['id']}: {title}", flush=True)
-    return {k: v for k, v in seen.items() if v}
+                print(f"{tab['id']}: {exc}", flush=True)
 
 
 def follow_events(wake):
@@ -108,16 +79,12 @@ def main():
     once = sys.argv[1:] == ["--once"]
     if sys.argv[1:] and not once:
         sys.exit("usage: herdr-tab-titles [--once]")
-    state = load_state()
     wake = threading.Event()
     if not once:
         threading.Thread(target=follow_events, args=(wake,), daemon=True).start()
     while True:
         try:
-            new = reconcile(state)
-            if new != state:
-                state = new
-                save_state(state)
+            reconcile()
         except Exception as exc:  # noqa: BLE001 — herdr-app down or restarting must not kill the loop
             print(f"pass failed: {exc}", flush=True)
         if once:
