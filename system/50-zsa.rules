@@ -1,0 +1,23 @@
+# ZSA keyboards (Moonlander, Voyager, ErgoDox EZ, Planck EZ): give the logged-in
+# seat user access for Oryx web flashing/live training and Keymapp flashing.
+# Adapted from https://github.com/zsa/wally/wiki/Linux-install, with uaccess in
+# place of the plugdev group. uaccess is applied by 73-seat-late.rules, so this
+# file must sort before 73.
+
+# Oryx web flashing and live training (WebHID)
+KERNEL=="hidraw*", ATTRS{idVendor}=="16c0", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="3297", TAG+="uaccess"
+
+# Live training over WebUSB (firmware before v21), Keymapp, Voyager bootloader
+SUBSYSTEM=="usb", ATTR{idVendor}=="3297", TAG+="uaccess", SYMLINK+="ignition_dfu"
+SUBSYSTEM=="usb", ATTR{idVendor}=="feed", ATTR{idProduct}=="1307", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="feed", ATTR{idProduct}=="6060", TAG+="uaccess"
+
+# Moonlander / Planck EZ bootloader (STM32 DFU)
+SUBSYSTEM=="usb", ATTR{idVendor}=="0483", ATTR{idProduct}=="df11", TAG+="uaccess", SYMLINK+="stm32_dfu"
+
+# ErgoDox EZ bootloader (Teensy)
+ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="04[789B]?", ENV{ID_MM_DEVICE_IGNORE}="1"
+ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="04[789A]?", ENV{MTP_NO_PROBE}="1"
+SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="04[789ABCD]?", TAG+="uaccess"
+KERNEL=="ttyACM*", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="04[789B]?", TAG+="uaccess"

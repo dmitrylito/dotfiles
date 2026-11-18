@@ -1,0 +1,26 @@
+{{- if and (eq (.profile | lower) "omarchy") (not (dig "debug" false .)) -}}
+#!/bin/sh
+# Install the ZSA keyboard udev rule (system/50-zsa.rules) so the
+# desktop user can flash and live-train ZSA keyboards (Oryx, Keymapp).
+#
+# Usage: not run by hand. chezmoi runs it during `apply` whenever the rule or
+#        installer changes (hashes below). To install directly:
+#        sudo ~/.local/share/chezmoi/system/install-zsa-udev.sh
+#
+# Never prompts for a password: if the rule is missing and passwordless sudo is
+# unavailable, it prints the command to run and exits 0 so apply continues.
+#
+#   {{ include (joinPath $.chezmoi.workingTree "system/50-zsa.rules") | sha256sum }}
+#   {{ include (joinPath $.chezmoi.workingTree "system/install-zsa-udev.sh") | sha256sum }}
+set -eu
+
+installer="{{ joinPath .chezmoi.workingTree "system/install-zsa-udev.sh" }}"
+
+cmp -s "{{ joinPath .chezmoi.workingTree "system/50-zsa.rules" }}" /etc/udev/rules.d/50-zsa.rules && exit 0
+
+if sudo -n true 2>/dev/null; then
+	sudo -n "$installer"
+else
+	echo "zsa-udev: not in place; run: sudo $installer" >&2
+fi
+{{ end -}}
