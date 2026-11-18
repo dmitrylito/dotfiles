@@ -14,8 +14,8 @@
 # Every tab with a Claude Code terminal is renamed whenever its title differs, so a name
 # given by hand (F2 / Alt+R) is overwritten on the next pass. Remote machines' tabs are
 # included (by the fallback pass when their core's events don't reach the local `hc events`).
-# In `claude agents`, the list's own title is ignored, so the tab keeps the name of the
-# session last opened from it.
+# In `claude agents`, the list's own title ("claude agents", "2 awaiting input · claude agents")
+# names the tab "agents".
 # Needs a running herdr-app window; passes fail quietly until one is up.
 import json
 import os
@@ -27,7 +27,8 @@ import time
 
 INTERVAL = float(os.environ.get("HERDR_TAB_TITLES_INTERVAL", "5"))
 GLYPH = re.compile(r"^[^\w]+", re.UNICODE)
-GENERIC = {"", "claude", "claude code", "claude agents"}
+GENERIC = {"", "claude", "claude code"}
+AGENTS_PAGE = re.compile(r"(^|· )claude agents$")
 
 
 def run_json(*args):
@@ -40,6 +41,8 @@ def run_json(*args):
 def session_title(address):
     title = run_json("hc", "get", "--json", address).get("title") or ""
     title = GLYPH.sub("", title).strip()
+    if AGENTS_PAGE.search(title.lower()):
+        return "agents"
     return None if title.lower() in GENERIC else title
 
 
