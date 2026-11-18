@@ -1,7 +1,9 @@
 [Unit]
 Description=Send a background Claude session's state to Herdr when it is opened in the agents view
+{{- if eq .profile "omarchy" }}
 PartOf=graphical-session.target
 After=graphical-session.target
+{{- end }}
 
 [Service]
 Type=simple
@@ -11,4 +13,4 @@ Restart=always
 RestartSec=5
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy={{ if eq .profile "omarchy" }}graphical-session.target{{ else }}default.target{{ end }}

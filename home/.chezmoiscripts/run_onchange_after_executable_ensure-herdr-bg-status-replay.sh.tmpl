@@ -1,0 +1,24 @@
+{{- if and (eq .profile "server") (not (dig "debug" false .)) -}}
+#!/bin/sh
+# Enable and (re)start herdr-bg-status-replay on servers, where no graphical session pulls
+# it in. Herdr app windows on other machines show this machine's `claude agents` terminals;
+# without it they lose their agent status whenever Claude Code writes OSC 7501 state=clear.
+#
+# Usage: not run by hand. chezmoi runs it during `apply` whenever its rendered content
+#        changes (see the hashes below). No-ops without a reachable systemd user manager.
+#
+# Re-runs when these change:
+#   {{ include "dot_config/systemd/user/herdr-bg-status-replay.service.tmpl" | sha256sum }}
+#   {{ include "dot_local/bin/executable_herdr-bg-status-replay" | sha256sum }}
+set -eu
+
+command -v systemctl >/dev/null 2>&1 || exit 0
+systemctl --user show-environment >/dev/null 2>&1 || {
+	echo "ensure-herdr-bg-status-replay: no systemd user manager reachable, skipping"
+	exit 0
+}
+
+systemctl --user daemon-reload
+systemctl --user enable herdr-bg-status-replay.service
+systemctl --user restart herdr-bg-status-replay.service
+{{ end -}}
