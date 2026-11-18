@@ -62,16 +62,19 @@ def session_title(address):
 
 
 def reconcile(state):
-    seen = {}
+    # A claim must survive passes where the tab has no claude-code terminal or is not
+    # listed (Claude restarting, a remote core reconnecting); dropping it orphans the
+    # tab under its last title until someone clears the name by hand.
+    seen = dict(state)
     for space in run_json("herdr-app", "ls")["spaces"]:
         for tab in space["tabs"]:
+            ours = state.get(tab["id"])
+            if not (tab["name"].isdigit() or tab["name"] == ours):
+                seen.pop(tab["id"], None)
+                continue
             claude = next((t["terminal"] for t in tab["terminals"] if t.get("app") == "claude-code"), None)
             if not claude:
                 continue
-            ours = state.get(tab["id"])
-            if not (tab["name"].isdigit() or tab["name"] == ours):
-                continue
-            seen[tab["id"]] = ours
             try:
                 title = session_title(claude)
             except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
