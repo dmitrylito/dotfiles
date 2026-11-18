@@ -1,6 +1,7 @@
 #!/bin/sh
 # lid-guard: when the MacBook lid closes with no external display connected, mute audio
 # output and sleep the display (which locks the screen, since the lock delay is "immediate").
+# When the lid opens again, unmute only if lid-guard did the muting.
 #
 # Usage: run by the LaunchAgent com.dmitrylito.lid-guard; not run by hand.
 #        LID_GUARD_INTERVAL sets the lid poll interval in seconds (default 2).
@@ -22,19 +23,28 @@ external_displays() {
 }
 
 was_closed=0
+we_muted=0
 lid_closed && was_closed=1
 while :; do
 	if lid_closed; then
 		if [ "$was_closed" = 0 ]; then
 			was_closed=1
 			if [ "$(external_displays)" = 0 ]; then
-				osascript -e 'set volume output muted true'
+				if [ "$(osascript -e 'output muted of (get volume settings)')" = false ]; then
+					osascript -e 'set volume output muted true'
+					we_muted=1
+				fi
 				pmset displaysleepnow
-				echo "$(date '+%F %T') lid closed, no external display: muted and locked"
+				echo "$(date '+%F %T') lid closed, no external display: muted=$we_muted, locked"
 			fi
 		fi
-	else
+	elif [ "$was_closed" = 1 ]; then
 		was_closed=0
+		if [ "$we_muted" = 1 ]; then
+			osascript -e 'set volume output muted false'
+			we_muted=0
+			echo "$(date '+%F %T') lid opened: unmuted"
+		fi
 	fi
 	sleep "$interval"
 done
