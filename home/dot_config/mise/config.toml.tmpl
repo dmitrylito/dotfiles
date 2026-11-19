@@ -13,6 +13,9 @@ claude = "latest"
 {{ if ne (.profile | lower) "server" -}}
 codex = "latest"
 {{ end -}}
+{{ if eq (.profile | lower) "mac" -}}
+flutter = "latest"
+{{ end -}}
 gcloud = "latest"
 gh = "latest"
 node = "26"

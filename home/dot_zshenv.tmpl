@@ -151,7 +151,8 @@ export HOMEBREW_BAT=1
 # sources path.zsh.inc and completion.zsh.inc from it, but only otherwise probes
 # /usr/share, so homebrew prefixes used to need their own branch.
 for _gcloud_root in /opt/google-cloud-cli /opt/homebrew/share/google-cloud-sdk \
-                    /usr/share/google-cloud-sdk "$HOME/google-cloud-sdk"; do
+                    /usr/share/google-cloud-sdk "$HOME/google-cloud-sdk" \
+                    "$HOME/.local/share/mise/installs/gcloud/latest"; do
   if [[ -f "$_gcloud_root/path.zsh.inc" ]]; then
     export CLOUDSDK_HOME="${CLOUDSDK_HOME:-$_gcloud_root}"
     break
