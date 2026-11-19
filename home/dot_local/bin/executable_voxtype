@@ -16,4 +16,9 @@ FORK="$HOME/.local/share/voxtype-mgx/current/target/release/voxtype"
 # (per-gfx code objects there make ldconfig warn on every pacman run).
 export LD_LIBRARY_PATH="/opt/migraphx/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+# The settings panel runs `voxtype setup omarchy` checks through this wrapper; keep it on the
+# same panel dir the daemon links (see mgx-fork.conf).
+export VOXTYPE_OMARCHY_PLUGIN_DIR="$HOME/.local/share/voxtype-mgx/current/omarchy-plugin"
+export VOXTYPE_OSD_QML_PATH="$HOME/.local/share/voxtype-mgx/current/quickshell"
+
 exec "$FORK" "$@"
