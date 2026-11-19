@@ -95,6 +95,44 @@ hl.on("monitor.layout_changed", configure_lg_dual_mode)
 -- is how work-mode starts it). SUPER + D reveals it after a cold launch instead --
 -- see spotify_toggle in bindings.lua. Nothing autostarts spotify.
 o.window({ class = "^(spotify)$" }, { workspace = "special:spotify silent" })
+
+-- The Spotify scratchpad is a centered panel the size of a lone herdr console
+-- (LONE in qconsole.lua; keep the two equal). Sized by gaps refitted to the monitor
+-- it opens on, because a window rule's size freezes at whatever the screen measured
+-- when the window first mapped.
+local SPOTIFY = "special:spotify"
+local SPOTIFY_SHARE = 0.75
+
+local function spotify_fit(monitor)
+	if not monitor or not monitor.scale or monitor.scale <= 0 then
+		return
+	end
+	local width, height = monitor.width, monitor.height
+	if monitor.transform % 2 == 1 then
+		width, height = height, width
+	end
+	local reserved = monitor.reserved
+	height = height / monitor.scale - reserved.top - reserved.bottom
+	width = width / monitor.scale - reserved.left - reserved.right
+	local tall, wide = math.floor(height * SPOTIFY_SHARE), math.floor(width * SPOTIFY_SHARE)
+	local top, side = math.floor((height - tall) / 2), math.floor((width - wide) / 2)
+	hl.workspace_rule({
+		workspace = SPOTIFY,
+		gaps_in = 0,
+		gaps_out = { top = top, right = side, bottom = math.floor(height - tall - top), left = side },
+	})
+	hl.exec_scheduled_prop_refresh_immediately()
+end
+
+spotify_fit(hl.get_active_monitor())
+hl.on("workspace.special_active", function(ws, mon)
+	if ws and ws.name == SPOTIFY then
+		spotify_fit(mon)
+	end
+end)
+hl.on("monitor.layout_changed", function()
+	spotify_fit(hl.get_active_monitor())
+end)
 -- hypr-testbed's nested compositor. Silent, so starting one never lands a window on
 -- whatever workspace is in front; `hypr-testbed show` reveals the scratchpad.
 o.window({ class = "^(aquamarine)$" }, { workspace = "special:testbed silent" })
