@@ -179,7 +179,6 @@ Projects/fleetchaser/
 .config/borders/
 .config/karabiner/
 .local/bin/ghostty-run
-.local/bin/lid-guard
 Library/
 .config/omniwm/
 {{ end }}
