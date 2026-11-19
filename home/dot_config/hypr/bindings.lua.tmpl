@@ -215,6 +215,12 @@ hl.bind("SUPER + S", qconsole_toggle, { description = "Toggle Quake console" })
 o.bind("SUPER + E", "Toggle notification center", "omarchy-shell -q shell toggle omacom.notification-center")
 o.bind("SUPER + D", "Toggle Spotify scratchpad", spotify_toggle)
 o.bind("SUPER + SHIFT + M", "Music", spotify_toggle)
+o.bind("SUPER + R", "Toggle scratchpad", hl.dsp.workspace.toggle_special("scratchpad"))
+o.bind(
+	"SUPER + ALT + R",
+	"Move window to scratchpad",
+	hl.dsp.window.move({ workspace = "special:scratchpad", follow = false })
+)
 
 o.bind("SUPER + ALT + A", "Move window to AI", hl.dsp.window.move({ workspace = "special:AI", follow = false }))
 o.bind(
