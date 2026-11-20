@@ -6,7 +6,7 @@
 	ci = commit
 	st = status
 [init]
-	defaultBranch = main
+	defaultBranch = master
 [pull]
 	rebase = true 			 # Rebase (instead of merge) on pull
 	autostash = true       # Temporarily stash dirty tracked changes and restore them after pull
