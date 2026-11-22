@@ -1,0 +1,108 @@
+# yaml-language-server: $schema=https://carapace.sh/schemas/command.json
+# hyprctl completions. Hyprland stopped shipping shell completions after 0.52;
+# subcommands follow `hyprctl --help` for 0.57.
+name: hyprctl
+description: Control a running Hyprland instance
+persistentflags:
+  -j: Output in JSON
+  -r: Refresh state after issuing command
+  --batch=: Execute a batch of commands, separated by ';'
+  -i, --instance=: Use a specific instance (signature or index)
+  -q, --quiet: Disable the output of hyprctl
+completion:
+  flag:
+    instance: ["$(hyprctl instances -j | jq -r '.[] | \"\\(.instance)\\tpid \\(.pid)\"')"]
+commands:
+  - name: activewindow
+    description: Get the active window and its properties
+  - name: activeworkspace
+    description: Get the active workspace and its properties
+  - name: animations
+    description: Get the configured animations and beziers
+  - name: binds
+    description: List all registered binds
+  - name: clients
+    description: List all windows with their properties
+  - name: configerrors
+    description: List all current config parsing errors
+  - name: cursorpos
+    description: Get the cursor position in global layout coordinates
+  - name: decorations
+    description: List all decorations of a window
+  - name: devices
+    description: List all connected keyboards and mice
+  - name: dismissnotify
+    description: Dismiss all or up to AMOUNT notifications
+  - name: dispatch
+    description: Issue a dispatch (Lua expression)
+  - name: eval
+    description: Execute a Lua string
+  - name: getoption
+    description: Get a config option's value
+  - name: globalshortcuts
+    description: List all global shortcuts
+  - name: hyprpaper
+    description: Issue a hyprpaper request
+  - name: hyprsunset
+    description: Issue a hyprsunset request
+  - name: instances
+    description: List all running Hyprland instances
+  - name: keyword
+    description: Issue a config keyword
+  - name: kill
+    description: Enter kill mode (click a window to kill it, Escape to exit)
+  - name: layers
+    description: List all surface layers
+  - name: layouts
+    description: List all available layouts
+  - name: monitors
+    description: List active outputs with their properties
+    completion:
+      positional:
+        - ["all"]
+  - name: notify
+    description: Send a notification through Hyprland
+  - name: output
+    description: Add or remove fake outputs
+  - name: plugin
+    description: Issue a plugin request
+  - name: reload
+    description: Force reload the config
+    completion:
+      positional:
+        - ["config-only"]
+  - name: repl
+    description: Interactive Lua REPL, or print the result of a Lua string
+  - name: rollinglog
+    description: Print the tail of the log
+    flags:
+      -f, --follow: Follow the log
+  - name: setcursor
+    description: Set the cursor theme and size
+    completion:
+      positional:
+        - ["$(ls -1 ~/.local/share/icons ~/.icons /usr/share/icons 2>/dev/null | grep -v -e ':$' -e '^$' | sort -u)"]
+  - name: seterror
+    description: Set the hyprctl error string
+  - name: setprop
+    description: Set a window property
+  - name: getprop
+    description: Get a window property
+  - name: splash
+    description: Get the current splash
+  - name: status
+    description: Get internal status information
+  - name: switchxkblayout
+    description: Set the xkb layout index for a keyboard
+    completion:
+      positional:
+        - ["all", "current", "$(hyprctl devices -j | jq -r '.keyboards[].name')"]
+        - ["next", "prev"]
+  - name: systeminfo
+    description: Get system info
+  - name: version
+    description: Print the Hyprland version, flags, commit and branch
+  - name: workspacerules
+    description: List all workspace rules
+  - name: workspaces
+    description: List all workspaces with their properties

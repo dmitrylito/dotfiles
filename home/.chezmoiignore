@@ -186,6 +186,8 @@ Library/
 {{ if eq $profile "mac" }}
 # macOS has launchd, not systemd — the whole user-units tree is Linux-only.
 .config/systemd/
+# carapace is installed on server and omarchy (packages/*/aur.txt), not on mac.
+.config/carapace/
 {{ end }}
 
 {{ if ne $profile "server" }}
@@ -202,8 +204,6 @@ docker-appdata/
 .config/systemd/user/chezmoi-package-capture.timer
 .local/bin/server-update
 .config/secrets/caddy.env
-# carapace is only installed on servers (packages/server/aur.txt).
-.config/carapace/
 {{ end }}
 
 {{ if eq $profile "server" }}
