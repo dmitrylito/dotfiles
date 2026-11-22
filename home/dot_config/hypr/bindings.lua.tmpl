@@ -72,10 +72,10 @@ o.bind(
 )
 -- o.rebind("SUPER + SHIFT + F", "File manager", { tui = "yazi", focus = true }) -- yazi over the default nautilus, which hardcodes dot entries to sort last
 o.bind("SUPER + SHIFT + D", "Discord", 'omarchy-launch-or-focus ^discord$ "uwsm-app -- discord.desktop"')
--- Discord only sees its own keybinds while focused on Wayland; pass sends V's press and
--- release to it from anywhere (push to mute is set to V in Discord). non_consuming keeps V
--- typing in every other app.
-o.bind("V", "Discord push to mute", hl.dsp.pass({ window = "class:^discord$" }), { non_consuming = true })
+-- Discord registers push to mute through the GlobalShortcuts portal and reports it as not
+-- allowed until the compositor binds it. global sends activate on press and, on its own,
+-- deactivate on release. non_consuming keeps V typing in every other app.
+o.bind("V", "Discord push to mute", hl.dsp.global("discord:discord-push-to-mute"), { non_consuming = true })
 o.bind("SUPER + SHIFT + Y", "YouTube", 'omarchy-launch-webapp "https://youtube.com/" --profile-directory="Default"')
 
 -- ---------------------------------------------------------------------------
