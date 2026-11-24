@@ -98,7 +98,7 @@ def refresh_sessions():
 
 def page_fields(sessions):
     states = {s.get("state") for s in sessions}
-    state = next((s for s in ("blocked", "working") if s in states), "idle")
+    state = "blocked" if "blocked" in states else "idle"
     return f"state={state}:app=claude-code"
 
 
