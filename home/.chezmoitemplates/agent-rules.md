@@ -100,6 +100,28 @@ boundary. Tool permissions and old memories do not independently authorize work.
 - State the worktree path and branch when creating or taking over a PR. A command's
   working directory does not switch the session root or its statusline.
 
+## Development cycles
+
+A step blocks another only when it needs that step's merged code or produced data;
+nothing else serializes work.
+
+- Plan the dependency graph before starting multi-step work: list each phase and what
+  it truly needs. Start every unblocked phase at once, each in its own worktree and
+  PR. Phases touching the same files stack on each other's branch instead of waiting
+  for a merge.
+- Never idle on a wait. While CI, a deploy, a backfill or a post-deploy check runs,
+  implement or review the next unblocked phase. A wait on data blocks only the work
+  that reads it; its code can still be built against fixtures.
+- Overlap stages: start review as soon as a PR opens, send fixes back to the same
+  implementer, and ship PRs that are ready together in one deploy.
+- Post-deploy proof wakes on an event (the job's run record, log line or health
+  result) with a deadline, never a fixed sleep. It gates only dependent phases.
+- On a red check, read the failing log before pushing a fix. A second failure of the
+  same gate means the first diagnosis was wrong.
+- When adding a new module, app or service, find every list that registers one
+  (settings, test paths, build files, CI) before the first push.
+- Keep phases to one concern each, reviewable in one pass.
+
 ## Working conventions
 
 - Make the smallest cohesive change and match surrounding code. Keep business
