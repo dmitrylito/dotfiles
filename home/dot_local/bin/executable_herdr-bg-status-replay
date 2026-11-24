@@ -18,7 +18,7 @@
 # The agents page itself (title "… claude agents") reports nothing, and Claude Code 2.1.327+
 # writes OSC 7501 state=clear when you leave a session for it, so Herdr dropped the terminal
 # from its agents panel. On that title this writes the page's own state instead: blocked if
-# any background session is, else working if any is, else idle.
+# any background session is, else idle. Never working: the page itself is not in progress.
 #
 # `claude agents --json` takes ~0.2s, long enough for the panel row to blink out after the
 # clear, so a thread keeps the session list fresh (HERDR_BG_STATUS_REFRESH seconds, default 2)
