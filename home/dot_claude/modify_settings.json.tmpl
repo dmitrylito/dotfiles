@@ -307,6 +307,7 @@ ENFORCED_SCALARS = {
     "remoteControlAtStartup": True,
     "spinnerTipsEnabled": False,
     "terminalProgressBarEnabled": False,
+    "attribution": {"commit": "", "pr": "", "sessionUrl": False},
 {{- if or (eq (.profile | lower) "omarchy") (eq (.profile | lower) "server") }}
     # One auto-memory dir for every project on this box instead of one per cwd/repo, so a
     # fact saved from ~/Work is visible from the chezmoi source and vice versa. Machine-local.
