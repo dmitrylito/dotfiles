@@ -23,7 +23,7 @@ local patches = {
 	-- The top half holds two windows; a third needs the bottom half too.
 	{ "local share = 0.5", "local share = 0.5\nlocal share_for = ..." },
 	{ "local tall = math.floor(height * share)", "local tall = math.floor(height * (share_for and share_for(share) or share))" },
-	{ "    no_border = true,", '    no_border = true,\n    layout = "lua:qconsole-quarters",' },
+	{ "    no_border = true,", '    no_border = false,\n    layout = "lua:qconsole-quarters",' },
 	-- cover() only sets side and bottom gaps; a centered panel needs the top one too.
 	{ "local beside, below = nil, nil", "local beside, below, above = nil, nil, nil" },
 	{ "local function cover(side, bottom)", "local function cover(side, bottom, top)\n  top = top or 0" },
