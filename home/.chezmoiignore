@@ -107,7 +107,6 @@
 .config/chromium/
 .local/bin/autoframe
 .local/bin/import-db
-.local/bin/import-db-fast
 .local/bin/input-remapper-control
 .local/bin/input-remapper-gtk
 .local/bin/meeting-alert
