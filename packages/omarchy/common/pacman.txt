@@ -17,7 +17,6 @@ kdeconnect
 mosh
 noto-fonts-extra
 nvtop
-nwg-displays
 openai-codex-desktop
 pigz
 pre-commit
