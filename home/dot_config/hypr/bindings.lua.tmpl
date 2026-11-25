@@ -77,6 +77,7 @@ o.bind("SUPER + SHIFT + D", "Discord", 'omarchy-launch-or-focus ^discord$ "uwsm-
 -- deactivate on release. non_consuming keeps V typing in every other app.
 o.bind("V", "Discord push to mute", hl.dsp.global("discord:discord-push-to-mute"), { non_consuming = true })
 o.bind("SUPER + SHIFT + Y", "YouTube", 'omarchy-launch-webapp "https://youtube.com/" --profile-directory="Default"')
+o.bind("SUPER + SHIFT + ALT + W", "Work mode", { launch = "~/.local/bin/work-mode" })
 
 -- ---------------------------------------------------------------------------
 -- Window focus and movement
