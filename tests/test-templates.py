@@ -114,7 +114,7 @@ def validate_case(profile, work, hostname, staged, scratch, base_env, age):
     assert ("ROCR_VISIBLE_DEVICES=0" in state[".zshenv"]["contents"]) == (profile == "omarchy" and hostname == "fcoffice"), label
     for owner, services in {
         "DLCO-1": ("plex", "sonarr", "radarr", "qbittorrent", "gluetun", "minecraft"),
-        "DLCO-3": ("seerr", "prowlarr", "flaresolverr", "homepage", "audiobookshelf", "calibre-web", "shelfmark"),
+        "DLCO-3": ("seerr", "prowlarr", "flaresolverr", "homepage", "audiobookshelf", "calibre-web", "shelfmark", "minecraft-vanilla"),
     }.items():
         for service in services:
             assert (f".config/containers/systemd/{service}.container" in state) == (profile == "server" and hostname == owner), f"{label}: {service} ownership"

@@ -246,7 +246,7 @@ Projects/backend/
 .config/systemd/user/timers.target.wants/investigate-rebase.timer
 {{ end }}
 {{ if ne .chezmoi.hostname "DLCO-3" }}
-{{ range list "seerr" "prowlarr" "flaresolverr" "homepage" "audiobookshelf" "calibre-web" "shelfmark" "matter-server" }}
+{{ range list "seerr" "prowlarr" "flaresolverr" "homepage" "audiobookshelf" "calibre-web" "shelfmark" "matter-server" "minecraft-vanilla" }}
 .config/containers/systemd/{{ . }}.container
 {{ end }}
 .config/containers/rootful/

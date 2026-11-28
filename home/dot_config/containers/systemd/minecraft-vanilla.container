@@ -1,0 +1,31 @@
+[Unit]
+Description=Minecraft vanilla server
+After=network-online.target
+RequiresMountsFor=/data
+
+[Container]
+Image=docker.io/itzg/minecraft-server:latest
+ContainerName=minecraft-vanilla
+AutoUpdate=registry
+
+Environment=EULA=TRUE
+Environment=TYPE=VANILLA
+# LATEST follows Mojang releases: a restart after a release upgrades the world in place.
+Environment=VERSION=LATEST
+Environment=MEMORY=4G
+Environment=TZ=America/New_York
+
+HealthCmd=mc-health
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=5
+HealthStartPeriod=300s
+
+PublishPort=25565:25565/tcp
+Volume=/data/docker-appdata/minecraft-vanilla:/data:Z
+
+[Install]
+WantedBy=default.target
+
+[Service]
+Restart=on-failure

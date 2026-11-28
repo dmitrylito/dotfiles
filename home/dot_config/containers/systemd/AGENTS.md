@@ -53,6 +53,11 @@ Two networking domains — get this wrong and containers can't reach each other:
 intentionally not wired to `default.target` and won't start on boot. Start on
 demand: `systemctl --user start minecraft.service`.
 
+`minecraft-vanilla.container` is a separate vanilla server on DLCO-3 that starts on boot,
+with its world in `/data/docker-appdata/minecraft-vanilla`. Both units publish host port
+25565, which is fine only because they live on different hosts. `minecraft.dlco.us` is a
+DNS-only A record: the proxied `*.dlco.us` tunnel carries HTTP, not the Minecraft protocol.
+
 ## Conventions & gotchas
 
 - **UID mapping under `UserNS=keep-id`**: container uid 1000 maps to host
